@@ -2023,6 +2023,16 @@ public partial class PowerPointHandler
                 ?? throw new ArgumentException($"Shape {elementIdx} not found"),
             "picture" or "pic" => shapeTree.Elements<Picture>().ElementAtOrDefault(elementIdx - 1)
                 ?? throw new ArgumentException($"Picture {elementIdx} not found"),
+            "connector" or "connection" => shapeTree.Elements<ConnectionShape>().ElementAtOrDefault(elementIdx - 1)
+                ?? throw new ArgumentException($"Connector {elementIdx} not found"),
+            "table" => shapeTree.Elements<GraphicFrame>()
+                .Where(gf => gf.Descendants<Drawing.Table>().Any()).ElementAtOrDefault(elementIdx - 1)
+                ?? throw new ArgumentException($"Table {elementIdx} not found"),
+            "chart" => shapeTree.Elements<GraphicFrame>()
+                .Where(gf => gf.Descendants<C.ChartReference>().Any()).ElementAtOrDefault(elementIdx - 1)
+                ?? throw new ArgumentException($"Chart {elementIdx} not found"),
+            "group" => shapeTree.Elements<GroupShape>().ElementAtOrDefault(elementIdx - 1)
+                ?? throw new ArgumentException($"Group {elementIdx} not found"),
             _ => shapeTree.ChildElements
                 .Where(e => e.LocalName.Equals(elementType, StringComparison.OrdinalIgnoreCase))
                 .ElementAtOrDefault(elementIdx - 1)
