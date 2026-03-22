@@ -1076,9 +1076,29 @@ public partial class PowerPointHandler
             svgX1 = x1; svgY1 = y1; svgX2 = x2; svgY2 = y2;
         }
 
+        // Dash pattern
+        var dashAttr = "";
+        var prstDash = outline?.GetFirstChild<Drawing.PresetDash>();
+        if (prstDash?.Val?.HasValue == true)
+        {
+            var dashVal = prstDash.Val.InnerText;
+            var dashArray = dashVal switch
+            {
+                "dash" or "lgDash" => $"{lineWidth * 4:0.##},{lineWidth * 3:0.##}",
+                "sysDash" => $"{lineWidth * 3:0.##},{lineWidth * 1:0.##}",
+                "dot" or "sysDot" => $"{lineWidth * 1:0.##},{lineWidth * 2:0.##}",
+                "dashDot" => $"{lineWidth * 4:0.##},{lineWidth * 2:0.##},{lineWidth * 1:0.##},{lineWidth * 2:0.##}",
+                "lgDashDot" => $"{lineWidth * 6:0.##},{lineWidth * 2:0.##},{lineWidth * 1:0.##},{lineWidth * 2:0.##}",
+                "lgDashDotDot" => $"{lineWidth * 6:0.##},{lineWidth * 2:0.##},{lineWidth * 1:0.##},{lineWidth * 2:0.##},{lineWidth * 1:0.##},{lineWidth * 2:0.##}",
+                _ => ""
+            };
+            if (!string.IsNullOrEmpty(dashArray))
+                dashAttr = $" stroke-dasharray=\"{dashArray}\"";
+        }
+
         sb.AppendLine($"    <div class=\"connector\" style=\"left:{EmuToCm(renderX)}cm;top:{EmuToCm(renderY)}cm;width:{widthCm}cm;height:{heightCm}cm\">");
         sb.AppendLine($"      <svg width=\"100%\" height=\"100%\" preserveAspectRatio=\"none\">");
-        sb.AppendLine($"        <line x1=\"{svgX1}\" y1=\"{svgY1}\" x2=\"{svgX2}\" y2=\"{svgY2}\" stroke=\"{CssSanitizeColor(lineColor)}\" stroke-width=\"{lineWidth:0.##}\"/>");
+        sb.AppendLine($"        <line x1=\"{svgX1}\" y1=\"{svgY1}\" x2=\"{svgX2}\" y2=\"{svgY2}\" stroke=\"{CssSanitizeColor(lineColor)}\" stroke-width=\"{lineWidth:0.##}\"{dashAttr}/>");
         sb.AppendLine("      </svg>");
         sb.AppendLine("    </div>");
     }
