@@ -22,7 +22,7 @@ OfficeCLI 附带 [SKILL.md](SKILL.md)，用于指导 AI 智能体高效使用本
 首先让你的智能体读取此文件：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/SKILL.md
+curl -fsSL https://officecli.ai/SKILL.md
 ```
 
 如果你的智能体支持本地技能安装，建议安装到本地：
@@ -30,7 +30,7 @@ curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/SKILL.md
 **Claude Code：**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/SKILL.md -o ~/.claude/skills/officecli.md
+curl -fsSL https://officecli.ai/SKILL.md -o ~/.claude/skills/officecli.md
 ```
 
 **其他智能体：**

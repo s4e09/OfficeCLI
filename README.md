@@ -22,7 +22,7 @@ OfficeCLI ships with a [SKILL.md](SKILL.md) that teaches AI agents how to use it
 Talk to your agent with this first:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/SKILL.md
+curl -fsSL https://officecli.ai/SKILL.md
 ```
 
 If your agent supports local skill installation, install it locally instead:
@@ -30,7 +30,7 @@ If your agent supports local skill installation, install it locally instead:
 **Claude Code:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/SKILL.md -o ~/.claude/skills/officecli.md
+curl -fsSL https://officecli.ai/SKILL.md -o ~/.claude/skills/officecli.md
 ```
 
 **Other agents:**
