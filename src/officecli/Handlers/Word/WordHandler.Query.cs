@@ -90,7 +90,7 @@ public partial class WordHandler
             var fn = _doc.MainDocumentPart?.FootnotesPart?.Footnotes?
                 .Elements<Footnote>().FirstOrDefault(f => f.Id?.Value == fnId);
             if (fn == null)
-                return new DocumentNode { Path = path, Type = "error", Text = $"Footnote {fnId} not found" };
+                throw new ArgumentException($"Footnote {fnId} not found");
             var fnNode = new DocumentNode { Path = path, Type = "footnote" };
             fnNode.Text = string.Join("", fn.Descendants<Text>().Select(t => t.Text));
             return fnNode;
@@ -102,7 +102,7 @@ public partial class WordHandler
             var en = _doc.MainDocumentPart?.EndnotesPart?.Endnotes?
                 .Elements<Endnote>().FirstOrDefault(e => e.Id?.Value == enId);
             if (en == null)
-                return new DocumentNode { Path = path, Type = "error", Text = $"Endnote {enId} not found" };
+                throw new ArgumentException($"Endnote {enId} not found");
             var enNode = new DocumentNode { Path = path, Type = "endnote" };
             enNode.Text = string.Join("", en.Descendants<Text>().Select(t => t.Text));
             return enNode;
@@ -115,7 +115,7 @@ public partial class WordHandler
             var tocIdx = int.Parse(tocMatch.Groups[1].Value);
             var tocParas = FindTocParagraphs();
             if (tocIdx < 1 || tocIdx > tocParas.Count)
-                return new DocumentNode { Path = path, Type = "error", Text = $"TOC {tocIdx} not found (total: {tocParas.Count})" };
+                throw new ArgumentException($"TOC {tocIdx} not found (total: {tocParas.Count})");
 
             var tocPara = tocParas[tocIdx - 1];
             var instrText = string.Join("", tocPara.Descendants<FieldCode>().Select(fc => fc.Text));
