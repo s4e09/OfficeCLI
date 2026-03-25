@@ -90,11 +90,25 @@ if [ "$(uname -s)" = "Darwin" ]; then
     codesign -s - -f "$INSTALL_DIR/$BINARY_NAME" 2>/dev/null || true
 fi
 
-# Hint if not in PATH
+# Auto-add to PATH if needed
 case ":$PATH:" in
     *":$INSTALL_DIR:"*) ;;
-    *) echo "Add to PATH: export PATH=\"$INSTALL_DIR:\$PATH\""
-       echo "Or add the line above to your ~/.zshrc or ~/.bashrc" ;;
+    *)
+        PATH_LINE="export PATH=\"$INSTALL_DIR:\$PATH\""
+        if [ "$(uname -s)" = "Darwin" ]; then
+            SHELL_RC="$HOME/.zshrc"
+        elif [ -n "$ZSH_VERSION" ]; then
+            SHELL_RC="$HOME/.zshrc"
+        else
+            SHELL_RC="$HOME/.bashrc"
+        fi
+        if ! grep -qF "$INSTALL_DIR" "$SHELL_RC" 2>/dev/null; then
+            echo "" >> "$SHELL_RC"
+            echo "$PATH_LINE" >> "$SHELL_RC"
+            echo "Added $INSTALL_DIR to PATH in $SHELL_RC"
+            echo "Run 'source $SHELL_RC' or restart your terminal to apply."
+        fi
+        ;;
 esac
 
 rm -f "/tmp/$BINARY_NAME"
