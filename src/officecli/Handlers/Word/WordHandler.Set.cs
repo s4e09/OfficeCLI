@@ -1892,7 +1892,7 @@ public partial class WordHandler
         if (value.EndsWith("cm", StringComparison.OrdinalIgnoreCase))
         {
             var num = ParseHelpers.SafeParseDouble(value[..^2], "twips (cm)");
-            return (uint)Math.Round(num * 567);
+            return (uint)Math.Round(num * 1440.0 / 2.54);
         }
         if (value.EndsWith("in", StringComparison.OrdinalIgnoreCase))
         {
