@@ -20,18 +20,13 @@
 <table>
 <tr>
 <td width="33%"><img src="assets/designwhatmovesyou.gif" alt="OfficeCLI 设计演示 (PowerPoint)"></td>
-<td width="33%"><img src="assets/mars.gif" alt="OfficeCLI 太空演示 (PowerPoint)"></td>
 <td width="33%"><img src="assets/horizon.gif" alt="OfficeCLI 商务演示 (PowerPoint)"></td>
-</tr>
-<tr>
 <td width="33%"><img src="assets/efforless.gif" alt="OfficeCLI 科技演示 (PowerPoint)"></td>
-<td width="33%"><img src="assets/cat.gif" alt="OfficeCLI 创意演示 (PowerPoint)"></td>
-<td width="33%"><img src="assets/first-ppt-aionui.gif" alt="OfficeCLI 游戏演示 (PowerPoint)"></td>
 </tr>
 <tr>
-<td width="33%"><img src="assets/moridian.gif" alt="OfficeCLI 极简演示 (PowerPoint)"></td>
-<td width="33%"><img src="assets/move.gif" alt="OfficeCLI 健康演示 (PowerPoint)"></td>
-<td width="33%"><img src="assets/saturn+sun.gif" alt="OfficeCLI 3D morph 过渡效果 (PowerPoint)"></td>
+<td width="33%"><img src="assets/mars.gif" alt="OfficeCLI 太空演示 (PowerPoint)"></td>
+<td width="33%"><img src="assets/first-ppt-aionui.gif" alt="OfficeCLI 游戏演示 (PowerPoint)"></td>
+<td width="33%"><img src="assets/cat.gif" alt="OfficeCLI 创意演示 (PowerPoint)"></td>
 </tr>
 </table>
 
@@ -39,9 +34,9 @@
 
 <table>
 <tr>
-<td width="33%"><img src="assets/showcase/academic-paper.png" alt="OfficeCLI 学术论文 (Word)"></td>
-<td width="33%"><img src="assets/showcase/project-proposal.png" alt="OfficeCLI 项目建议书 (Word)"></td>
-<td width="33%"><img src="assets/showcase/annual-report.png" alt="OfficeCLI 年度报告 (Word)"></td>
+<td width="33%"><img src="assets/showcase/word1.gif" alt="OfficeCLI 学术论文 (Word)"></td>
+<td width="33%"><img src="assets/showcase/word2.gif" alt="OfficeCLI 项目建议书 (Word)"></td>
+<td width="33%"><img src="assets/showcase/word3.gif" alt="OfficeCLI 年度报告 (Word)"></td>
 </tr>
 </table>
 
@@ -49,9 +44,9 @@
 
 <table>
 <tr>
-<td width="33%"><img src="assets/showcase/budget-tracker.png" alt="OfficeCLI 预算跟踪 (Excel)"></td>
-<td width="33%"><img src="assets/showcase/gradebook.png" alt="OfficeCLI 成绩管理 (Excel)"></td>
-<td width="33%"><img src="assets/showcase/sales-dashboard.png" alt="OfficeCLI 销售仪表盘 (Excel)"></td>
+<td width="33%"><img src="assets/showcase/excel1.gif" alt="OfficeCLI 预算跟踪 (Excel)"></td>
+<td width="33%"><img src="assets/showcase/excel2.gif" alt="OfficeCLI 成绩管理 (Excel)"></td>
+<td width="33%"><img src="assets/showcase/excel3.gif" alt="OfficeCLI 销售仪表盘 (Excel)"></td>
 </tr>
 </table>
 

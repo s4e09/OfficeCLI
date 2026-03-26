@@ -20,18 +20,13 @@ Open-source. Single binary. No Office installation. No dependencies. Works every
 <table>
 <tr>
 <td width="33%"><img src="assets/designwhatmovesyou.gif" alt="OfficeCLI design presentation (PowerPoint)"></td>
-<td width="33%"><img src="assets/mars.gif" alt="OfficeCLI space presentation (PowerPoint)"></td>
 <td width="33%"><img src="assets/horizon.gif" alt="OfficeCLI business presentation (PowerPoint)"></td>
-</tr>
-<tr>
 <td width="33%"><img src="assets/efforless.gif" alt="OfficeCLI tech presentation (PowerPoint)"></td>
-<td width="33%"><img src="assets/cat.gif" alt="OfficeCLI creative presentation (PowerPoint)"></td>
-<td width="33%"><img src="assets/first-ppt-aionui.gif" alt="OfficeCLI gaming presentation (PowerPoint)"></td>
 </tr>
 <tr>
-<td width="33%"><img src="assets/moridian.gif" alt="OfficeCLI minimal presentation (PowerPoint)"></td>
-<td width="33%"><img src="assets/move.gif" alt="OfficeCLI wellness presentation (PowerPoint)"></td>
-<td width="33%"><img src="assets/saturn+sun.gif" alt="OfficeCLI 3D morph transitions (PowerPoint)"></td>
+<td width="33%"><img src="assets/mars.gif" alt="OfficeCLI space presentation (PowerPoint)"></td>
+<td width="33%"><img src="assets/first-ppt-aionui.gif" alt="OfficeCLI gaming presentation (PowerPoint)"></td>
+<td width="33%"><img src="assets/cat.gif" alt="OfficeCLI creative presentation (PowerPoint)"></td>
 </tr>
 </table>
 
@@ -39,9 +34,9 @@ Open-source. Single binary. No Office installation. No dependencies. Works every
 
 <table>
 <tr>
-<td width="33%"><img src="assets/showcase/academic-paper.png" alt="OfficeCLI academic paper (Word)"></td>
-<td width="33%"><img src="assets/showcase/project-proposal.png" alt="OfficeCLI project proposal (Word)"></td>
-<td width="33%"><img src="assets/showcase/annual-report.png" alt="OfficeCLI annual report (Word)"></td>
+<td width="33%"><img src="assets/showcase/word1.gif" alt="OfficeCLI academic paper (Word)"></td>
+<td width="33%"><img src="assets/showcase/word2.gif" alt="OfficeCLI project proposal (Word)"></td>
+<td width="33%"><img src="assets/showcase/word3.gif" alt="OfficeCLI annual report (Word)"></td>
 </tr>
 </table>
 
@@ -49,9 +44,9 @@ Open-source. Single binary. No Office installation. No dependencies. Works every
 
 <table>
 <tr>
-<td width="33%"><img src="assets/showcase/budget-tracker.png" alt="OfficeCLI budget tracker (Excel)"></td>
-<td width="33%"><img src="assets/showcase/gradebook.png" alt="OfficeCLI gradebook (Excel)"></td>
-<td width="33%"><img src="assets/showcase/sales-dashboard.png" alt="OfficeCLI sales dashboard (Excel)"></td>
+<td width="33%"><img src="assets/showcase/excel1.gif" alt="OfficeCLI budget tracker (Excel)"></td>
+<td width="33%"><img src="assets/showcase/excel2.gif" alt="OfficeCLI gradebook (Excel)"></td>
+<td width="33%"><img src="assets/showcase/excel3.gif" alt="OfficeCLI sales dashboard (Excel)"></td>
 </tr>
 </table>
 
