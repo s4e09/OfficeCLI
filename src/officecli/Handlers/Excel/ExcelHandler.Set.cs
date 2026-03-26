@@ -466,7 +466,8 @@ public partial class ExcelHandler
                                 "center" or "c" or "ctr" => Drawing.TextAlignmentTypeValues.Center,
                                 "right" or "r" => Drawing.TextAlignmentTypeValues.Right,
                                 "justify" or "justified" or "j" => Drawing.TextAlignmentTypeValues.Justified,
-                                _ => Drawing.TextAlignmentTypeValues.Left
+                                "left" or "l" => Drawing.TextAlignmentTypeValues.Left,
+                                _ => throw new ArgumentException($"Invalid align value: '{value}'. Valid values: left, center, right, justify.")
                             };
                         }
                         break;
