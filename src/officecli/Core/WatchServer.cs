@@ -440,7 +440,14 @@ public class WatchServer : IDisposable
 
             if (requestLine.Contains("GET /events"))
             {
-                await HandleSseAsync(stream, token);
+                try
+                {
+                    await HandleSseAsync(stream, token);
+                }
+                finally
+                {
+                    client.Close();
+                }
             }
             else
             {
