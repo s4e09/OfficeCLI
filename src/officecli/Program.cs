@@ -45,6 +45,12 @@ if (args.Length >= 1 && args[0] == "mcp")
     return 1;
 }
 
+// Install command: officecli install [target]
+if (args.Length >= 1 && args[0] == "install")
+{
+    return OfficeCli.Core.Installer.Run(args.Skip(1).ToArray());
+}
+
 // Legacy alias
 if (args.Length == 1 && args[0] == "mcp-serve")
 {

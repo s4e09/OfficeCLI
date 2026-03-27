@@ -23,8 +23,12 @@ public static class SkillInstaller
         (["zeroclaw"],                    "ZeroClaw",       Path.Combine(".zeroclaw", "workspace"),  Path.Combine(".zeroclaw", "workspace", "skills", "officecli", "SKILL.md")),
     ];
 
-    public static void Install(string target)
+    /// <summary>
+    /// Installs skills and returns the set of primary aliases that were installed.
+    /// </summary>
+    public static HashSet<string> Install(string target)
     {
+        var installed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var key = target.ToLowerInvariant();
 
         if (key == "all")
@@ -36,11 +40,13 @@ public static class SkillInstaller
                 {
                     found = true;
                     InstallTo(tool.DisplayName, Path.Combine(Home, tool.SkillPath));
+                    foreach (var alias in tool.Aliases)
+                        installed.Add(alias);
                 }
             }
             if (!found)
                 Console.WriteLine("  No supported AI tools detected.");
-            return;
+            return installed;
         }
 
         foreach (var tool in Tools)
@@ -48,12 +54,15 @@ public static class SkillInstaller
             if (tool.Aliases.Contains(key))
             {
                 InstallTo(tool.DisplayName, Path.Combine(Home, tool.SkillPath));
-                return;
+                foreach (var alias in tool.Aliases)
+                    installed.Add(alias);
+                return installed;
             }
         }
 
         Console.Error.WriteLine($"Unknown target: {target}");
         Console.Error.WriteLine("Supported: claude, copilot, codex, cursor, windsurf, minimax, openclaw, nanobot, zeroclaw, all");
+        return installed;
     }
 
     private static void InstallTo(string displayName, string targetPath)
