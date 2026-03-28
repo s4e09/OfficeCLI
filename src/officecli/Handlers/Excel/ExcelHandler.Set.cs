@@ -976,15 +976,30 @@ public partial class ExcelHandler
                     break;
                 case "formula":
                     cell.CellFormula = new CellFormula(value.TrimStart('='));
-                    cell.DataType = null; // Formula cells should not retain DataType
                     // Try to evaluate and cache the result immediately
                     var evalSheetData = GetSheet(worksheet).GetFirstChild<SheetData>();
                     var evaluator = new Core.FormulaEvaluator(evalSheetData!, _doc.WorkbookPart);
-                    var evalResult = evaluator.TryEvaluate(value.TrimStart('='));
-                    if (evalResult.HasValue)
-                        cell.CellValue = new CellValue(evalResult.Value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                    var evalResult = evaluator.TryEvaluateFull(value.TrimStart('='));
+                    if (evalResult is { IsNumeric: true })
+                    {
+                        cell.CellValue = new CellValue(evalResult.ToCellValueText());
+                        cell.DataType = null;
+                    }
+                    else if (evalResult is { IsString: true })
+                    {
+                        cell.CellValue = new CellValue(evalResult.StringValue!);
+                        cell.DataType = new DocumentFormat.OpenXml.EnumValue<CellValues>(CellValues.String);
+                    }
+                    else if (evalResult is { IsBool: true })
+                    {
+                        cell.CellValue = new CellValue(evalResult.ToCellValueText());
+                        cell.DataType = new DocumentFormat.OpenXml.EnumValue<CellValues>(CellValues.Boolean);
+                    }
                     else
-                        cell.CellValue = null; // unsupported formula — leave uncalculated
+                    {
+                        cell.CellValue = null;
+                        cell.DataType = null;
+                    }
                     break;
                 case "type":
                     cell.DataType = value.ToLowerInvariant() switch
