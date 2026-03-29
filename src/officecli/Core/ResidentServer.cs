@@ -376,7 +376,7 @@ public class ResidentServer : IDisposable
                 return;
             }
         }
-        WatchNotifier.NotifyIfWatching(_filePath, new WatchMessage { Action = "full", FullHtml = ppt.ViewAsHtml() });
+        WatchNotifier.NotifyIfWatching(_filePath, new WatchMessage { Action = "full" });
     }
 
     private void NotifyWatchRootChanged(int oldSlideCount)
