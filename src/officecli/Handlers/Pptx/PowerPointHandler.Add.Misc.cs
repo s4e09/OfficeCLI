@@ -47,13 +47,13 @@ public partial class PowerPointHandler
 
                 // Connect to shapes if specified
                 var cxnDrawProps = cxnNvProps.NonVisualConnectorShapeDrawingProperties!;
-                if (properties.TryGetValue("startshape", out var startId))
+                if (properties.TryGetValue("startshape", out var startId) || properties.TryGetValue("startShape", out startId))
                 {
                     if (!uint.TryParse(startId, out var startIdVal))
                         throw new ArgumentException($"Invalid 'startshape' value: '{startId}'. Expected a positive integer (shape ID).");
                     cxnDrawProps.StartConnection = new Drawing.StartConnection { Id = startIdVal, Index = 0 };
                 }
-                if (properties.TryGetValue("endshape", out var endId))
+                if (properties.TryGetValue("endshape", out var endId) || properties.TryGetValue("endShape", out endId))
                 {
                     if (!uint.TryParse(endId, out var endIdVal))
                         throw new ArgumentException($"Invalid 'endshape' value: '{endId}'. Expected a positive integer (shape ID).");

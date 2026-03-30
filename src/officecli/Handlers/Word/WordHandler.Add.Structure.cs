@@ -328,7 +328,7 @@ public partial class WordHandler
         var hPara = new Paragraph();
         var hPProps = new ParagraphProperties();
 
-        if (properties.TryGetValue("alignment", out var hAlign))
+        if (properties.TryGetValue("alignment", out var hAlign) || properties.TryGetValue("align", out hAlign))
             hPProps.Justification = new Justification { Val = ParseJustification(hAlign) };
         hPara.AppendChild(hPProps);
 
@@ -395,7 +395,7 @@ public partial class WordHandler
         var fPara = new Paragraph();
         var fPProps = new ParagraphProperties();
 
-        if (properties.TryGetValue("alignment", out var fAlign))
+        if (properties.TryGetValue("alignment", out var fAlign) || properties.TryGetValue("align", out fAlign))
             fPProps.Justification = new Justification { Val = ParseJustification(fAlign) };
         fPara.AppendChild(fPProps);
 

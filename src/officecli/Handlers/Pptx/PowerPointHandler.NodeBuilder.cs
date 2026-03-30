@@ -1036,6 +1036,23 @@ public partial class PowerPointHandler
         if (xfrm?.Rotation?.HasValue == true && xfrm.Rotation.Value != 0)
             node.Format["rotation"] = $"{xfrm.Rotation.Value / 60000.0:0.##}";
 
+        // Connection info (startShape/endShape)
+        var cxnDrawProps = cxn.NonVisualConnectionShapeProperties?.NonVisualConnectorShapeDrawingProperties;
+        var startCxn = cxnDrawProps?.StartConnection;
+        if (startCxn?.Id?.HasValue == true)
+        {
+            node.Format["startShape"] = startCxn.Id.Value;
+            if (startCxn.Index?.HasValue == true)
+                node.Format["startIdx"] = startCxn.Index.Value;
+        }
+        var endCxn = cxnDrawProps?.EndConnection;
+        if (endCxn?.Id?.HasValue == true)
+        {
+            node.Format["endShape"] = endCxn.Id.Value;
+            if (endCxn.Index?.HasValue == true)
+                node.Format["endIdx"] = endCxn.Index.Value;
+        }
+
         return node;
     }
 
