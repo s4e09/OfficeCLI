@@ -171,7 +171,7 @@ officecli add <file> <parent> --from <path> [--index N]    # clone existing elem
 | Format | Types |
 |--------|-------|
 | **pptx** | slide, shape (textbox), picture (image/img), chart, table, row (tr), connector (connection/line), group, video (audio/media), equation (formula/math), notes, paragraph (para), run, zoom (slidezoom) |
-| **docx** | paragraph (para), run, table, row (tr), cell (td), image (picture/img), header, footer, section, bookmark, comment, footnote, endnote |
+| **docx** | paragraph (para), run, table, row (tr), cell (td), image (picture/img), header, footer, section, bookmark, comment, footnote, endnote, formfield, sdt (content control) |
 | **xlsx** | sheet, row, cell, chart, image (picture), comment, hyperlink |
 
 **Clone:** `officecli add <file> / --from /slide[1]` — copies with all cross-part relationships.
