@@ -16,8 +16,8 @@ public partial class PowerPointHandler
 {
     private string AddEquation(string parentPath, int? index, Dictionary<string, string> properties)
     {
-                if (!properties.TryGetValue("formula", out var eqFormula))
-                    throw new ArgumentException("'formula' property is required for equation type");
+                if (!properties.TryGetValue("formula", out var eqFormula) && !properties.TryGetValue("text", out eqFormula))
+                    throw new ArgumentException("'formula' (or 'text') property is required for equation type");
 
                 var eqSlideMatch = Regex.Match(parentPath, @"^/slide\[(\d+)\]$");
                 if (!eqSlideMatch.Success)

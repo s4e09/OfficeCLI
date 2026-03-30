@@ -223,8 +223,8 @@ public partial class WordHandler
     {
         string resultPath;
         OpenXmlElement? newElement;
-        if (!properties.TryGetValue("formula", out var formula))
-            throw new ArgumentException("'formula' property is required for equation type");
+        if (!properties.TryGetValue("formula", out var formula) && !properties.TryGetValue("text", out formula))
+            throw new ArgumentException("'formula' (or 'text') property is required for equation type");
 
         var mode = properties.GetValueOrDefault("mode", "display");
 
