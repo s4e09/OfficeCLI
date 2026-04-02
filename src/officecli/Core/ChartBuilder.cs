@@ -260,27 +260,33 @@ internal static partial class ChartHelper
             var info = extSeries[i];
             var ser = allSer[i];
 
-            // Replace Values with NumberReference
+            // Replace Values with NumberReference (preserving literal data as cache)
             if (!string.IsNullOrEmpty(info.ValuesRef))
             {
                 var valEl = ser.GetFirstChild<C.Values>();
                 if (valEl != null)
                 {
+                    var numCache = BuildNumberingCacheFromLiteral(valEl.GetFirstChild<C.NumberLiteral>());
                     valEl.RemoveAllChildren();
                     var numRef = new C.NumberReference(new C.Formula(info.ValuesRef));
+                    if (numCache != null)
+                        numRef.AppendChild(numCache);
                     valEl.AppendChild(numRef);
                 }
             }
 
-            // Replace CategoryAxisData with StringReference
+            // Replace CategoryAxisData with StringReference (preserving literal data as cache)
             var catRef = info.CategoriesRef ?? topCategoriesRef;
             if (!string.IsNullOrEmpty(catRef))
             {
                 var catEl = ser.GetFirstChild<C.CategoryAxisData>();
                 if (catEl != null)
                 {
+                    var strCache = BuildStringCacheFromLiteral(catEl.GetFirstChild<C.StringLiteral>());
                     catEl.RemoveAllChildren();
                     var strRef = new C.StringReference(new C.Formula(catRef));
+                    if (strCache != null)
+                        strRef.AppendChild(strCache);
                     catEl.AppendChild(strRef);
                 }
                 else
@@ -859,6 +865,44 @@ internal static partial class ChartHelper
     {
         var strRef = new C.StringReference(new C.Formula(formula));
         return new C.CategoryAxisData(strRef);
+    }
+
+    /// <summary>
+    /// Convert a NumberLiteral to a NumberingCache so chart viewers can display
+    /// cached values without recalculating cell references.
+    /// </summary>
+    private static C.NumberingCache? BuildNumberingCacheFromLiteral(C.NumberLiteral? literal)
+    {
+        if (literal == null) return null;
+        var points = literal.Elements<C.NumericPoint>().ToList();
+        if (points.Count == 0) return null;
+        var cache = new C.NumberingCache();
+        var fmtCode = literal.GetFirstChild<C.FormatCode>();
+        cache.AppendChild(new C.FormatCode(fmtCode?.Text ?? "General"));
+        var ptCount = literal.GetFirstChild<C.PointCount>();
+        if (ptCount != null)
+            cache.AppendChild(new C.PointCount { Val = ptCount.Val });
+        foreach (var pt in points)
+            cache.AppendChild((C.NumericPoint)pt.CloneNode(true));
+        return cache;
+    }
+
+    /// <summary>
+    /// Convert a StringLiteral to a StringCache so chart viewers can display
+    /// cached labels without recalculating cell references.
+    /// </summary>
+    private static C.StringCache? BuildStringCacheFromLiteral(C.StringLiteral? literal)
+    {
+        if (literal == null) return null;
+        var points = literal.Elements<C.StringPoint>().ToList();
+        if (points.Count == 0) return null;
+        var cache = new C.StringCache();
+        var ptCount = literal.GetFirstChild<C.PointCount>();
+        if (ptCount != null)
+            cache.AppendChild(new C.PointCount { Val = ptCount.Val });
+        foreach (var pt in points)
+            cache.AppendChild((C.StringPoint)pt.CloneNode(true));
+        return cache;
     }
 
     // ==================== Axis Builders ====================
