@@ -1042,6 +1042,14 @@ public partial class WordHandler
 
     // ==================== CSS Stylesheet ====================
 
+    /// <summary>Check if document uses linked styles (w:linkStyles in settings).
+    /// When true, Word applies default spaceAfter=10pt and lineSpacing=115% for Normal.</summary>
+    private bool HasLinkedStyles()
+    {
+        var settings = _doc.MainDocumentPart?.DocumentSettingsPart?.Settings;
+        return settings?.Descendants<DocumentFormat.OpenXml.Wordprocessing.LinkStyles>().Any() == true;
+    }
+
     private string GenerateWordCss(PageLayout pg, DocDef dd)
     {
         // Use pt units (twips/20) for pixel-perfect accuracy — no cm→px conversion loss
@@ -1067,7 +1075,7 @@ public partial class WordHandler
             min-height: {pageH}; line-height: {lh}; font-size: {sz}; position: relative; overflow-x: auto;
             display: flex; flex-direction: column; font-kerning: none; letter-spacing: 0;
             }}
-        .page-body {{ flex: 1; }}
+        .page-body {{ flex: 1; display: flex; flex-direction: column; }}
         .page-body > :first-child {{ margin-top: 0 !important; }}
         .page-body > img + h1, .page-body > img + img + h1 {{ margin-top: 0 !important; }}
         .doc-header, .doc-footer {{ color: #888; font-size: 9pt; }}
@@ -1075,8 +1083,8 @@ public partial class WordHandler
             padding-bottom: 0.3em; }}
         .doc-footer {{ position: absolute; bottom: {pg.FooterDistancePt:0.#}pt; left: {mL}; right: {mR};
             padding-top: 0.3em; }}
-        h1, h2, h3, h4, h5, h6 {{ line-height: 1.4; }}
-        p {{ margin: 0; margin-bottom: 10pt; line-height: {1.15 * FontMetricsReader.GetRatio(dd.Font):0.##}; text-align: justify; text-justify: inter-character; }}
+        h1, h2, h3, h4, h5, h6 {{ line-height: {FontMetricsReader.GetRatio(dd.Font):0.##}; }}
+        p {{ margin: 0; margin-bottom: {(HasLinkedStyles() ? "10pt" : "0")}; line-height: {(HasLinkedStyles() ? 1.15 : 1.0) * FontMetricsReader.GetRatio(dd.Font):0.##}; text-align: justify; text-justify: inter-character; }}
         p.empty {{ margin: 0; min-height: 1em; }}
         a {{ color: #2B579A; }} a:hover {{ color: #1a3c6e; }}
         .toc {{ display: flex; text-indent: 0 !important; }}

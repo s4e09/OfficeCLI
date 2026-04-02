@@ -184,10 +184,6 @@ public partial class WordHandler
 
         for (int i = 0; i < pageList.Count; i++)
         {
-            // Skip pages not in the requested set
-            if (requestedPages != null && !requestedPages.Contains(i + 1))
-                continue;
-
             sb.AppendLine($"<div class=\"page\" data-page=\"{i + 1}\" style=\"{maxW}\">");
             if (i == 0) sb.Append(headerHtml);
             sb.Append("<div class=\"page-body\">");
@@ -320,7 +316,7 @@ public partial class WordHandler
       if(ch>maxBodyH-fh+2)again=true;
     });
     if(again)setTimeout(paginate,0);
-    else setTimeout(positionFootnotes,0);
+    else{setTimeout(positionFootnotes,0);setTimeout(applyPageFilter,0);}
   }
   function positionFootnotes(){
     document.querySelectorAll('.page').forEach(function(page){
@@ -339,8 +335,19 @@ public partial class WordHandler
       if(gap>0)fn.style.marginTop=gap+'px';
     });
   }
+  function applyPageFilter(){
+    var rf=window._requestedPages;
+    if(!rf||rf.length===0)return;
+    var rSet=new Set(rf);
+    document.querySelectorAll('.page').forEach(function(p,i){
+      if(!rSet.has(i+1))p.style.display='none';
+    });
+  }
   setTimeout(paginate,100);
 ");
+        // Pass requested pages to JS for post-pagination filtering
+        if (requestedPages != null && requestedPages.Count > 0)
+            sb.AppendLine($"  window._requestedPages=[{string.Join(",", requestedPages)}];");
         sb.AppendLine("}");
         sb.AppendLine("if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',_wordInit);");
         sb.AppendLine("else _wordInit();");
