@@ -456,6 +456,8 @@ public partial class PowerPointHandler
                 cellNode.Format["valign"] = tcPr.Anchor.InnerText switch
                 {
                     "ctr" => "center",
+                    "t" => "top",
+                    "b" => "bottom",
                     _ => tcPr.Anchor.InnerText
                 };
             }
