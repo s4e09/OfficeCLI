@@ -706,6 +706,11 @@ public partial class WordHandler
                 else if (sdtProps.GetFirstChild<SdtContentText>() != null) node.Format["sdtType"] = "text";
                 else node.Format["sdtType"] = "richtext";
 
+                // Read date format for date controls
+                var dateContent = sdtProps.GetFirstChild<SdtContentDate>();
+                if (dateContent?.DateFormat?.Val?.Value != null)
+                    node.Format["format"] = dateContent.DateFormat.Val.Value;
+
                 // Editable status
                 node.Format["editable"] = IsSdtEditable(sdtProps);
 

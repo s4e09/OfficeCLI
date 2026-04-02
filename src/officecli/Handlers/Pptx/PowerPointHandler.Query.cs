@@ -717,6 +717,28 @@ public partial class PowerPointHandler
                 throw new ArgumentException($"Picture {elementIdx} not found (total: {pics.Count})");
             return PictureToNode(pics[elementIdx - 1], slideIdx, elementIdx, targetSlidePart);
         }
+        else if (elementType == "audio" || elementType == "video")
+        {
+            var isVideoType = elementType == "video";
+            var mediaList = shapeTreeEl.Elements<Picture>().Where(p =>
+            {
+                var nvPr = p.NonVisualPictureProperties?.ApplicationNonVisualDrawingProperties;
+                return isVideoType
+                    ? nvPr?.GetFirstChild<Drawing.VideoFromFile>() != null
+                    : nvPr?.GetFirstChild<Drawing.AudioFromFile>() != null;
+            }).ToList();
+            if (elementIdx < 1 || elementIdx > mediaList.Count)
+                throw new ArgumentException($"{elementType} {elementIdx} not found (total: {mediaList.Count}). " +
+                    $"Slide {slideIdx} contains: {shapeTreeEl.Elements<Picture>().Count()} picture(s)");
+            var mediaPic = mediaList[elementIdx - 1];
+            // Find the picture's index among all pictures for PictureToNode
+            var allPics = shapeTreeEl.Elements<Picture>().ToList();
+            var picIdx = allPics.IndexOf(mediaPic) + 1;
+            var node = PictureToNode(mediaPic, slideIdx, picIdx, targetSlidePart);
+            // Override the path to use the media-type-specific path
+            node.Path = $"/slide[{slideIdx}]/{elementType}[{elementIdx}]";
+            return node;
+        }
         else if (elementType == "connector" || elementType == "connection")
         {
             var connectors = shapeTreeEl.Elements<ConnectionShape>().ToList();

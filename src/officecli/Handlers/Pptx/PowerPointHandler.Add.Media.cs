@@ -336,8 +336,15 @@ public partial class PowerPointHandler
 
                 mediaSlide.Save();
 
-                var picCount = mediaShapeTree.Elements<Picture>().Count();
-                return $"/slide[{mediaSlideIdx}]/picture[{picCount}]";
+                // Count how many audio/video items of the same type are on the slide
+                var sameTypeCount = mediaShapeTree.Elements<Picture>().Count(p =>
+                {
+                    var nvPr = p.NonVisualPictureProperties?.ApplicationNonVisualDrawingProperties;
+                    return isVideo
+                        ? nvPr?.GetFirstChild<Drawing.VideoFromFile>() != null
+                        : nvPr?.GetFirstChild<Drawing.AudioFromFile>() != null;
+                });
+                return $"/slide[{mediaSlideIdx}]/{(isVideo ? "video" : "audio")}[{sameTypeCount}]";
     }
 
 
