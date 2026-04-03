@@ -68,6 +68,12 @@ curl -fsSL https://officecli.ai/SKILL.md
 
 > **技术细节：** OfficeCLI 附带 [SKILL.md](SKILL.md)（239 行，约 8K tokens），涵盖命令语法、架构设计和常见陷阱。安装后，您的智能体可以立即创建、读取和修改任何 Office 文档。
 
+## 普通用户 — 安装 AionUi 即可体验
+
+不想写命令？安装 [**AionUi**](https://github.com/iOfficeAI/AionUi) — 一款桌面应用，用自然语言就能创建和编辑 Office 文档，底层由 OfficeCLI 驱动。
+
+只需描述你想要什么，AionUi 帮你搞定。
+
 ## 快速开始
 
 从零到完成一个演示文稿，只需几秒钟：

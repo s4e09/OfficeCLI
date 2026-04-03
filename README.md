@@ -68,6 +68,12 @@ That's it. The skill file teaches the agent how to install the binary and use al
 
 > **Technical details:** OfficeCLI ships with a [SKILL.md](SKILL.md) (239 lines, ~8K tokens) that covers command syntax, architecture, and common pitfalls. After installation, your agent can immediately create, read, and modify any Office document.
 
+## For Humans — Try It with AionUi
+
+Want to experience the power of OfficeCLI without writing a single command? Install [**AionUi**](https://github.com/iOfficeAI/AionUi) — a desktop app that lets you create and edit Office documents through natural language, powered by OfficeCLI under the hood.
+
+Just describe what you want, and AionUi handles the rest.
+
 ## Quick Start
 
 From zero to a finished presentation in seconds:
