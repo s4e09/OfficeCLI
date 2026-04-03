@@ -375,6 +375,12 @@ public partial class WordHandler
       document.body.offsetHeight;
       document.querySelectorAll('.page-wrapper,.page').forEach(function(el){el.style.transition='';});
     }
+    if(window._pendingScrollTo){
+      window._pendingScrollTo=null;
+      var allPages=document.querySelectorAll('.page');
+      var last=allPages[allPages.length-1];
+      if(last)last.scrollIntoView({behavior:'smooth',block:'center'});
+    }
   }
   var _resizeTimer;
   window.addEventListener('resize',function(){
