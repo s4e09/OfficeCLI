@@ -246,9 +246,13 @@ public partial class WordHandler
             }
 
             var childList = children.ToList();
-            var next = seg.Index.HasValue
-                ? childList.ElementAtOrDefault(seg.Index.Value - 1)
-                : childList.FirstOrDefault();
+            OpenXmlElement? next;
+            if (seg.Index.HasValue)
+                next = childList.ElementAtOrDefault(seg.Index.Value - 1);
+            else if (seg.StringIndex == "last()")
+                next = childList.LastOrDefault();
+            else
+                next = childList.FirstOrDefault();
 
             if (next == null)
             {

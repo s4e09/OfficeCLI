@@ -282,24 +282,39 @@ public partial class WordHandler
 
             var mathPara = new M.Paragraph(oMath);
 
-            if (parent is Body || parent is SdtBlock)
+            // Display equation must be a direct child of Body (wrapped in w:p).
+            // If parent is a Paragraph, insert after that paragraph as a sibling.
+            var insertTarget = parent;
+            OpenXmlElement? insertAfter = null;
+            if (parent is Paragraph parentPara)
+            {
+                insertTarget = parentPara.Parent ?? parent;
+                insertAfter = parentPara;
+            }
+
+            if (insertTarget is Body || insertTarget is SdtBlock)
             {
                 // Wrap m:oMathPara in w:p for schema validity
                 var wrapPara = new Paragraph(mathPara);
-                var mathParaCount = parent.Descendants<M.Paragraph>().Count();
-                if (index.HasValue)
+                if (insertAfter != null)
                 {
-                    var children = parent.ChildElements.ToList();
+                    insertTarget.InsertAfter(wrapPara, insertAfter);
+                }
+                else if (index.HasValue)
+                {
+                    var children = insertTarget.ChildElements.ToList();
                     if (index.Value < children.Count)
-                        parent.InsertBefore(wrapPara, children[index.Value]);
+                        insertTarget.InsertBefore(wrapPara, children[index.Value]);
                     else
-                        AppendToParent(parent, wrapPara);
+                        AppendToParent(insertTarget, wrapPara);
                 }
                 else
                 {
-                    AppendToParent(parent, wrapPara);
+                    AppendToParent(insertTarget, wrapPara);
                 }
-                resultPath = $"{parentPath}/oMathPara[{mathParaCount + 1}]";
+                var mathParaCount = insertTarget.Descendants<M.Paragraph>().Count();
+                var bodyPath = insertAfter != null ? parentPath.Substring(0, parentPath.LastIndexOf('/')) : parentPath;
+                resultPath = $"{bodyPath}/oMathPara[{mathParaCount}]";
             }
             else
             {
