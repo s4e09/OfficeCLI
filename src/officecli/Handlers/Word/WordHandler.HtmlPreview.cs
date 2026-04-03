@@ -99,7 +99,7 @@ public partial class WordHandler
         sb.AppendLine("<body>");
 
         // Render body into temporary buffer, then split on page breaks
-        var maxW = $"max-width:{pgLayout.WidthPt:0.#}pt";
+        var maxW = $"width:{pgLayout.WidthPt:0.#}pt";
         var bodySb = new StringBuilder();
         _ctx.RenderingBody = true;
         RenderBodyHtml(bodySb, body);
@@ -359,15 +359,19 @@ public partial class WordHandler
     document.querySelectorAll('.page-wrapper').forEach(function(wrapper){
       var page=wrapper.querySelector('.page');
       if(!page||page.style.display==='none')return;
+      // Reset wrapper width first so it reflects true available space
+      wrapper.style.width='';
       var pageW=page.offsetWidth;
       var availW=wrapper.clientWidth;
       if(pageW>availW&&availW>0){
         var s=availW/pageW;
         page.style.transform='scale('+s+')';
         wrapper.style.height=(page.offsetHeight*s)+'px';
+        wrapper.style.width=(pageW*s)+'px';
       }else{
         page.style.transform='';
         wrapper.style.height='';
+        wrapper.style.width='';
       }
     });
   }
