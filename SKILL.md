@@ -65,8 +65,8 @@ officecli close report.docx      # save and release
 ```bash
 officecli create slides.pptx
 officecli add slides.pptx / --type slide --prop title="Q4 Report" --prop background=1A1A2E
-officecli add slides.pptx /slide[1] --type shape --prop text="Revenue grew 25%" --prop x=2cm --prop y=5cm --prop font=Arial --prop size=24 --prop color=FFFFFF
-officecli set slides.pptx /slide[1] --prop transition=fade --prop advanceTime=3000
+officecli add slides.pptx '/slide[1]' --type shape --prop text="Revenue grew 25%" --prop x=2cm --prop y=5cm --prop font=Arial --prop size=24 --prop color=FFFFFF
+officecli set slides.pptx '/slide[1]' --prop transition=fade --prop advanceTime=3000
 ```
 
 **Word:**
@@ -144,6 +144,8 @@ officecli set slides.pptx '/slide[1]/shape[2]' --prop color=red                #
 
 Elements without stable IDs (slide, paragraph, run, tr/tc, row) use positional indices as fallback.
 
+**When to use stable IDs:** Prefer `@id=` / `@paraId=` paths in multi-step workflows where you add or remove elements between commands — positional indices shift, but stable IDs do not.
+
 ### query
 
 CSS-like selectors: `[attr=value]`, `[attr!=value]`, `[attr~=text]`, `[attr>=value]`, `[attr<=value]`, `:contains("text")`, `:empty`, `:has(formula)`, `:no-alt`.
@@ -173,6 +175,8 @@ officecli set <file> <path> --prop key=value [--prop ...]
 ```
 
 **Any XML attribute is settable** via element path (found via `get --depth N`) — even attributes not currently present.
+
+Without `find=`, `set` applies format to the entire element. To target specific text within a paragraph, use `find=` (see **find** section below).
 
 Run `officecli <format> set` for all settable elements. Run `officecli <format> set <element>` for detail.
 
@@ -240,6 +244,8 @@ Path controls search scope: `/` = all slides, `/slide[N]` = single slide, `/slid
 
 - `r"..."` prefix enables regex mode
 - Path controls search scope: `/` = whole body, `/header[1]`, `/body/p[1]`, etc.
+- If `find=` matches nothing, the command succeeds with no changes (no error)
+- `find:` / `find=` matches work across run boundaries — text split across multiple runs is still found
 
 ### add — add elements or clone
 
@@ -296,7 +302,7 @@ officecli add slides.pptx '/slide[1]/shape[1]' --type run --before find:weather 
 
 PPT only supports inline types (run) with `find:` anchors — block-type insertion is not supported.
 
-**Clone:** `officecli add <file> / --from /slide[1]` — copies with all cross-part relationships.
+**Clone:** `officecli add <file> / --from '/slide[1]'` — copies with all cross-part relationships.
 
 Run `officecli <format> add` for all addable types and their properties.
 
@@ -356,6 +362,7 @@ Run `officecli <format> raw` for available parts per format.
 |---------|-----------------|
 | `--name "foo"` | ❌ Use `--prop name="foo"` — all attributes go through `--prop` |
 | `x=-3cm` | ❌ Negative coordinates not supported. Use `x=0cm` or `x=36cm` |
+| PPT `shape[1]` for content | ❌ `shape[1]` is typically the title placeholder. Use `shape[2]` or higher for content shapes |
 | `/shape[myname]` | ❌ Name indexing not supported. Use numeric index: `/shape[3]` |
 | Guessing property names | ❌ Run `officecli <format> set <element>` to see exact names |
 | Modifying an open file | ❌ Close the file in PowerPoint/WPS first |
