@@ -1007,7 +1007,7 @@ public partial class WordHandler
                     currentListLevel = ilvl;
                     currentNumId = numId;
                     sb.Append("<li");
-                    sb.Append($" data-path=\"/p[{wParaCount}]\"");
+                    sb.Append($" data-path=\"/body/p[{wParaCount}]\"");
                     var paraStyle = GetParagraphInlineCss(para, isListItem: true);
                     if (!string.IsNullOrEmpty(paraStyle))
                         sb.Append($" style=\"{paraStyle}\"");
@@ -1048,7 +1048,7 @@ public partial class WordHandler
                 {
                     var hasReflect = HasW14Reflection(para);
                     sb.Append($"<h{headingLevel}");
-                    sb.Append($" data-path=\"/p[{wParaCount}]\"");
+                    sb.Append($" data-path=\"/body/p[{wParaCount}]\"");
                     var hStyle = GetParagraphInlineCss(para);
                     // Remove bottom spacing when reflection follows immediately
                     if (hasReflect)
@@ -1085,7 +1085,7 @@ public partial class WordHandler
                     // Empty paragraph = spacing break
                     if (runs.Count == 0 && mathElements.Count == 0 && string.IsNullOrWhiteSpace(text))
                     {
-                        sb.AppendLine($"<p class=\"empty\" data-path=\"/p[{wParaCount}]\">&nbsp;</p>");
+                        sb.AppendLine($"<p class=\"empty\" data-path=\"/body/p[{wParaCount}]\">&nbsp;</p>");
                         continue;
                     }
 
@@ -1098,7 +1098,7 @@ public partial class WordHandler
                     }
 
                     sb.Append("<p");
-                    sb.Append($" data-path=\"/p[{wParaCount}]\"");
+                    sb.Append($" data-path=\"/body/p[{wParaCount}]\"");
                     // Add CSS class for TOC paragraphs (suppress hyperlink styling, enable dot leaders)
                     var paraStyleId = para.ParagraphProperties?.ParagraphStyleId?.Val?.Value;
                     if (paraStyleId != null && paraStyleId.StartsWith("TOC", StringComparison.OrdinalIgnoreCase))
@@ -1121,7 +1121,7 @@ public partial class WordHandler
             else if (element is Table table)
             {
                 CloseAllLists(sb, listStack, ref currentListType, ref pendingLiClose);
-                RenderTableHtml(sb, table, dataPath: $"/table[{wTableCount}]");
+                RenderTableHtml(sb, table, dataPath: $"/body/table[{wTableCount}]");
             }
         }
 
