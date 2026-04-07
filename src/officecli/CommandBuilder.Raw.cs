@@ -11,7 +11,7 @@ static partial class CommandBuilder
     private static Command BuildRawCommand(Option<bool> jsonOption)
     {
         var rawFileArg = new Argument<FileInfo>("file") { Description = "Office document path (required even with open/close mode)" };
-        var rawPathArg = new Argument<string>("part") { Description = "Part path (e.g. /document, /styles, /header[0])" };
+        var rawPathArg = new Argument<string>("part") { Description = "Part path (e.g. /document, /styles, /header[1])" };
         rawPathArg.DefaultValueFactory = _ => "/document";
 
         var rawStartOpt = new Option<int?>("--start") { Description = "Start row number (Excel sheets only)" };
