@@ -427,6 +427,37 @@ internal static class PivotTableHelper
         var filterFields = ParseFieldList(properties, "filters", headers);
         var valueFields = ParseValueFields(properties, "values", headers);
 
+        // CONSISTENCY(aggregate-override / showdataas): parity with Set —
+        // the sibling `aggregate=` / `showdataas=` properties are positional
+        // comma-lists applied to the parsed value-field list so users can
+        // write `values=Sales showdataas=percent_of_row` and have it take
+        // effect at Add time, not only when re-specified via Set. R8-1.
+        {
+            string[]? aggOverrideAdd = null;
+            string[]? showOverrideAdd = null;
+            if (properties.TryGetValue("aggregate", out var aggSpecAdd) && !string.IsNullOrEmpty(aggSpecAdd))
+                aggOverrideAdd = aggSpecAdd.Split(',').Select(s => s.Trim().ToLowerInvariant()).ToArray();
+            if (properties.TryGetValue("showdataas", out var showSpecAdd) && !string.IsNullOrEmpty(showSpecAdd))
+                showOverrideAdd = showSpecAdd.Split(',').Select(s => s.Trim().ToLowerInvariant()).ToArray();
+            if (aggOverrideAdd != null || showOverrideAdd != null)
+            {
+                for (int i = 0; i < valueFields.Count; i++)
+                {
+                    var (idx, func, showAs, name) = valueFields[i];
+                    if (aggOverrideAdd != null && i < aggOverrideAdd.Length && !string.IsNullOrEmpty(aggOverrideAdd[i]))
+                        func = aggOverrideAdd[i];
+                    if (showOverrideAdd != null && i < showOverrideAdd.Length && !string.IsNullOrEmpty(showOverrideAdd[i]))
+                    {
+                        // Validate via ParseShowDataAs — throws on unknown/unsupported tokens,
+                        // matching the Set path and CONSISTENCY(strict-enums).
+                        ParseShowDataAs(showOverrideAdd[i]);
+                        showAs = showOverrideAdd[i];
+                    }
+                    valueFields[i] = (idx, func, showAs, name);
+                }
+            }
+        }
+
         // Auto-assign: if no values specified, use the first numeric column
         if (valueFields.Count == 0)
         {
