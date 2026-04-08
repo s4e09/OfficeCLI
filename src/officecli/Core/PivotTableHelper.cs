@@ -977,6 +977,18 @@ internal static class PivotTableHelper
         // backward compatibility (regression-tested via test-samples/pivot_baselines).
         if (rowFieldIndices.Count >= 3 || colFieldIndices.Count >= 3)
         {
+            // CONSISTENCY(no-values-noop): RenderGeneralPivot dereferences
+            // valueFields[0] for the data column anchor and crashes when the
+            // user has moved every field to an axis (no values left). Skip
+            // rendering — the pivotDef + cache survive so a subsequent Set
+            // re-adds values cleanly.
+            if (valueFields.Count == 0)
+            {
+                Console.Error.WriteLine(
+                    "WARNING: pivot has no value fields; skipping cell render. " +
+                    "Add a value field to materialize the table.");
+                return;
+            }
             RenderGeneralPivot(targetSheet, position, headers, columnData,
                 rowFieldIndices, colFieldIndices, valueFields, filterFieldIndices, valueStyleIds);
             return;
@@ -5193,16 +5205,49 @@ internal static class PivotTableHelper
         if (!props.TryGetValue(key, out var value) || string.IsNullOrEmpty(value))
             return new List<int>();
 
-        return value.Split(',').Select(f =>
+        var result = new List<int>();
+        foreach (var f in value.Split(','))
         {
             var name = f.Trim();
-            // Try as column index first
-            if (int.TryParse(name, out var idx)) return idx;
-            // Try as header name
+            if (string.IsNullOrEmpty(name)) continue;
+
+            // CONSISTENCY(field-name-validation): a numeric token is treated
+            // as a column index (out-of-range still silently dropped — that
+            // is the legacy contract used by tests with index hints). A
+            // non-numeric token MUST resolve to an existing header, else we
+            // throw with the available header list so users can fix typos
+            // immediately instead of seeing an empty / wrong pivot.
+            if (int.TryParse(name, out var idx))
+            {
+                if (idx >= 0 && idx < headers.Length) result.Add(idx);
+                continue;
+            }
+            int found = -1;
             for (int i = 0; i < headers.Length; i++)
-                if (headers[i] != null && headers[i].Equals(name, StringComparison.OrdinalIgnoreCase)) return i;
-            return -1;
-        }).Where(i => i >= 0 && i < headers.Length).ToList();
+                if (headers[i] != null && headers[i].Equals(name, StringComparison.OrdinalIgnoreCase)) { found = i; break; }
+            // CONSISTENCY(date-grouping-passthrough): unrecognized grouping
+            // suffixes (e.g. "Date:hours") survive ApplyDateGrouping as
+            // literals. Strip the suffix and re-resolve so the bare field
+            // name still binds — matches the existing best-effort fuzz
+            // contract that says invalid grouping must not crash.
+            if (found < 0)
+            {
+                var colon = name.IndexOf(':');
+                if (colon > 0)
+                {
+                    var bare = name.Substring(0, colon);
+                    for (int i = 0; i < headers.Length; i++)
+                        if (headers[i] != null && headers[i].Equals(bare, StringComparison.OrdinalIgnoreCase)) { found = i; break; }
+                }
+            }
+            if (found < 0)
+            {
+                var available = string.Join(", ", headers.Where(h => !string.IsNullOrEmpty(h)));
+                throw new ArgumentException($"field '{name}' not found in source headers: {available}");
+            }
+            result.Add(found);
+        }
+        return result;
     }
 
     private static List<(int idx, string func, string showAs, string name)> ParseValueFields(
@@ -5256,6 +5301,13 @@ internal static class PivotTableHelper
             {
                 for (int i = 0; i < headers.Length; i++)
                     if (headers[i] != null && headers[i].Equals(fieldName, StringComparison.OrdinalIgnoreCase)) { fieldIdx = i; break; }
+                // CONSISTENCY(field-name-validation): non-numeric token must
+                // resolve. Same throw shape as ParseFieldList.
+                if (fieldIdx < 0)
+                {
+                    var available = string.Join(", ", headers.Where(h => !string.IsNullOrEmpty(h)));
+                    throw new ArgumentException($"field '{fieldName}' not found in source headers: {available}");
+                }
             }
 
             if (fieldIdx >= 0 && fieldIdx < headers.Length)
