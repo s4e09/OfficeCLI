@@ -5533,6 +5533,42 @@ internal static class PivotTableHelper
             var func = parts.Length > 1 ? parts[1].Trim().ToLowerInvariant() : "sum";
             var showAs = parts.Length > 2 ? parts[2].Trim().ToLowerInvariant() : "normal";
 
+            // CONSISTENCY(pivot-roundtrip / R9-2): Get readback emits dataField{N}
+            // as "{displayName}:{func}:{fieldIdx}" where displayName has the form
+            // "Sum of Sales" and the third slot is a numeric cacheField index
+            // (NOT a showAs token). Accept this shape so the output of Get can
+            // be fed straight back into Set values=... without translation.
+            // Disambiguation: only switch into round-trip mode when parts[0]
+            // starts with a known English aggregate display prefix
+            // ("Sum of ", "Count of ", ...). Otherwise the third slot stays
+            // a showAs token, preserving the existing "Sales:sum:42" → invalid
+            // showDataAs throw contract.
+            var displayPrefixes = new[]
+            {
+                "Sum of ", "Count of ", "Average of ", "Max of ", "Min of ",
+                "Product of ", "Count Numbers of ", "StdDev of ", "StdDevp of ",
+                "Var of ", "Varp of ", "Std Dev of ", "Std Dev p of "
+            };
+            bool isGetReadbackShape = false;
+            foreach (var p in displayPrefixes)
+            {
+                if (fieldName.StartsWith(p, StringComparison.OrdinalIgnoreCase))
+                {
+                    fieldName = fieldName.Substring(p.Length).Trim();
+                    isGetReadbackShape = true;
+                    break;
+                }
+            }
+            int? roundTripFieldIdx = null;
+            if (isGetReadbackShape && parts.Length > 2 && int.TryParse(parts[2].Trim(), out var rtIdx))
+            {
+                // Get readback packs cacheField index in slot 3; reset showAs
+                // to canonical default (the sibling dataField{N}.showAs key
+                // carries showDataAs round-trip).
+                roundTripFieldIdx = rtIdx;
+                showAs = "normal";
+            }
+
             // Empty func slot ("Sales:" or "Sales::percent_of_total") is a
             // common user mistake from optional-segment trailing colons. Treat
             // as the documented default ("sum") rather than crashing on
@@ -5546,7 +5582,19 @@ internal static class PivotTableHelper
                 func = aggregateOverrides[specIndex];
 
             int fieldIdx = -1;
-            if (int.TryParse(fieldName, out var idx))
+            // CONSISTENCY(pivot-roundtrip / R9-2): when the Get readback shape
+            // gave us an explicit numeric cacheField index, prefer it over the
+            // (possibly stripped) display name. This makes Set values=GetOutput
+            // robust even if the source headers were renamed between Get and
+            // Set, and removes any ambiguity from the prefix-strip heuristic.
+            if (roundTripFieldIdx.HasValue)
+            {
+                if (roundTripFieldIdx.Value < 0 || roundTripFieldIdx.Value >= headers.Length)
+                    throw new ArgumentException(
+                        $"field index {roundTripFieldIdx.Value} out of range (0..{headers.Length - 1})");
+                fieldIdx = roundTripFieldIdx.Value;
+            }
+            else if (int.TryParse(fieldName, out var idx))
             {
                 // CONSISTENCY(strict-enums / R8-6): a numeric token is a
                 // column index. Out-of-range indices used to silently drop
