@@ -5706,10 +5706,75 @@ internal static class PivotTableHelper
             //   default showAs  = normal
             // showAs accepts: normal | percent_of_total | percent_of_row |
             //                 percent_of_col | running_total | (+ camelCase aliases)
+            // R11-2: Parse right-to-left so field names containing literal
+            // colons (e.g. "A:B:sum" → field "A:B", func "sum") work without
+            // requiring users to escape. Strategy:
+            //   1. Split into all colon segments.
+            //   2. Peek the rightmost segment: if it's a known showAs token,
+            //      consume it as showAs, then peek again for func.
+            //   3. Otherwise, if the rightmost segment is a known aggregate
+            //      function, consume it as func.
+            //   4. Anything not consumed (joined back with ':') is the field
+            //      name, preserving any embedded colons.
+            // The 1-segment case ("Sales") and 2-segment case ("Sales:sum") and
+            // 3-segment case ("Sales:sum:percent_of_total") all keep working
+            // because trailing tokens are still recognized — only the field
+            // name parsing changes.
             var parts = spec.Trim().Split(':');
-            var fieldName = parts[0].Trim();
-            var func = parts.Length > 1 ? parts[1].Trim().ToLowerInvariant() : "sum";
-            var showAs = parts.Length > 2 ? parts[2].Trim().ToLowerInvariant() : "normal";
+            string fieldName;
+            string func = "sum";
+            string showAs = "normal";
+            if (parts.Length == 1)
+            {
+                fieldName = parts[0].Trim();
+            }
+            else
+            {
+                int consumed = 0;
+                var last = parts[parts.Length - 1].Trim().ToLowerInvariant();
+                if (parts.Length >= 2 && IsKnownShowAsToken(last))
+                {
+                    showAs = last;
+                    consumed = 1;
+                    if (parts.Length - consumed >= 2)
+                    {
+                        var prev = parts[parts.Length - 1 - consumed].Trim().ToLowerInvariant();
+                        if (IsKnownAggregateToken(prev))
+                        {
+                            func = prev;
+                            consumed = 2;
+                        }
+                    }
+                }
+                else if (IsKnownAggregateToken(last))
+                {
+                    func = last;
+                    consumed = 1;
+                }
+                else
+                {
+                    // Unknown trailing token: fall back to legacy left-to-right
+                    // semantics so existing error messages (invalid showDataAs /
+                    // unknown aggregate) still surface from ParseShowDataAs /
+                    // ParseSubtotal downstream.
+                    fieldName = parts[0].Trim();
+                    func = parts.Length > 1 ? parts[1].Trim().ToLowerInvariant() : "sum";
+                    showAs = parts.Length > 2 ? parts[2].Trim().ToLowerInvariant() : "normal";
+                    goto afterParse;
+                }
+                var nameParts = parts.Take(parts.Length - consumed).ToList();
+                // Drop trailing empty segments — the legacy "Sales::percent_of_total"
+                // form (empty func slot, default "sum") leaves a "" between the
+                // field name and the consumed showAs token. Right-to-left parsing
+                // would otherwise concatenate "Sales:" as the field name and fail
+                // header lookup. The empty func will be defaulted to "sum" below.
+                while (nameParts.Count > 1 && string.IsNullOrEmpty(nameParts[nameParts.Count - 1]))
+                    nameParts.RemoveAt(nameParts.Count - 1);
+                fieldName = string.Join(":", nameParts).Trim();
+                // Edge: "sum" alone with no field name (e.g. spec was ":sum")
+                // → fall through to the same "field not found" error path.
+            }
+            afterParse:;
 
             // CONSISTENCY(pivot-roundtrip / R9-2): Get readback emits dataField{N}
             // as "{displayName}:{func}:{fieldIdx}" where displayName has the form
@@ -5877,6 +5942,28 @@ internal static class PivotTableHelper
                 "percent_of_col, running_total"),
         };
     }
+
+    // R11-2: Right-to-left value-spec parser support. Token recognizers
+    // mirror the cases ParseSubtotal / ParseShowDataAs accept (lowercase
+    // canonical only — we lowercase the token before calling). Keep these
+    // in sync if new aggregates / showAs tokens are added downstream.
+    private static bool IsKnownAggregateToken(string token) => token switch
+    {
+        "sum" or "count" or "countnums" or "countnum" or "average" or "avg" or
+        "max" or "min" or "product" or "stddev" or "std" or "stddevp" or "stdp" or
+        "var" or "variance" or "varp" => true,
+        _ => false,
+    };
+
+    private static bool IsKnownShowAsToken(string token) => token switch
+    {
+        "normal" or
+        "percent_of_total" or "percentoftotal" or "percent" or
+        "percent_of_row" or "percentofrow" or
+        "percent_of_col" or "percent_of_column" or "percentofcol" or "percentofcolumn" or
+        "running_total" or "runningtotal" or "runtotal" => true,
+        _ => false,
+    };
 
     private static DataConsolidateFunctionValues ParseSubtotal(string func)
     {
