@@ -143,8 +143,13 @@ public partial class ExcelHandler
 
                 if (properties.TryGetValue("value", out var value))
                 {
-                    cell.CellValue = new CellValue(value);
-                    if (!double.TryParse(value, out _))
+                    // R2-2: strip XML-illegal chars (e.g. U+0000) from the cell
+                    // value before it gets serialized to sheet1.xml. Without
+                    // this, a NUL byte from upstream data would crash every
+                    // downstream save (including the pivot cache write).
+                    var safeValue = OfficeCli.Core.PivotTableHelper.SanitizeXmlText(value);
+                    cell.CellValue = new CellValue(safeValue);
+                    if (!double.TryParse(safeValue, out _))
                         cell.DataType = new EnumValue<CellValues>(CellValues.String);
                 }
                 if (properties.TryGetValue("formula", out var formula))
@@ -258,7 +263,13 @@ public partial class ExcelHandler
                             "string" or "str" => new EnumValue<CellValues>(CellValues.String),
                             "number" or "num" => null,
                             "boolean" or "bool" => new EnumValue<CellValues>(CellValues.Boolean),
-                            _ => throw new ArgumentException($"Invalid cell 'type' value '{cellType}'. Valid types: string, number, boolean, richtext.")
+                            // CONSISTENCY(cell-type-parity): Bug #4 — Add must accept
+                            // the same type tokens as Set (ExcelHandler.Set.cs line 1105).
+                            // Dates are stored as numeric OADate, so DataType stays null;
+                            // the date-shaped cell value serialization and default
+                            // numberformat are applied right after this switch.
+                            "date" => null,
+                            _ => throw new ArgumentException($"Invalid cell 'type' value '{cellType}'. Valid types: string, number, boolean, date, richtext.")
                         };
                         // Convert boolean string values to OOXML-compliant 1/0
                         if (cellType.Equals("boolean", StringComparison.OrdinalIgnoreCase) || cellType.Equals("bool", StringComparison.OrdinalIgnoreCase))
@@ -268,6 +279,31 @@ public partial class ExcelHandler
                                 cell.CellValue = new CellValue("1");
                             else if (boolText == "false" || boolText == "no" || boolText == "0")
                                 cell.CellValue = new CellValue("0");
+                        }
+                        // CONSISTENCY(cell-type-parity): mirror Set's value auto-detect
+                        // path (ExcelHandler.Set.cs lines 1025-1033) — parse the cell
+                        // value as an ISO date and write it back as an OADate double so
+                        // Excel renders it as a real date instead of a literal string.
+                        if (cellType.Equals("date", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var dateText = cell.CellValue?.Text?.Trim();
+                            if (!string.IsNullOrEmpty(dateText)
+                                && DateTime.TryParseExact(dateText,
+                                    new[] { "yyyy-MM-dd", "yyyy/MM/dd", "yyyy-MM-dd HH:mm:ss" },
+                                    System.Globalization.CultureInfo.InvariantCulture,
+                                    System.Globalization.DateTimeStyles.None, out var dt))
+                            {
+                                cell.CellValue = new CellValue(
+                                    dt.ToOADate().ToString(System.Globalization.CultureInfo.InvariantCulture));
+                            }
+                            // Apply a default date number format unless the caller
+                            // already supplied one — matches Set's type=date guard.
+                            if (!properties.ContainsKey("numberformat")
+                                && !properties.ContainsKey("numfmt")
+                                && !properties.ContainsKey("format"))
+                            {
+                                properties["numberformat"] = "yyyy-mm-dd";
+                            }
                         }
                     }
                 }
