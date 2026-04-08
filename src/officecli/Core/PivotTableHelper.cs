@@ -5338,8 +5338,12 @@ internal static class PivotTableHelper
     private static bool FieldNameMatches(string? header, string candidate)
     {
         if (header == null) return false;
-        return header.Normalize(NormalizationForm.FormC)
-            .Equals(candidate.Normalize(NormalizationForm.FormC), StringComparison.OrdinalIgnoreCase);
+        // Trim surrounding whitespace on both sides so header cells with
+        // incidental leading/trailing spaces (a common paste-from-Excel
+        // artefact) still resolve against clean user input. NFC normalisation
+        // from Round 4 R4-2 is preserved. CONSISTENCY(pivot-field-matching).
+        return header.Trim().Normalize(NormalizationForm.FormC)
+            .Equals(candidate.Trim().Normalize(NormalizationForm.FormC), StringComparison.OrdinalIgnoreCase);
     }
 
     private static List<int> ParseFieldList(Dictionary<string, string> props, string key, string[] headers)
