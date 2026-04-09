@@ -1974,36 +1974,54 @@ internal static class PivotTableHelper
             firstDataRow = anchorRow + 2;
         }
 
+        // CONSISTENCY(subtotals-opts): cache the subtotals toggle once per
+        // render call. When off, skip the outer subtotal row emit AND change
+        // the leaf row label from "inner only" to "outer > inner" so each
+        // group is still visually identifiable in compact mode.
+        bool emitSubtotals = ActiveDefaultSubtotal;
+
         // ----- Data rows -----
         int currentRow = firstDataRow;
         foreach (var (outer, inners) in groups)
         {
-            // Outer subtotal row: K cells per col + K cells in grand total area.
-            var subRow = new Row { RowIndex = (uint)currentRow };
-            subRow.AppendChild(MakeStringCell(anchorColIdx, currentRow, outer));
-            for (int c = 0; c < uniqueCols.Count; c++)
+            if (emitSubtotals)
             {
-                bool any = HasAnyValueInOuterCol(outer, uniqueCols[c], groups, leafBucket, K);
-                for (int d = 0; d < K; d++)
+                // Outer subtotal row: K cells per col + K cells in grand total area.
+                var subRow = new Row { RowIndex = (uint)currentRow };
+                subRow.AppendChild(MakeStringCell(anchorColIdx, currentRow, outer));
+                for (int c = 0; c < uniqueCols.Count; c++)
                 {
-                    var v = OuterSubtotalForCol(outer, uniqueCols[c], d);
-                    if (any || v != 0)
-                        subRow.AppendChild(MakeNumericCell(LeafColIdx(c, d), currentRow, v, valueStyleIds[d]));
+                    bool any = HasAnyValueInOuterCol(outer, uniqueCols[c], groups, leafBucket, K);
+                    for (int d = 0; d < K; d++)
+                    {
+                        var v = OuterSubtotalForCol(outer, uniqueCols[c], d);
+                        if (any || v != 0)
+                            subRow.AppendChild(MakeNumericCell(LeafColIdx(c, d), currentRow, v, valueStyleIds[d]));
+                    }
                 }
+                if (emitRowGrand)
+                {
+                    for (int d = 0; d < K; d++)
+                        subRow.AppendChild(MakeNumericCell(GrandTotalColIdx(d), currentRow, OuterRowTotal(outer, d), valueStyleIds[d]));
+                }
+                sheetData.AppendChild(subRow);
+                currentRow++;
             }
-            if (emitRowGrand)
-            {
-                for (int d = 0; d < K; d++)
-                    subRow.AppendChild(MakeNumericCell(GrandTotalColIdx(d), currentRow, OuterRowTotal(outer, d), valueStyleIds[d]));
-            }
-            sheetData.AppendChild(subRow);
-            currentRow++;
 
             // Leaf rows for each existing (outer, inner) combo.
+            bool firstLeafOfGroup = true;
             foreach (var inner in inners)
             {
                 var leafRow = new Row { RowIndex = (uint)currentRow };
-                leafRow.AppendChild(MakeStringCell(anchorColIdx, currentRow, inner));
+                // When subtotals are off, prefix the FIRST leaf of each group
+                // with the outer label so users can still tell which group
+                // they're in. Subsequent leaves just carry the inner label
+                // (Excel's compact mode already indents them under the outer).
+                var label = (!emitSubtotals && firstLeafOfGroup)
+                    ? $"{outer} / {inner}"
+                    : inner;
+                leafRow.AppendChild(MakeStringCell(anchorColIdx, currentRow, label));
+                firstLeafOfGroup = false;
                 for (int c = 0; c < uniqueCols.Count; c++)
                 {
                     for (int d = 0; d < K; d++)
