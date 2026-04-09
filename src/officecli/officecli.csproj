@@ -26,6 +26,8 @@
   <ItemGroup>
     <EmbeddedResource Include="Resources/preview.css" />
     <EmbeddedResource Include="Resources/preview.js" />
+    <EmbeddedResource Include="Resources/watch-sse-core.js" />
+    <EmbeddedResource Include="Resources/watch-overlay.js" />
   </ItemGroup>
 
   <ItemGroup>
