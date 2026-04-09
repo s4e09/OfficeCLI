@@ -134,6 +134,61 @@ internal static class PivotTableHelper
     }
 
     /// <summary>
+    /// Canonical key set recognized by the pivot Add / Set pipeline. Any
+    /// property whose NORMALIZED key is not in this set is reported as
+    /// UNSUPPORTED (Add: stderr warning; Set: returned unsupported list).
+    /// Must stay in sync with the switch in SetPivotTableProperties and
+    /// every properties lookup in CreatePivotTable.
+    /// </summary>
+    private static readonly HashSet<string> _knownPivotKeys =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "source", "src", "name", "position", "pos", "style",
+            "rows", "cols", "filters", "values",
+            "aggregate", "showdataas", "topn",
+            "sort",
+            "grandtotals", "rowgrandtotals", "colgrandtotals",
+        };
+
+    /// <summary>
+    /// Return the subset of the caller's pivot-property keys that are not
+    /// known to the pipeline after alias normalization. Used by Add to
+    /// emit an UNSUPPORTED stderr warning (R12-1) and shared by Set to
+    /// merge into its existing unsupported return list. Keys are echoed
+    /// in their ORIGINAL spelling (Unicode, case) so the user sees exactly
+    /// what they typed — matches the 'unsupported echoes caller key' rule
+    /// followed by the Set default case.
+    /// </summary>
+    internal static List<string> CollectUnknownPivotKeys(Dictionary<string, string> properties)
+    {
+        var unknown = new List<string>();
+        if (properties == null) return unknown;
+        foreach (var key in properties.Keys)
+        {
+            if (string.IsNullOrEmpty(key)) continue;
+            var canonical = NormalizePivotPropKey(key);
+            if (!_knownPivotKeys.Contains(canonical))
+                unknown.Add(key);
+        }
+        return unknown;
+    }
+
+    /// <summary>
+    /// Emit an UNSUPPORTED props warning to stderr for the Add pivot path.
+    /// Set already surfaces unknown keys through its return list; Add has
+    /// no such channel, so we write directly. Format mirrors
+    /// CommandBuilder.FormatUnsupported so JSON envelope parsing (see
+    /// OutputFormatter.cs line 273) picks up the same prefix.
+    /// </summary>
+    private static void WarnUnknownPivotProperties(List<string> unknownKeys)
+    {
+        if (unknownKeys == null || unknownKeys.Count == 0) return;
+        Console.Error.WriteLine(
+            $"UNSUPPORTED props: {string.Join(", ", unknownKeys)}. "
+            + "Use 'officecli help excel-set' to see available pivot properties.");
+    }
+
+    /// <summary>
     /// Normalize a user-supplied pivot properties dict into a new dict whose
     /// alias keys are rewritten to their canonical form. Keys that are
     /// already canonical and keys that don't match any known alias are
@@ -469,6 +524,12 @@ internal static class PivotTableHelper
         string position,
         Dictionary<string, string> properties)
     {
+        // R12-1: detect unknown pivot property keys (including non-ASCII
+        // like '源'/'行名') BEFORE normalization so the warning echoes the
+        // original spelling. Previously these keys were silently dropped
+        // and users saw an empty pivot with no diagnostic.
+        WarnUnknownPivotProperties(CollectUnknownPivotKeys(properties));
+
         // R12-2 / R12-3: normalize alias keys (row→rows, rowFields→rows,
         // columngrandtotals→colgrandtotals, etc.) so every downstream
         // lookup below reads from the canonical dict. `row=Cat` then
