@@ -159,10 +159,13 @@ public partial class ExcelHandler
 
         // 3. Extract all chart metadata via shared helper
         var info = ChartSvgRenderer.ExtractChartInfo(plotArea, chart);
-        // Override with locally-resolved data (Excel cell resolution may have updated categories/series)
+        // Override with locally-resolved data (Excel cell resolution may have updated categories/series).
+        // NOTE: seriesList here comes from Excel-specific extraction that may still include
+        // reference-line overlay series — re-apply the shared filter so they are not drawn
+        // as an extra bar/column segment on top of the real data.
         info.ChartType = chartType;
         info.Categories = categories;
-        info.Series = seriesList;
+        info.Series = ChartSvgRenderer.FilterReferenceLineSeries(plotArea, seriesList);
         if (info.Series.Count == 0) return;
         // Ensure colors match series count (ExtractChartInfo may have extracted for a different count)
         while (info.Colors.Count < info.Series.Count)

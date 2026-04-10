@@ -499,10 +499,14 @@ internal static partial class ChartHelper
 
     internal static string? DetectChartType(C.PlotArea plotArea)
     {
+        // Count real chart-type elements. A LineChart containing only reference-line-shaped
+        // series (flat values, no marker, dashed outline) is a ref-line overlay added by
+        // AddReferenceLine — it must not promote the underlying chart to a "combo".
         var chartTypeCount = plotArea.ChildElements
-            .Count(e => e is C.BarChart or C.LineChart or C.PieChart or C.AreaChart
+            .Count(e => (e is C.BarChart or C.LineChart or C.PieChart or C.AreaChart
                 or C.ScatterChart or C.DoughnutChart or C.Bar3DChart or C.Line3DChart or C.Pie3DChart
-                or C.BubbleChart or C.RadarChart or C.StockChart);
+                or C.BubbleChart or C.RadarChart or C.StockChart)
+                && !(e is C.LineChart lc && IsReferenceLineOnlyChart(lc)));
         if (chartTypeCount > 1) return "combo";
 
         if (plotArea.GetFirstChild<C.BarChart>() is C.BarChart bar)
@@ -547,6 +551,89 @@ internal static partial class ChartHelper
         if (plotArea.GetFirstChild<C.Line3DChart>() != null) return "line3d";
         if (plotArea.GetFirstChild<C.Pie3DChart>() != null) return "pie3d";
         return null;
+    }
+
+    /// <summary>
+    /// A reference-line series has (a) all values equal (flat horizontal line in OOXML terms),
+    /// (b) marker set to None, and (c) outline with a preset dash style. This matches the
+    /// shape that AddReferenceLine emits and is used to detect/remove overlays.
+    /// </summary>
+    internal static bool IsReferenceLineSeries(OpenXmlCompositeElement ser)
+    {
+        if (ser.LocalName != "ser") return false;
+
+        var marker = ser.GetFirstChild<C.Marker>();
+        if (marker?.GetFirstChild<C.Symbol>()?.Val?.Value != C.MarkerStyleValues.None) return false;
+
+        var spPr = ser.GetFirstChild<C.ChartShapeProperties>();
+        var outline = spPr?.GetFirstChild<Drawing.Outline>();
+        if (outline?.GetFirstChild<Drawing.PresetDash>() == null) return false;
+
+        // Flat values — every NumericPoint has the same text. Must have at least 1 literal point.
+        var numLit = ser.GetFirstChild<C.Values>()?.GetFirstChild<C.NumberLiteral>();
+        if (numLit == null) return false;
+        var distinct = numLit.Elements<C.NumericPoint>()
+            .Select(p => p.InnerText)
+            .Distinct()
+            .Take(2)
+            .Count();
+        return distinct == 1;
+    }
+
+    /// <summary>
+    /// True if a LineChart is made up entirely of reference-line series (i.e. it is a
+    /// ref-line overlay, not a real line chart). Empty LineCharts do not count.
+    /// </summary>
+    internal static bool IsReferenceLineOnlyChart(C.LineChart lineChart)
+    {
+        var sers = lineChart.Elements<C.LineChartSeries>().ToList();
+        if (sers.Count == 0) return false;
+        return sers.All(IsReferenceLineSeries);
+    }
+
+    /// <summary>
+    /// Read all reference-line overlays from a plot area. Returns value, label, color,
+    /// line width in points, and dash style name. Colors come back as 6-digit hex without
+    /// the '#' prefix; dash name is the OOXML PresetLineDashValues InnerText (e.g. "sysDash").
+    /// </summary>
+    internal static List<(string Name, double Value, string Color, double WidthPt, string Dash)> ReadReferenceLines(C.PlotArea plotArea)
+    {
+        var result = new List<(string, double, string, double, string)>();
+        foreach (var lineChart in plotArea.Elements<C.LineChart>())
+        {
+            foreach (var ser in lineChart.Elements<C.LineChartSeries>())
+            {
+                if (!IsReferenceLineSeries(ser)) continue;
+
+                // Value: any NumericPoint (all equal by definition of ref-line series)
+                var numLit = ser.GetFirstChild<C.Values>()?.GetFirstChild<C.NumberLiteral>();
+                var pt = numLit?.Elements<C.NumericPoint>().FirstOrDefault();
+                if (pt == null) continue;
+                if (!double.TryParse(pt.InnerText,
+                        System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        out var val))
+                    continue;
+
+                var name = ser.GetFirstChild<C.SeriesText>()
+                    ?.Descendants<C.NumericValue>().FirstOrDefault()?.Text ?? "";
+
+                var outline = ser.GetFirstChild<C.ChartShapeProperties>()?.GetFirstChild<Drawing.Outline>();
+                var widthEmu = outline?.Width?.Value ?? 19050;
+                var widthPt = widthEmu / 12700.0;
+
+                // Color: solidFill srgbClr val
+                var color = "FF0000";
+                var srgb = outline?.GetFirstChild<Drawing.SolidFill>()?.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value;
+                if (!string.IsNullOrEmpty(srgb)) color = srgb;
+
+                var dashVal = outline?.GetFirstChild<Drawing.PresetDash>()?.Val;
+                var dash = dashVal?.InnerText ?? "dash";
+
+                result.Add((name, val, color, widthPt, dash));
+            }
+        }
+        return result;
     }
 
     /// <summary>
@@ -640,6 +727,24 @@ internal static partial class ChartHelper
             result.Add((name, values));
         }
 
+        return result;
+    }
+
+    /// <summary>
+    /// Enumerate ser elements in the same order ReadAllSeries visits them, returning
+    /// `true` for each series that is a reference-line overlay. The caller can zip
+    /// this with the ReadAllSeries output to filter out ref-line entries without
+    /// re-walking the OOXML tree.
+    /// </summary>
+    internal static List<bool> ReadReferenceLineMask(C.PlotArea plotArea)
+    {
+        var result = new List<bool>();
+        foreach (var ser in plotArea.Descendants<OpenXmlCompositeElement>()
+            .Where(e => e.LocalName == "ser" && e.Parent != null &&
+                (e.Parent.LocalName.Contains("Chart") || e.Parent.LocalName.Contains("chart"))))
+        {
+            result.Add(IsReferenceLineSeries(ser));
+        }
         return result;
     }
 

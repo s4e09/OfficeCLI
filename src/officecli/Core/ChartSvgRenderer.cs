@@ -69,7 +69,8 @@ internal class ChartSvgRenderer
         bool horizontal, bool stacked = false, bool percentStacked = false,
         double? ooxmlMax = null, double? ooxmlMin = null, double? ooxmlMajorUnit = null,
         int? ooxmlGapWidth = null, int valFontSize = 9, int catFontSize = 9,
-        bool showDataLabels = false, string? valNumFmt = null, string? plotFillColor = null)
+        bool showDataLabels = false, string? valNumFmt = null, string? plotFillColor = null,
+        List<(string Name, double Value, string Color, double WidthPt, string Dash)>? referenceLines = null)
     {
         var allValues = series.SelectMany(s => s.values).ToArray();
         if (allValues.Length == 0) return;
@@ -176,6 +177,18 @@ internal class ChartSvgRenderer
                 var tx = plotOx + (double)plotPw * t / nTicks;
                 sb.AppendLine($"        <text x=\"{tx:0.#}\" y=\"{oy + ph + 16}\" fill=\"{AxisColor}\" font-size=\"{valFontSize}\" text-anchor=\"middle\">{label}</text>");
             }
+            // Reference-line overlays: horizontal bars → vertical line at value position on the X (value) axis.
+            // For percentStacked charts, the value axis is 0–1 in OOXML but we display 0–100, so scale accordingly.
+            if (referenceLines != null)
+                foreach (var rl in referenceLines)
+                {
+                    var v = percentStacked ? rl.Value * 100 : rl.Value;
+                    if (v < 0 || v > niceMax) continue;
+                    var rx = plotOx + (v / niceMax) * plotPw;
+                    var strokeColor = rl.Color.StartsWith("#") ? rl.Color : "#" + rl.Color;
+                    var dashArray = RefLineDashArray(rl.Dash);
+                    sb.AppendLine($"        <line x1=\"{rx:0.#}\" y1=\"{oy}\" x2=\"{rx:0.#}\" y2=\"{oy + ph}\" stroke=\"{strokeColor}\" stroke-width=\"{rl.WidthPt:0.##}\" stroke-dasharray=\"{dashArray}\"/>");
+                }
         }
         else
         {
@@ -241,6 +254,17 @@ internal class ChartSvgRenderer
                 var ty = oy + ph - (double)ph * t / nTicks;
                 sb.AppendLine($"        <text x=\"{ox - 4}\" y=\"{ty:0.#}\" fill=\"{AxisColor}\" font-size=\"{valFontSize}\" text-anchor=\"end\" dominant-baseline=\"middle\">{label}</text>");
             }
+            // Reference-line overlays: vertical bars/columns → horizontal line at value position on the Y (value) axis.
+            if (referenceLines != null)
+                foreach (var rl in referenceLines)
+                {
+                    var v = percentStacked ? rl.Value * 100 : rl.Value;
+                    if (v < 0 || v > niceMax) continue;
+                    var ry = oy + ph - (v / niceMax) * ph;
+                    var strokeColor = rl.Color.StartsWith("#") ? rl.Color : "#" + rl.Color;
+                    var dashArray = RefLineDashArray(rl.Dash);
+                    sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{ry:0.#}\" x2=\"{ox + pw}\" y2=\"{ry:0.#}\" stroke=\"{strokeColor}\" stroke-width=\"{rl.WidthPt:0.##}\" stroke-dasharray=\"{dashArray}\"/>");
+                }
         }
     }
 
@@ -942,6 +966,25 @@ internal class ChartSvgRenderer
         public string? GridlineColor { get; set; }
         public string? AxisLineColor { get; set; }
         public int DataLabelFontPx { get; set; } = 8;
+        /// <summary>Reference-line overlays (horizontal dashed lines at constant values).
+        /// Filled by ExtractChartInfo from any ref-line-only LineChart in the plot area.</summary>
+        public List<(string Name, double Value, string Color, double WidthPt, string Dash)> ReferenceLines { get; set; } = [];
+    }
+
+    /// <summary>
+    /// Remove reference-line overlay series from a data series list, matching the
+    /// OOXML series iteration order. Callers that override <see cref="ChartInfo.Series"/>
+    /// with locally-resolved data (e.g. ExcelHandler cell-ref resolution) must re-apply
+    /// this filter or the ref-line series will be double-rendered as a bar/line segment.
+    /// </summary>
+    public static List<(string name, double[] values)> FilterReferenceLineSeries(
+        OpenXmlElement? plotArea,
+        List<(string name, double[] values)> series)
+    {
+        if (plotArea is not PlotArea pa || series.Count == 0) return series;
+        var mask = ChartHelper.ReadReferenceLineMask(pa);
+        if (!mask.Any(m => m)) return series;
+        return series.Where((_, i) => i >= mask.Count || !mask[i]).ToList();
     }
 
     /// <summary>Extract all chart metadata from OOXML PlotArea and Chart elements.</summary>
@@ -955,7 +998,15 @@ internal class ChartSvgRenderer
         info.ChartType = ChartHelper.DetectChartType(info.PlotArea) ?? "column";
         info.Categories = ChartHelper.ReadCategories(info.PlotArea) ?? [];
         info.Series = ChartHelper.ReadAllSeries(info.PlotArea);
-        if (info.Series.Count == 0) return info;
+        info.ReferenceLines = ChartHelper.ReadReferenceLines(info.PlotArea);
+
+        // Filter reference-line series out of the renderer's data series list. They
+        // are drawn as overlays via info.ReferenceLines so they must not contribute to
+        // axis scale, stacking, colors, or legend. ReadAllSeries itself stays inclusive
+        // so the user-facing Get()/Query() path continues to surface ref-line series.
+        info.Series = FilterReferenceLineSeries(info.PlotArea, info.Series);
+
+        if (info.Series.Count == 0 && info.ReferenceLines.Count == 0) return info;
 
         info.Is3D = info.ChartType.Contains("3d");
         info.IsStacked = info.ChartType.Contains("stacked") || info.ChartType.Contains("Stacked");
@@ -1112,7 +1163,7 @@ internal class ChartSvgRenderer
         }
         else
         {
-            info.HasLegend = info.Series.Count > 1 || isPieType;
+            info.HasLegend = info.Series.Count > 1 || isPieType || info.ReferenceLines.Count > 0;
         }
 
         return info;
@@ -1275,7 +1326,7 @@ internal class ChartSvgRenderer
                 RenderBarChartSvg(sb, info.Series, info.Categories, info.Colors, barMarginLeft, marginTop, barPlotW, plotH,
                     isHorizontal, info.IsStacked, info.IsPercent, info.AxisMax, info.AxisMin, info.MajorUnit,
                     info.GapWidth, ValFontPx, CatFontPx, info.ShowDataLabels, info.ValNumFmt,
-                    isHorizontal ? info.PlotFillColor : null);
+                    isHorizontal ? info.PlotFillColor : null, info.ReferenceLines);
         }
 
         // Axis titles inside SVG — for horizontal bar charts, value axis is on bottom and category axis is on left
@@ -1314,9 +1365,32 @@ internal class ChartSvgRenderer
                 var color = i < info.Colors.Count ? info.Colors[i] : DefaultColors[i % DefaultColors.Length];
                 sb.Append($"<span style=\"display:inline-flex;align-items:center;gap:4px\"><span style=\"display:inline-block;width:12px;height:12px;background:{color};border-radius:1px\"></span>{HtmlEncode(info.Series[i].name)}</span>");
             }
+            // Reference-line entries render as a dashed swatch beside the regular series.
+            foreach (var rl in info.ReferenceLines)
+            {
+                var color = rl.Color.StartsWith("#") ? rl.Color : "#" + rl.Color;
+                var name = string.IsNullOrEmpty(rl.Name) ? "Ref" : rl.Name;
+                sb.Append($"<span style=\"display:inline-flex;align-items:center;gap:4px\"><svg width=\"16\" height=\"10\" style=\"vertical-align:middle\"><line x1=\"0\" y1=\"5\" x2=\"16\" y2=\"5\" stroke=\"{color}\" stroke-width=\"{rl.WidthPt:0.##}\" stroke-dasharray=\"{RefLineDashArray(rl.Dash)}\"/></svg>{HtmlEncode(name)}</span>");
+            }
         }
         sb.AppendLine("</div>");
     }
+
+    // ==================== Reference Line Helpers ====================
+
+    /// <summary>Map an OOXML PresetLineDashValues InnerText (e.g. "sysDash", "lgDashDot") to
+    /// an SVG stroke-dasharray value. Falls back to a generic dashed pattern for unknowns.</summary>
+    private static string RefLineDashArray(string dashName) => dashName.ToLowerInvariant() switch
+    {
+        "solid" => "none",
+        "dot" or "sysdot" => "1,2",
+        "dash" or "sysdash" => "5,3",
+        "dashdot" or "sysdashdot" => "5,3,1,3",
+        "lgdash" or "longdash" => "8,3",
+        "lgdashdot" or "longdashdot" => "8,3,1,3",
+        "lgdashdotdot" or "longdashdotdot" => "8,3,1,3,1,3",
+        _ => "5,3"
+    };
 
     // ==================== 3D Chart Helpers ====================
 
