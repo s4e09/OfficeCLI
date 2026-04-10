@@ -367,6 +367,9 @@ public class ResidentServer : IDisposable
             case "validate":
                 ExecuteValidate();
                 break;
+            case "batch":
+                ExecuteBatch(request);
+                break;
             default:
                 // BUG-FUZZER-R6-A-06/07: previously this branch only wrote to
                 // stderr and fell through, leaving the response with
@@ -376,6 +379,48 @@ public class ResidentServer : IDisposable
                 // handler maps this to a proper non-zero ExitCode response.
                 throw new InvalidOperationException($"Unknown command: {request.Command}");
         }
+    }
+
+    private void ExecuteBatch(ResidentRequest request)
+    {
+        var batchJson = request.GetArg("batchJson");
+        var force = request.GetArg("force", "false")
+            .Equals("true", StringComparison.OrdinalIgnoreCase);
+        var stopOnError = !force;
+        var json = request.Json;
+
+        var items = System.Text.Json.JsonSerializer.Deserialize<List<BatchItem>>(
+            batchJson, BatchJsonContext.Default.ListBatchItem) ?? new();
+
+        var results = new List<BatchResult>();
+        for (int bi = 0; bi < items.Count; bi++)
+        {
+            var item = items[bi];
+            // Skip open/close commands inside batch — the resident already
+            // holds the file open; issuing open/close would conflict.
+            var cmd = (item.Command ?? "").ToLowerInvariant();
+            if (cmd is "open" or "close")
+            {
+                results.Add(new BatchResult { Index = bi, Success = true, Output = $"Skipped '{cmd}' (resident mode)" });
+                continue;
+            }
+            try
+            {
+                var output = CommandBuilder.ExecuteBatchItem(_handler, item, json);
+                results.Add(new BatchResult { Index = bi, Success = true, Output = output });
+            }
+            catch (Exception ex)
+            {
+                results.Add(new BatchResult
+                {
+                    Index = bi, Success = false, Item = item,
+                    Error = ex.Message
+                });
+                if (stopOnError) break;
+            }
+        }
+
+        CommandBuilder.PrintBatchResults(results, json, items.Count);
     }
 
     // ==================== Watch notification helpers ====================

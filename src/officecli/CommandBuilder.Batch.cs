@@ -111,42 +111,33 @@ static partial class CommandBuilder
                 }
             }
 
-            // If a resident process is running, forward each command to it
+            // If a resident process is running, send the entire batch as a
+            // single "batch" command so it executes in one open/save cycle
+            // inside the resident process (same semantics as non-resident mode).
             if (ResidentClient.TryConnect(file.FullName, out _))
             {
-                var results = new List<BatchResult>();
-                for (int bi = 0; bi < items.Count; bi++)
+                var req = new ResidentRequest
                 {
-                    var item = items[bi];
-                    var req = item.ToResidentRequest();
-                    req.Json = json;
-                    var response = ResidentClient.TrySend(file.FullName, req);
-                    if (response == null)
+                    Command = "batch",
+                    Json = json,
+                    Args =
                     {
-                        results.Add(new BatchResult { Index = bi, Success = false, Item = item, Error = "Failed to send to resident" });
-                        if (stopOnError) break;
-                        continue;
+                        ["batchJson"] = jsonText,
+                        ["force"] = force.ToString()
                     }
-                    var success = response.ExitCode == 0;
-                    var output = response.Stdout;
-                    // Unwrap resident envelope: extract "data" or "message" from {"success":...,"data":...} / {"success":...,"message":"..."}
-                    if (output != null && json)
-                    {
-                        try
-                        {
-                            using var envDoc = System.Text.Json.JsonDocument.Parse(output);
-                            if (envDoc.RootElement.TryGetProperty("data", out var data))
-                                output = data.GetRawText();
-                            else if (envDoc.RootElement.TryGetProperty("message", out var msg))
-                                output = msg.GetString();
-                        }
-                        catch { /* not JSON envelope, use as-is */ }
-                    }
-                    results.Add(new BatchResult { Index = bi, Success = success, Item = !success ? item : null, Output = output, Error = response.Stderr });
-                    if (!success && stopOnError) break;
+                };
+                var response = ResidentClient.TrySend(file.FullName, req, maxRetries: 3);
+                if (response == null)
+                {
+                    Console.Error.WriteLine("Failed to send batch to resident process");
+                    return 1;
                 }
-                PrintBatchResults(results, json, items.Count);
-                return results.Any(r => !r.Success) ? 1 : 0;
+                // The resident returns the formatted batch output directly
+                if (!string.IsNullOrEmpty(response.Stdout))
+                    Console.Write(response.Stdout);
+                if (!string.IsNullOrEmpty(response.Stderr))
+                    Console.Error.Write(response.Stderr);
+                return response.ExitCode;
             }
 
             // Non-resident: open file once, execute all commands, save once
