@@ -1350,8 +1350,11 @@ internal static partial class PivotTableHelper
             int colSubtotals = emitSubtotals ? CountSubtotalNodes(colTree) : 0;
             int colLeaves = CountLeafNodes(colTree);
             // Per col position: K cells. Plus K grand totals.
-            valueCols = (colSubtotals + colLeaves) * dataFieldCount;
-            totalCols = dataFieldCount;
+            // When there are no col fields, colLeaves=0 but we still need K
+            // value columns (one per data field).
+            int colPositionCount = colSubtotals + colLeaves;
+            valueCols = Math.Max(1, colPositionCount) * dataFieldCount;
+            totalCols = colFieldIndices.Count > 0 ? dataFieldCount : 0;
 
             // Header rows:
             //   colN == 0 && K == 1: single header row with row label caption
