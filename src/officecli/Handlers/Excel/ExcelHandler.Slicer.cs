@@ -45,11 +45,17 @@ public partial class ExcelHandler
     // cache field set: the slicer's source field must match a pivotField name.
 
     private const string SlicerCachesExtUri   = "{BBE1A952-AA13-448e-AADC-164F8A28A991}";
-    private const string SlicerListExtUri     = "{3A4CF648-6AED-40f4-86FF-DC5316D8AED3}";
+    // Pivot-backed slicers use a DIFFERENT worksheet extLst URI than table-backed
+    // slicers. The SDK conformance test uses {3A4CF648-...} for table-backed, but
+    // Excel-generated pivot-backed files use {A8765BA9-...}. Wrong URI → Excel
+    // silently strips the slicer parts on open with no schema error.
+    private const string SlicerListExtUri     = "{A8765BA9-456A-4dab-B4F3-ACF838C121DE}";
     private const string SlicerDrawingNsUri   = "http://schemas.microsoft.com/office/drawing/2010/slicer";
     private const string X14NsUri             = "http://schemas.microsoft.com/office/spreadsheetml/2009/9/main";
     private const string McNsUri              = "http://schemas.openxmlformats.org/markup-compatibility/2006";
-    private const string A15NsUri             = "http://schemas.microsoft.com/office/drawing/2012/main";
+    // Pivot-backed slicer drawing uses a14 (2010/main), not a15 (2012/main).
+    // Excel-generated reference files use a14; a15 gets the drawing removed.
+    private const string A14NsUri             = "http://schemas.microsoft.com/office/drawing/2010/main";
     private const string XNsUri               = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
 
     /// <summary>
@@ -124,7 +130,7 @@ public partial class ExcelHandler
         // 4. Pivot linkage metadata ----------------------------------------
         var pivotName = pivotDef.Name?.Value
             ?? throw new ArgumentException($"Pivot table at '{pivotRef}' has no name");
-        var pivotCacheId = ResolvePivotCacheId(pivotCachePart);
+        var pivotCacheId = EnsurePivotCacheSlicerExtension(pivotCacheDef);
         var pivotTabId = GetSheetTabId(pivotWorksheet);
 
         // Enumerate shared items for the chosen field. Each distinct value
@@ -178,6 +184,13 @@ public partial class ExcelHandler
 
         // 6. Register slicer cache in workbook extLst ---------------------
         RegisterSlicerCacheInWorkbook(workbookPart, slicerCacheRelId);
+
+        // 6b. Register a workbook-level DefinedName placeholder for the
+        // slicer. Excel expects each slicer name to have a matching
+        // <definedName name="Slicer_Xxx">#N/A</definedName> entry — it's a
+        // sentinel rather than a real named range, and Excel uses it to
+        // guard the slicer identifier namespace.
+        RegisterSlicerDefinedName(workbookPart, slicerName);
 
         // 7. Create SlicersPart + Slicer element on host worksheet ---------
         // If the host sheet already has a SlicersPart, reuse it so multiple
@@ -264,27 +277,6 @@ public partial class ExcelHandler
             throw new ArgumentException(
                 $"pivottable[{idx}] out of range on sheet '{sheetName}' (have {pivotParts.Count})");
         return (pivotParts[idx - 1], worksheetPart, sheetName);
-    }
-
-    private uint ResolvePivotCacheId(PivotTableCacheDefinitionPart cachePart)
-    {
-        // The cacheId of a PivotTableCacheDefinitionPart is the index in the
-        // workbook's <pivotCaches> children (matching the PivotCache element
-        // with r:id pointing at this part). Walk workbook.pivotCaches and
-        // match by relationship id.
-        var workbookPart = _doc.WorkbookPart!;
-        var cacheRelId = workbookPart.GetIdOfPart(cachePart);
-        var pivotCaches = workbookPart.Workbook!.GetFirstChild<PivotCaches>();
-        if (pivotCaches != null)
-        {
-            foreach (var pc in pivotCaches.Elements<PivotCache>())
-            {
-                if (pc.Id?.Value == cacheRelId && pc.CacheId?.HasValue == true)
-                    return pc.CacheId.Value;
-            }
-        }
-        throw new InvalidOperationException(
-            "Could not resolve pivot cache id from workbook.pivotCaches");
     }
 
     private uint GetSheetTabId(WorksheetPart worksheetPart)
@@ -440,6 +432,45 @@ public partial class ExcelHandler
         caches.Append(new X14.SlicerCache { Id = slicerCachePartRelId });
     }
 
+    private static void RegisterSlicerDefinedName(WorkbookPart workbookPart, string slicerName)
+    {
+        var workbook = workbookPart.Workbook!;
+        var definedNames = workbook.GetFirstChild<DefinedNames>();
+        if (definedNames == null)
+        {
+            definedNames = new DefinedNames();
+            // Schema order: per ECMA-376, DefinedNames appears AFTER sheets
+            // / externalReferences and BEFORE calcPr / oleSize / pivotCaches
+            // / extLst. Violating this order is what made Excel flag the
+            // file as "corrupt and unrepairable" — Excel's workbook parser
+            // aborts on out-of-order children without attempting recovery.
+            // Walk the ordered list of "later" elements and insert before
+            // the first one present.
+            OpenXmlElement? insertBefore =
+                workbook.GetFirstChild<CalculationProperties>() as OpenXmlElement
+                ?? workbook.GetFirstChild<OleSize>() as OpenXmlElement
+                ?? workbook.GetFirstChild<CustomWorkbookViews>() as OpenXmlElement
+                ?? workbook.GetFirstChild<PivotCaches>() as OpenXmlElement
+                ?? workbook.GetFirstChild<WebPublishing>() as OpenXmlElement
+                ?? workbook.GetFirstChild<FileRecoveryProperties>() as OpenXmlElement
+                ?? workbook.GetFirstChild<WebPublishObjects>() as OpenXmlElement
+                ?? workbook.GetFirstChild<WorkbookExtensionList>() as OpenXmlElement;
+            if (insertBefore != null)
+                workbook.InsertBefore(definedNames, insertBefore);
+            else
+                workbook.AppendChild(definedNames);
+        }
+
+        // Skip if an identically-named entry already exists (idempotent).
+        foreach (var dn in definedNames.Elements<DefinedName>())
+        {
+            if (string.Equals(dn.Name?.Value, slicerName, StringComparison.Ordinal))
+                return;
+        }
+
+        definedNames.Append(new DefinedName { Name = slicerName, Text = "#N/A" });
+    }
+
     private void RegisterSlicerListInWorksheet(WorksheetPart worksheetPart, string slicersPartRelId)
     {
         var worksheet = GetSheet(worksheetPart);
@@ -475,7 +506,13 @@ public partial class ExcelHandler
         var drawingsPart = worksheetPart.DrawingsPart ?? worksheetPart.AddNewPart<DrawingsPart>();
         if (drawingsPart.WorksheetDrawing == null)
         {
+            // Declare xmlns:a on the wsDr root so individual a:* elements
+            // don't have to redeclare it per-element. Matches the format
+            // Excel produces and avoids a theoretical renderer quirk where
+            // scattered a: declarations might confuse the slicer pipeline.
             drawingsPart.WorksheetDrawing = new XDR.WorksheetDrawing();
+            drawingsPart.WorksheetDrawing.AddNamespaceDeclaration(
+                "a", "http://schemas.openxmlformats.org/drawingml/2006/main");
             drawingsPart.WorksheetDrawing.Save();
             if (worksheet.GetFirstChild<DocumentFormat.OpenXml.Spreadsheet.Drawing>() == null)
             {
@@ -485,18 +522,23 @@ public partial class ExcelHandler
             }
         }
 
-        // Position: column/row indices like other Excel drawings. Width=2,
-        // height=10 rows is a reasonable default slicer size.
+        // Position: column/row indices like other Excel drawings. Default
+        // anchor sits to the right of column D so a pivot at column A–B is
+        // not covered. Width=3 cols × height=10 rows is Excel's rough
+        // default slicer footprint.
         var fromCol = properties.TryGetValue("x", out var xStr)
-            ? ParseHelpers.SafeParseInt(xStr, "x") : 0;
+            ? ParseHelpers.SafeParseInt(xStr, "x") : 5;
         var fromRow = properties.TryGetValue("y", out var yStr)
-            ? ParseHelpers.SafeParseInt(yStr, "y") : 0;
+            ? ParseHelpers.SafeParseInt(yStr, "y") : 1;
         var toCol = properties.TryGetValue("width", out var wStr)
-            ? fromCol + ParseHelpers.SafeParseInt(wStr, "width") : fromCol + 2;
+            ? fromCol + ParseHelpers.SafeParseInt(wStr, "width") : fromCol + 3;
         var toRow = properties.TryGetValue("height", out var hStr)
             ? fromRow + ParseHelpers.SafeParseInt(hStr, "height") : fromRow + 10;
 
-        var anchor = new XDR.TwoCellAnchor { EditAs = XDR.EditAsValues.Absolute };
+        // Reference Excel files use editAs="oneCell" for slicers (they
+        // resize with the top-left cell but don't stretch). Absolute
+        // positioning is valid but differs from what Excel writes.
+        var anchor = new XDR.TwoCellAnchor { EditAs = XDR.EditAsValues.OneCell };
         anchor.Append(new XDR.FromMarker(
             new XDR.ColumnId(fromCol.ToString()),
             new XDR.ColumnOffset("0"),
@@ -576,12 +618,19 @@ public partial class ExcelHandler
         drawingsPart.WorksheetDrawing.Save();
     }
 
-    private static XDR.Shape BuildSlicerFallbackShape(string slicerName)
+    private static XDR.Shape BuildSlicerFallbackShape(uint id, string slicerName)
     {
         var shape = new XDR.Shape { Macro = string.Empty, TextLink = string.Empty };
 
         var nvSp = new XDR.NonVisualShapeProperties();
-        nvSp.Append(new XDR.NonVisualDrawingProperties { Id = 0U, Name = slicerName });
+        // The Fallback shape gets its own drawing-unique id even though
+        // modern Excel never renders it — the load-time integrity check
+        // walks AlternateContent/Fallback descendants too. See the
+        // allocation comment at the Choice branch above for the full
+        // rationale. `name` reuses the slicer name so the validator's
+        // "empty name" heuristic also stays quiet; it has no visual
+        // effect because the shape is schematic-only.
+        nvSp.Append(new XDR.NonVisualDrawingProperties { Id = id, Name = slicerName });
         var nvSpDraw = new XDR.NonVisualShapeDrawingProperties();
         nvSpDraw.Append(new A.ShapeLocks { NoTextEdit = true });
         nvSp.Append(nvSpDraw);
