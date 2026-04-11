@@ -174,10 +174,6 @@ Each chart uses the full parity-knob vocabulary: `plotareafill`,
 `axisTitle.font`. This is the sheet to copy-paste from when you want to
 build a specific look for a report.
 
-> ⚠ The officecli HTML preview does not render `plotareafill` /
-> `chartareafill` for cx histograms — open the file in Excel (or the
-> Numbers / LibreOffice equivalent) to see the themes in full color.
-
 ## Sheet 4: 4-Typography
 
 Four font-family type specimens. Same data, same geometry, nearly identical
@@ -272,8 +268,11 @@ officecli get charts-histogram.xlsx "/5-ML Dashboard/chart[1]"
 officecli view charts-histogram.xlsx html > preview.html
 ```
 
-> Note: officecli's HTML preview does not render `plotareafill` /
-> `chartareafill` background fills or custom font families for cx
-> histograms. Excel, Numbers, and LibreOffice all render the full
-> styling correctly. Use the preview for geometry + color verification,
-> use the real app for final visual QA.
+> Note: officecli's HTML preview renders the full parity vocabulary
+> (plot-area / chart-area fills, gridline + axis line colors, tick
+> label colors, data labels, locked axis scales, gapWidth, etc.),
+> but does not currently reproduce custom axis-label font families —
+> all tick labels fall back to the preview's default sans font. Excel
+> renders the full styling including the font family. Use the preview
+> for layout + color verification, use Excel (or Numbers / LibreOffice)
+> for final typographic QA.
