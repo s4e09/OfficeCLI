@@ -448,7 +448,7 @@ public class ResidentServer : IDisposable
         {
             request = System.Text.Json.JsonSerializer.Deserialize<ResidentRequest>(requestLine, ResidentJsonContext.Default.ResidentRequest);
             if (request == null)
-                return MakeResponse(1, "", "Invalid request");
+                return MakeResponse(1, "", "Error: Invalid request");
 
             // Capture stdout/stderr (safe: _commandLock serializes all commands)
             var stdoutWriter = new StringWriter();
@@ -494,7 +494,12 @@ public class ResidentServer : IDisposable
                 // JSON mode: wrap error in envelope
                 return MakeResponse(1, OutputFormatter.WrapErrorEnvelope(ex), "");
             }
-            return MakeResponse(1, "", ex.Message);
+            // BUG-R11-02: prefix the stderr string with the canonical
+            // "Error: " marker so resident-mode error output matches the
+            // non-resident CLI path (WriteError in Program.cs). Without
+            // this, clients diffing stderr across modes would mis-detect
+            // failures.
+            return MakeResponse(1, "", $"Error: {ex.Message}");
         }
     }
 
@@ -563,6 +568,10 @@ public class ResidentServer : IDisposable
             case "move":
                 ExecuteMove(request);
                 NotifyWatchSlideChanged(request.GetArg("path"));
+                break;
+            case "swap":
+                ExecuteSwap(request);
+                NotifyWatchFullRefresh();
                 break;
             case "raw":
                 ExecuteRaw(request);
@@ -832,6 +841,23 @@ public class ResidentServer : IDisposable
         var path = req.GetArg("path", "/");
         var depth = req.GetIntArg("depth") ?? 1;
         var node = _handler.Get(path, depth);
+
+        // CONSISTENCY(get-save): mirror CommandBuilder.GetQuery.cs lines 59-74.
+        // Direct-mode `get --save` extracts the binary payload backing an
+        // ole/picture/media node to disk. Resident mode must honour the same
+        // arg or it silently drops the extraction (BUG-R9-01).
+        var savePath = req.GetArgOrNull("save");
+        if (!string.IsNullOrEmpty(savePath))
+        {
+            if (!_handler.TryExtractBinary(path, savePath, out var contentType, out var byteCount))
+                throw new InvalidOperationException(
+                    $"Node at '{path}' has no binary payload to extract (only ole/picture/media/embedded nodes can be saved).");
+            node.Format["savedTo"] = savePath;
+            node.Format["savedBytes"] = byteCount;
+            if (!string.IsNullOrEmpty(contentType))
+                node.Format["savedContentType"] = contentType!;
+        }
+
         Console.WriteLine(OutputFormatter.FormatNode(node, format));
     }
 
@@ -894,6 +920,20 @@ public class ResidentServer : IDisposable
         var to = req.GetArgOrNull("to");
         var resultPath = _handler.Move(path, to, BuildInsertPosition(req));
         Console.WriteLine($"Moved to {resultPath}");
+    }
+
+    private void ExecuteSwap(ResidentRequest req)
+    {
+        var path1 = req.GetArg("path", "/");
+        var path2 = req.GetArg("to", "/");
+        var (p1, p2) = _handler switch
+        {
+            OfficeCli.Handlers.PowerPointHandler ppt => ppt.Swap(path1, path2),
+            OfficeCli.Handlers.WordHandler word => word.Swap(path1, path2),
+            OfficeCli.Handlers.ExcelHandler excel => excel.Swap(path1, path2),
+            _ => throw new InvalidOperationException("swap not supported for this document type")
+        };
+        Console.WriteLine($"Swapped {p1} <-> {p2}");
     }
 
     private static InsertPosition? BuildInsertPosition(ResidentRequest req)

@@ -22,7 +22,9 @@ internal class ViewResult
 
 internal class NodesResult
 {
+    [JsonPropertyName("matches")]
     public int Matches { get; set; }
+    [JsonPropertyName("results")]
     public List<DocumentNode> Results { get; set; } = new();
 }
 

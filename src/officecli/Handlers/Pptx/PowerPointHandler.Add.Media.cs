@@ -346,5 +346,160 @@ public partial class PowerPointHandler
                 return $"/slide[{mediaSlideIdx}]/{(isVideo ? "video" : "audio")}[{sameTypeCount}]";
     }
 
+    // ==================== OLE Object Insertion ====================
+    //
+    // Inserts an embedded OLE object into a slide. The structure follows
+    // the PresentationML spec: a GraphicFrame hosting
+    //   <a:graphicData uri="…/ole"><p:oleObj ... /></a:graphicData>
+    // where p:oleObj carries progId + r:id (the payload relationship) and
+    // an inner p:pic element rendering the icon preview.
+    //
+    // Caller props:
+    //   src (required)  path to the file to embed
+    //   progId          defaults to OleHelper.DetectProgId(src)
+    //   width / height  EMU-parsed; defaults to 2in × 0.75in
+    //   x / y           position in EMU; defaults to top-left (457200,457200)
+    //   icon            path to a custom icon (png/jpg/emf); defaults to tiny PNG
+    //   display         "icon" (default, sets showAsIcon) or "content"
+    private string AddOle(string parentPath, int? index, Dictionary<string, string> properties)
+    {
+        // Null guard: dispatch may propagate null props through Add().
+        properties ??= new Dictionary<string, string>();
+        if (!properties.TryGetValue("src", out var srcPath)
+            && !properties.TryGetValue("path", out srcPath))
+            throw new ArgumentException("'src' (or 'path') property is required for ole type");
+        if (string.IsNullOrWhiteSpace(srcPath))
+            throw new ArgumentException("'src' property for ole type cannot be empty");
+
+        // Visibly warn on unknown ole props (no structured warning channel
+        // on Add — see OleHelper.WarnOnUnknownOleProps).
+        OfficeCli.Core.OleHelper.WarnOnUnknownOleProps(properties);
+
+        var oleSlideMatch = Regex.Match(parentPath, @"^/slide\[(\d+)\]$");
+        if (!oleSlideMatch.Success)
+            throw new ArgumentException("OLE objects must be added to a slide: /slide[N]");
+
+        var oleSlideIdx = int.Parse(oleSlideMatch.Groups[1].Value);
+        var oleSlideParts = GetSlideParts().ToList();
+        if (oleSlideIdx < 1 || oleSlideIdx > oleSlideParts.Count)
+            throw new ArgumentException($"Slide {oleSlideIdx} not found (total: {oleSlideParts.Count})");
+
+        var oleSlidePart = oleSlideParts[oleSlideIdx - 1];
+        var oleShapeTree = GetSlide(oleSlidePart).CommonSlideData?.ShapeTree
+            ?? throw new InvalidOperationException("Slide has no shape tree");
+
+        // 1. Create the embedded payload part.
+        var (embedRelId, _) = OfficeCli.Core.OleHelper.AddEmbeddedPart(oleSlidePart, srcPath, _filePath);
+
+        // 2. ProgID (explicit or auto-detected).
+        var progId = properties.GetValueOrDefault("progId")
+            ?? properties.GetValueOrDefault("progid")
+            ?? OfficeCli.Core.OleHelper.DetectProgId(srcPath);
+        OfficeCli.Core.OleHelper.ValidateProgId(progId);
+
+        // 3. Icon image part (placeholder PNG or user-supplied).
+        ImagePart oleIconPart;
+        if (properties.TryGetValue("icon", out var iconPath) && !string.IsNullOrWhiteSpace(iconPath))
+        {
+            var (iconStream, iconType) = OfficeCli.Core.ImageSource.Resolve(iconPath);
+            using var _ = iconStream;
+            oleIconPart = oleSlidePart.AddImagePart(iconType);
+            oleIconPart.FeedData(iconStream);
+        }
+        else
+        {
+            oleIconPart = oleSlidePart.AddImagePart(ImagePartType.Png);
+            using var ms = new MemoryStream(OfficeCli.Core.OleHelper.PlaceholderIconPng);
+            oleIconPart.FeedData(ms);
+        }
+        var oleIconRelId = oleSlidePart.GetIdOfPart(oleIconPart);
+
+        // 4. Dimensions.
+        long oleCx = properties.TryGetValue("width", out var wv)
+            ? ParseEmu(wv) : OfficeCli.Core.OleHelper.DefaultOleWidthEmu;
+        long oleCy = properties.TryGetValue("height", out var hv)
+            ? ParseEmu(hv) : OfficeCli.Core.OleHelper.DefaultOleHeightEmu;
+        long oleX = properties.TryGetValue("x", out var xv) ? ParseEmu(xv) : 457200;
+        long oleY = properties.TryGetValue("y", out var yv) ? ParseEmu(yv) : 457200;
+
+        // 5. Display mode: icon (default) or content. Strict validation —
+        // unknown values throw (see OleHelper.NormalizeOleDisplay).
+        var oleDisplay = OfficeCli.Core.OleHelper.NormalizeOleDisplay(
+            properties.GetValueOrDefault("display", "icon"));
+        bool showAsIcon = oleDisplay != "content";
+
+        // 6. Build the GraphicFrame + OleObject subtree. We lean on
+        //    strong-typed p:oleObj / p:embed / p:pic from the SDK so
+        //    attributes get schema-checked; only the outer GraphicFrame
+        //    wrapper uses hand-built OuterXml because GraphicData.Uri is
+        //    a string attribute, not a type particle.
+        var oleShapeId = GenerateUniqueShapeId(oleShapeTree);
+        var oleName = properties.GetValueOrDefault("name", $"Object {oleShapeId}");
+
+        var oleObj = new DocumentFormat.OpenXml.Presentation.OleObject
+        {
+            ShapeId = "",
+            Name = oleName,
+            ShowAsIcon = showAsIcon,
+            Id = embedRelId,
+            ImageWidth = (int)oleCx,
+            ImageHeight = (int)oleCy,
+            ProgId = progId,
+        };
+        // p:embed followColorScheme="full" — lets PowerPoint paint the
+        // icon using the current slide theme accent, matching PPT's own
+        // default for embed-mode OLE.
+        oleObj.AppendChild(new DocumentFormat.OpenXml.Presentation.OleObjectEmbed
+        {
+            FollowColorScheme = DocumentFormat.OpenXml.Presentation.OleObjectFollowColorSchemeValues.Full,
+        });
+
+        // Inner p:pic holding the icon preview (bound to the image part we
+        // just created). Structure mirrors a minimal non-animated picture.
+        var olePic = new DocumentFormat.OpenXml.Presentation.Picture();
+        olePic.NonVisualPictureProperties = new NonVisualPictureProperties(
+            new NonVisualDrawingProperties { Id = 0U, Name = "" },
+            new NonVisualPictureDrawingProperties(),
+            new ApplicationNonVisualDrawingProperties()
+        );
+        olePic.BlipFill = new BlipFill(
+            new Drawing.Blip { Embed = oleIconRelId },
+            new Drawing.Stretch(new Drawing.FillRectangle())
+        );
+        olePic.ShapeProperties = new ShapeProperties(
+            new Drawing.Transform2D(
+                new Drawing.Offset { X = oleX, Y = oleY },
+                new Drawing.Extents { Cx = oleCx, Cy = oleCy }
+            ),
+            new Drawing.PresetGeometry(new Drawing.AdjustValueList()) { Preset = Drawing.ShapeTypeValues.Rectangle }
+        );
+        oleObj.AppendChild(olePic);
+
+        // 7. Wrap the OleObject in a GraphicFrame with the ole URI.
+        var oleGraphicData = new Drawing.GraphicData(oleObj)
+        {
+            Uri = "http://schemas.openxmlformats.org/presentationml/2006/ole",
+        };
+        var oleFrame = new GraphicFrame(
+            new NonVisualGraphicFrameProperties(
+                new NonVisualDrawingProperties { Id = oleShapeId, Name = oleName },
+                new NonVisualGraphicFrameDrawingProperties(),
+                new ApplicationNonVisualDrawingProperties()
+            ),
+            new Transform(
+                new Drawing.Offset { X = oleX, Y = oleY },
+                new Drawing.Extents { Cx = oleCx, Cy = oleCy }
+            ),
+            new Drawing.Graphic(oleGraphicData)
+        );
+
+        InsertAtPosition(oleShapeTree, oleFrame, index);
+        GetSlide(oleSlidePart).Save();
+
+        // Count OLE frames on this slide for the return path.
+        var oleFrames = oleShapeTree.Elements<GraphicFrame>()
+            .Count(gf => gf.Descendants<DocumentFormat.OpenXml.Presentation.OleObject>().Any());
+        return $"/slide[{oleSlideIdx}]/ole[{oleFrames}]";
+    }
 
 }
