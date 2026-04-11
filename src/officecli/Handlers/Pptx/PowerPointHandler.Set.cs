@@ -445,7 +445,7 @@ public partial class PowerPointHandler
             var chartIdx = int.Parse(chartSetMatch.Groups[2].Value);
             var seriesIdx = chartSetMatch.Groups[3].Success ? int.Parse(chartSetMatch.Groups[3].Value) : 0;
 
-            var (slidePart, chartGf, chartPart) = ResolveChart(slideIdx, chartIdx);
+            var (slidePart, chartGf, chartPart, extChartPart) = ResolveChart(slideIdx, chartIdx);
 
             // If series sub-path, prefix all properties with series{N}. for ChartSetter
             var chartProps = new Dictionary<string, string>();
@@ -491,9 +491,14 @@ public partial class PowerPointHandler
             {
                 unsupported = ChartHelper.SetChartProperties(chartPart, chartProps);
             }
+            else if (extChartPart != null)
+            {
+                // cx:chart — delegates to ChartExBuilder.SetChartProperties.
+                // Same shared implementation as Excel/Word.
+                unsupported = ChartExBuilder.SetChartProperties(extChartPart, chartProps);
+            }
             else
             {
-                // cx:chart (extended chart) — chart-internal properties are not supported
                 unsupported = chartProps.Keys.ToList();
             }
             GetSlide(slidePart).Save();

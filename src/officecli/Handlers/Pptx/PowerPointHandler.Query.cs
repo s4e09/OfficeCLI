@@ -602,7 +602,7 @@ public partial class PowerPointHandler
             var csChartIdx = int.Parse(chartSeriesGetMatch.Groups[2].Value);
             var csSeriesIdx = int.Parse(chartSeriesGetMatch.Groups[3].Value);
 
-            var (csSlidePart, csChartGf, csChartPart) = ResolveChart(csSlideIdx, csChartIdx);
+            var (csSlidePart, csChartGf, csChartPart, _) = ResolveChart(csSlideIdx, csChartIdx);
             // Get the chart node with depth=1 to populate series children
             var chartNode = ChartToNode(csChartGf, csSlidePart, csSlideIdx, csChartIdx, 1);
             var seriesChildren = chartNode.Children.Where(c => c.Type == "series").ToList();

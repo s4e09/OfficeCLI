@@ -188,8 +188,11 @@ public partial class WordHandler
 
             if (chartInfo.IsExtended)
             {
-                // Extended charts (cx:chart) — chart-internal properties are not supported
-                unsupported = chartProps.Keys.ToList();
+                // cx:chart — delegates to ChartExBuilder.SetChartProperties.
+                // Same shared implementation as Excel/PPTX: title/axis/gridline
+                // styling, series fill, histogram binning, etc.
+                unsupported = Core.ChartExBuilder.SetChartProperties(
+                    chartInfo.ExtendedPart!, chartProps);
             }
             else
             {

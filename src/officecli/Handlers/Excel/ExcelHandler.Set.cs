@@ -803,9 +803,15 @@ public partial class ExcelHandler
                 chartInfo.StandardPart.ChartSpace?.Save();
                 return unsup;
             }
+            else if (chartInfo.ExtendedPart != null)
+            {
+                // cx:chart — delegates to ChartExBuilder.SetChartProperties,
+                // which covers title/axis/gridline styling, series fill,
+                // histogram binning, etc. Returns unsupported keys (if any).
+                return ChartExBuilder.SetChartProperties(chartInfo.ExtendedPart, chartProps);
+            }
             else
             {
-                // cx:chart — all chart-internal properties are unsupported
                 return chartProps.Keys.ToList();
             }
         }

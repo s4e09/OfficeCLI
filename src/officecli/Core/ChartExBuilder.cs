@@ -10,8 +10,13 @@ namespace OfficeCli.Core;
 /// <summary>
 /// Builder for cx:chart (Office 2016 extended chart types):
 /// funnel, treemap, sunburst, boxWhisker, histogram, waterfall (native).
+///
+/// Split into two files:
+///   ChartExBuilder.cs        — BuildExtendedChartSpace (Add path)
+///   ChartExBuilder.Setter.cs — SetChartProperties      (Set path)
+/// Both halves share the same private helpers defined here.
 /// </summary>
-internal static class ChartExBuilder
+internal static partial class ChartExBuilder
 {
     internal static readonly HashSet<string> ExtendedChartTypes = new(StringComparer.OrdinalIgnoreCase)
     {
