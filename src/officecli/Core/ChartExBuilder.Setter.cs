@@ -113,6 +113,22 @@ internal static partial class ChartExBuilder
                 return true;
             }
 
+            case "title.shadow" or "titleshadow":
+            {
+                // Apply an a:outerShdw effect to the title run's rPr. Same
+                // vocabulary as regular cChart (ChartHelper.Setter.cs:63):
+                // "COLOR-BLUR-ANGLE-DIST-OPACITY" or "none" to clear.
+                var ctitle = chart.GetFirstChild<CX.ChartTitle>();
+                if (ctitle == null) return true;
+                foreach (var run in ctitle.Descendants<Drawing.Run>())
+                {
+                    var rPr = run.RunProperties
+                              ?? (run.RunProperties = new Drawing.RunProperties { Language = "en-US" });
+                    ApplyRunEffectShadow(rPr, value);
+                }
+                return true;
+            }
+
             // ==================== Legend ====================
 
             case "legend":
@@ -124,7 +140,32 @@ internal static partial class ChartExBuilder
                     && !value.Equals("off", StringComparison.OrdinalIgnoreCase))
                 {
                     // Legend goes after plotArea per cx:chart schema.
-                    chart.AppendChild(BuildLegend(value));
+                    chart.AppendChild(BuildLegend(value, allProperties));
+                }
+                return true;
+            }
+
+            case "legend.overlay" or "legendoverlay":
+            {
+                var legend = chart.GetFirstChild<CX.Legend>();
+                if (legend == null) return true;
+                legend.Overlay = ParseHelpers.IsTruthy(value);
+                return true;
+            }
+
+            case "legendfont" or "legend.font":
+            {
+                // Compound form "size:color:fontname" styles the legend text.
+                // Mirrors ChartHelper.Setter.cs:118 "legendfont" for regular
+                // cChart. Wraps an a:defRPr in cx:txPr on the legend.
+                var legend = chart.GetFirstChild<CX.Legend>();
+                if (legend == null) return true;
+                legend.RemoveAllChildren<CX.TxPrTextBody>();
+                if (!string.IsNullOrEmpty(value)
+                    && !value.Equals("none", StringComparison.OrdinalIgnoreCase))
+                {
+                    var txPr = BuildAxisTickLabelStyle(value);
+                    if (txPr != null) legend.AppendChild(txPr);
                 }
                 return true;
             }
@@ -223,6 +264,95 @@ internal static partial class ChartExBuilder
                 return true;
             }
 
+            // ==================== Value-axis scaling (axismin/max/majorunit) ====================
+            // CONSISTENCY(chart-axis-scaling): same prop names as regular cChart
+            // (ChartHelper.Setter.cs:357). CX.ValueAxisScaling stores Min/Max/
+            // MajorUnit/MinorUnit as StringValue attributes, not typed doubles,
+            // but we still parse + re-format as invariant double for
+            // consistency with cChart behavior (reject NaN/Infinity).
+            case "axismin" or "min":
+            {
+                var valScaling = valAxis?.GetFirstChild<CX.ValueAxisScaling>();
+                if (valScaling == null) return true;
+                valScaling.Min = ParseHelpers.SafeParseDouble(value, "axismin")
+                    .ToString("G", CultureInfo.InvariantCulture);
+                return true;
+            }
+
+            case "axismax" or "max":
+            {
+                var valScaling = valAxis?.GetFirstChild<CX.ValueAxisScaling>();
+                if (valScaling == null) return true;
+                valScaling.Max = ParseHelpers.SafeParseDouble(value, "axismax")
+                    .ToString("G", CultureInfo.InvariantCulture);
+                return true;
+            }
+
+            case "majorunit":
+            {
+                var valScaling = valAxis?.GetFirstChild<CX.ValueAxisScaling>();
+                if (valScaling == null) return true;
+                valScaling.MajorUnit = ParseHelpers.SafeParseDouble(value, "majorunit")
+                    .ToString("G", CultureInfo.InvariantCulture);
+                return true;
+            }
+
+            case "minorunit":
+            {
+                var valScaling = valAxis?.GetFirstChild<CX.ValueAxisScaling>();
+                if (valScaling == null) return true;
+                valScaling.MinorUnit = ParseHelpers.SafeParseDouble(value, "minorunit")
+                    .ToString("G", CultureInfo.InvariantCulture);
+                return true;
+            }
+
+            // ==================== Axis visibility (hidden flag) ====================
+            // CONSISTENCY(chart-axis-visibility): same prop names as regular
+            // cChart (ChartHelper.Setter.cs:795). CX uses a simple @hidden
+            // attribute on cx:axis, unlike cChart's c:delete child element.
+            case "axisvisible" or "axis.visible" or "axis.delete":
+            {
+                var hide = key.Contains("delete")
+                    ? ParseHelpers.IsTruthy(value)
+                    : !ParseHelpers.IsTruthy(value);
+                foreach (var axis in allAxes) axis.Hidden = hide;
+                return true;
+            }
+
+            case "cataxisvisible" or "cataxis.visible":
+            {
+                if (catAxis != null) catAxis.Hidden = !ParseHelpers.IsTruthy(value);
+                return true;
+            }
+
+            case "valaxisvisible" or "valaxis.visible":
+            {
+                if (valAxis != null) valAxis.Hidden = !ParseHelpers.IsTruthy(value);
+                return true;
+            }
+
+            // ==================== Axis line styling ====================
+            // CONSISTENCY(chart-axis-line): "color" | "color:width" | "color:width:dash"
+            // | "none". Same vocabulary as regular cChart (ChartHelper.Setter.cs:1471),
+            // reuses ChartHelper.BuildOutlineElement for parsing.
+            case "axisline" or "axis.line":
+            {
+                foreach (var axis in allAxes) ApplyCxAxisLine(axis, value);
+                return true;
+            }
+
+            case "cataxisline" or "cataxis.line":
+            {
+                if (catAxis != null) ApplyCxAxisLine(catAxis, value);
+                return true;
+            }
+
+            case "valaxisline" or "valaxis.line":
+            {
+                if (valAxis != null) ApplyCxAxisLine(valAxis, value);
+                return true;
+            }
+
             // ==================== Tick labels (on/off, both axes) ====================
 
             case "ticklabels":
@@ -258,6 +388,26 @@ internal static partial class ChartExBuilder
                 return true;
             }
 
+            case "datalabels.numfmt" or "labelnumfmt" or "datalabels.format" or "labelformat":
+            {
+                // CONSISTENCY(chart-datalabel-numfmt): same prop names as
+                // regular cChart (ChartHelper.Setter.cs:1181). Applies a
+                // cx:numFmt element to every series' cx:dataLabels. Silent
+                // no-op if a series has no dataLabels block (use `dataLabels=true`
+                // to enable them first, same as regular cChart semantics).
+                foreach (var series in allSeries)
+                {
+                    var dl = series.GetFirstChild<CX.DataLabels>();
+                    if (dl == null) continue;
+                    dl.NumberFormat = new CX.NumberFormat
+                    {
+                        FormatCode = value,
+                        SourceLinked = false,
+                    };
+                }
+                return true;
+            }
+
             // ==================== Series fill / multi-series colors ====================
 
             case "fill":
@@ -272,6 +422,19 @@ internal static partial class ChartExBuilder
                 var colorList = value.Split(',').Select(c => c.Trim()).ToArray();
                 for (int i = 0; i < Math.Min(allSeries.Count, colorList.Length); i++)
                     ReplaceSeriesFill(allSeries[i], colorList[i]);
+                return true;
+            }
+
+            // ==================== Series effects (shadow) ====================
+            // CONSISTENCY(chart-series-shadow): same vocabulary as regular cChart
+            // (ChartHelper.Setter.cs:642 / SetterHelpers.cs:374). Format
+            // "COLOR-BLUR-ANGLE-DIST-OPACITY" or "none" to clear. Applied to
+            // every series by attaching an a:effectLst inside the existing
+            // cx:spPr (or creating one if the series has no fill yet).
+            case "series.shadow" or "seriesshadow":
+            {
+                foreach (var series in allSeries)
+                    ApplyCxSeriesShadow(series, value);
                 return true;
             }
 
@@ -359,6 +522,41 @@ internal static partial class ChartExBuilder
                         ? CX.QuartileMethod.Inclusive
                         : CX.QuartileMethod.Exclusive;
                 }
+                return true;
+            }
+
+            // ==================== Plot area / chart area fill + border ====================
+            // CONSISTENCY(chart-area-fill): same prop names as regular cChart
+            // (ChartHelper.Setter.cs:476,491,1220,1232). Both PlotArea and
+            // ChartSpace accept a cx:spPr child; we attach a solidFill for
+            // the background and an a:ln outline for the border.
+            case "plotareafill" or "plotfill":
+            {
+                if (plotArea == null) return true;
+                ApplyCxAreaFill(plotArea, value);
+                return true;
+            }
+
+            case "plotarea.border" or "plotborder":
+            {
+                if (plotArea == null) return true;
+                ApplyCxAreaBorder(plotArea, value);
+                return true;
+            }
+
+            case "chartareafill" or "chartfill":
+            {
+                var chartSpace = chart.Parent as CX.ChartSpace;
+                if (chartSpace == null) return true;
+                ApplyCxAreaFill(chartSpace, value);
+                return true;
+            }
+
+            case "chartarea.border" or "chartborder":
+            {
+                var chartSpace = chart.Parent as CX.ChartSpace;
+                if (chartSpace == null) return true;
+                ApplyCxAreaBorder(chartSpace, value);
                 return true;
             }
         }

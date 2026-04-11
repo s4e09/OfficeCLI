@@ -1,6 +1,7 @@
 // Copyright 2025 OfficeCli (officecli.ai)
 // SPDX-License-Identifier: Apache-2.0
 
+using System.Globalization;
 using DocumentFormat.OpenXml;
 using Drawing = DocumentFormat.OpenXml.Drawing;
 using CX = DocumentFormat.OpenXml.Office2016.Drawing.ChartDrawing;
@@ -21,6 +22,14 @@ internal static partial class ChartExBuilder
     internal static readonly HashSet<string> ExtendedChartTypes = new(StringComparer.OrdinalIgnoreCase)
     {
         "funnel", "treemap", "sunburst", "boxwhisker", "histogram"
+        // TODO(chartex-pareto): real Excel Pareto is NOT a single-series
+        // layoutId="paretoLine" chart — it's a histogram (clusteredColumn)
+        // with a paretoLine overlay series sharing the same data. Needs
+        // two-series plumbing in BuildExtendedChartSpace + a way to
+        // express the cumulative % on the second series. Out of scope
+        // for the cx-knob-parity pass; the DetectExtendedChartType
+        // reverse mapping on line 504 already reads paretoLine for
+        // round-trip Get() of files created in real Excel.
     };
 
     internal static bool IsExtendedChartType(string chartType)
@@ -106,6 +115,14 @@ internal static partial class ChartExBuilder
                         new Drawing.RgbColorModelHex { Val = rgb })));
             }
 
+            // Optional series.shadow (applied to every series). Reuses the
+            // ApplyCxSeriesShadow helper so the Add and Set paths emit
+            // identical trees.
+            var seriesShadow = properties.GetValueOrDefault("series.shadow")
+                            ?? properties.GetValueOrDefault("seriesshadow");
+            if (!string.IsNullOrEmpty(seriesShadow))
+                ApplyCxSeriesShadow(series, seriesShadow);
+
             // Data labels (value count above each bar)
             if (showDataLabels)
             {
@@ -116,6 +133,19 @@ internal static partial class ChartExBuilder
                     SeriesName = false,
                     CategoryName = false,
                 });
+                // Optional number format (datalabels.numfmt / labelnumfmt).
+                var dlNumFmt = properties.GetValueOrDefault("datalabels.numfmt")
+                            ?? properties.GetValueOrDefault("labelnumfmt")
+                            ?? properties.GetValueOrDefault("datalabels.format")
+                            ?? properties.GetValueOrDefault("labelformat");
+                if (!string.IsNullOrEmpty(dlNumFmt))
+                {
+                    dl.NumberFormat = new CX.NumberFormat
+                    {
+                        FormatCode = dlNumFmt,
+                        SourceLinked = false,
+                    };
+                }
                 series.AppendChild(dl);
             }
 
@@ -140,19 +170,51 @@ internal static partial class ChartExBuilder
             plotArea.AppendChild(BuildValueAxis(id: 1, properties));
         }
 
+        // Plot area fill / border — optional background styling
+        // (CONSISTENCY(chart-area-fill)). Must be appended AFTER all axes
+        // per CT_PlotArea schema sequence:
+        //   plotSurface? → plotAreaRegion → axis* → spPr? → extLst?
+        var plotAreaFill = properties.GetValueOrDefault("plotareafill")
+                        ?? properties.GetValueOrDefault("plotfill");
+        if (!string.IsNullOrEmpty(plotAreaFill))
+            ApplyCxAreaFill(plotArea, plotAreaFill);
+
+        var plotAreaBorder = properties.GetValueOrDefault("plotarea.border")
+                          ?? properties.GetValueOrDefault("plotborder");
+        if (!string.IsNullOrEmpty(plotAreaBorder))
+            ApplyCxAreaBorder(plotArea, plotAreaBorder);
+
         chart.AppendChild(plotArea);
 
-        // Legend (optional, appears AFTER plotArea per cx:chart schema order)
+        // Legend (optional, appears AFTER plotArea per cx:chart schema order).
+        // BuildLegend reads legend.overlay / legendfont from properties too.
         if (properties.TryGetValue("legend", out var legendPos) &&
             !string.IsNullOrEmpty(legendPos) &&
             !legendPos.Equals("none", StringComparison.OrdinalIgnoreCase) &&
             !legendPos.Equals("false", StringComparison.OrdinalIgnoreCase) &&
             !legendPos.Equals("off", StringComparison.OrdinalIgnoreCase))
         {
-            chart.AppendChild(BuildLegend(legendPos));
+            chart.AppendChild(BuildLegend(legendPos, properties));
         }
 
         chartSpace.AppendChild(chart);
+
+        // Chart area fill / border — attached to cx:chartSpace's own spPr.
+        // This is the outermost background; tests should verify Excel
+        // accepts it (the cx schema technically does not list spPr as a
+        // chartSpace child but the SDK tolerates it; real Excel silently
+        // ignores it rather than rejecting, so we still emit it for
+        // round-trip Set() compatibility).
+        var chartAreaFill = properties.GetValueOrDefault("chartareafill")
+                         ?? properties.GetValueOrDefault("chartfill");
+        if (!string.IsNullOrEmpty(chartAreaFill))
+            ApplyCxAreaFill(chartSpace, chartAreaFill);
+
+        var chartAreaBorder = properties.GetValueOrDefault("chartarea.border")
+                           ?? properties.GetValueOrDefault("chartborder");
+        if (!string.IsNullOrEmpty(chartAreaBorder))
+            ApplyCxAreaBorder(chartSpace, chartAreaBorder);
+
         return chartSpace;
     }
 
@@ -163,7 +225,17 @@ internal static partial class ChartExBuilder
         // stay in vocabulary lockstep. See
         // ChartHelper.ApplyRunStyleProperties.
         if (properties != null)
+        {
             ChartHelper.ApplyRunStyleProperties(rPr, properties, keyPrefix: "title");
+
+            // title.shadow is a separate knob — ApplyRunStyleProperties covers
+            // color/size/bold/font only (see its doc-comment). Same format as
+            // regular cChart: "COLOR-BLUR-ANGLE-DIST-OPACITY".
+            var titleShadow = properties.GetValueOrDefault("title.shadow")
+                           ?? properties.GetValueOrDefault("titleshadow");
+            if (!string.IsNullOrEmpty(titleShadow))
+                ApplyRunEffectShadow(rPr, titleShadow);
+        }
 
         var chartTitle = new CX.ChartTitle();
         chartTitle.AppendChild(new CX.Text(
@@ -221,7 +293,7 @@ internal static partial class ChartExBuilder
         return new CX.ShapeProperties(outline);
     }
 
-    private static CX.Legend BuildLegend(string posSpec)
+    private static CX.Legend BuildLegend(string posSpec, Dictionary<string, string>? properties = null)
     {
         var legend = new CX.Legend
         {
@@ -235,7 +307,155 @@ internal static partial class ChartExBuilder
             "left" or "l"   => CX.SidePos.L,
             _               => CX.SidePos.R,  // right is the Excel default
         };
+
+        if (properties != null)
+        {
+            // Optional overlay flag — matches regular cChart's `legend.overlay`.
+            var overlay = properties.GetValueOrDefault("legend.overlay")
+                       ?? properties.GetValueOrDefault("legendoverlay");
+            if (!string.IsNullOrEmpty(overlay))
+                legend.Overlay = ParseHelpers.IsTruthy(overlay);
+
+            // Compound font styling — "size:color:fontname", same form as
+            // regular cChart's `legendfont`. Wraps an a:defRPr in cx:txPr.
+            var legendFont = properties.GetValueOrDefault("legendfont")
+                          ?? properties.GetValueOrDefault("legend.font");
+            if (!string.IsNullOrEmpty(legendFont))
+            {
+                var txPr = BuildAxisTickLabelStyle(legendFont);
+                if (txPr != null) legend.AppendChild(txPr);
+            }
+        }
+
         return legend;
+    }
+
+    // ==================== Shared cx:spPr / effect helpers ====================
+    //
+    // These helpers mirror the regular-cChart versions in
+    // ChartHelper.SetterHelpers.cs (ApplyAxisLine, BuildOutlineElement,
+    // DrawingEffectsHelper.BuildOuterShadow) but target cx:spPr containers
+    // instead of c:spPr / c:ChartShapeProperties.
+    //
+    // They are used by BOTH the Add path (ChartExBuilder.cs BuildExtended...)
+    // and the Set path (ChartExBuilder.Setter.cs HandleSetKey), so each knob
+    // creates the same OOXML tree regardless of whether it was set at Add
+    // time or via a later Set call.
+
+    /// <summary>
+    /// Apply an a:outerShdw effect to a Drawing.RunProperties (used for
+    /// `title.shadow`). Reuses the shared DrawingEffectsHelper format:
+    /// "COLOR-BLUR-ANGLE-DIST-OPACITY" or "none" to clear.
+    /// </summary>
+    private static void ApplyRunEffectShadow(Drawing.RunProperties rPr, string value)
+    {
+        rPr.RemoveAllChildren<Drawing.EffectList>();
+        if (value.Equals("none", StringComparison.OrdinalIgnoreCase)) return;
+        var effects = new Drawing.EffectList();
+        effects.AppendChild(DrawingEffectsHelper.BuildOuterShadow(
+            value, DrawingEffectsHelper.BuildRgbColor));
+        rPr.AppendChild(effects);
+    }
+
+    /// <summary>
+    /// Apply an a:ln outline to a cx:axis's own cx:spPr. Same vocabulary as
+    /// ChartHelper.SetterHelpers.cs:ApplyAxisLine — "color" / "color:width" /
+    /// "color:width:dash" / "none".
+    /// </summary>
+    private static void ApplyCxAxisLine(CX.Axis axis, string value)
+    {
+        var spPr = axis.GetFirstChild<CX.ShapeProperties>();
+        if (spPr == null)
+        {
+            spPr = new CX.ShapeProperties();
+            // cx:spPr comes after tickLabels but before txPr in the cx:axis
+            // schema (catScaling → title → gridlines → tickLabels → numFmt
+            // → spPr → txPr → extLst).
+            var existingTxPr = axis.GetFirstChild<CX.TxPrTextBody>();
+            if (existingTxPr != null) axis.InsertBefore(spPr, existingTxPr);
+            else axis.AppendChild(spPr);
+        }
+        spPr.RemoveAllChildren<Drawing.Outline>();
+        if (value.Equals("none", StringComparison.OrdinalIgnoreCase))
+        {
+            var noFillOutline = new Drawing.Outline();
+            noFillOutline.AppendChild(new Drawing.NoFill());
+            spPr.PrependChild(noFillOutline);
+            return;
+        }
+        spPr.PrependChild(ChartHelper.BuildOutlineElement(value));
+    }
+
+    /// <summary>
+    /// Apply an a:outerShdw (inside a:effectLst) to a cx:series's own cx:spPr.
+    /// Preserves any existing solidFill so the series keeps its color.
+    /// </summary>
+    private static void ApplyCxSeriesShadow(CX.Series series, string value)
+    {
+        var spPr = series.GetFirstChild<CX.ShapeProperties>();
+        if (spPr == null)
+        {
+            spPr = new CX.ShapeProperties();
+            // spPr goes right after cx:tx per cx:series schema.
+            var tx = series.GetFirstChild<CX.Text>();
+            if (tx != null) tx.InsertAfterSelf(spPr);
+            else series.PrependChild(spPr);
+        }
+        // Remove any existing effectList so repeated Sets don't stack.
+        spPr.RemoveAllChildren<Drawing.EffectList>();
+        if (value.Equals("none", StringComparison.OrdinalIgnoreCase)) return;
+        var effects = new Drawing.EffectList();
+        effects.AppendChild(DrawingEffectsHelper.BuildOuterShadow(
+            value, DrawingEffectsHelper.BuildRgbColor));
+        spPr.AppendChild(effects);
+    }
+
+    /// <summary>
+    /// Apply a solid background fill to a cx:plotArea or cx:chartSpace via
+    /// its own cx:spPr child. Accepts "none" to clear.
+    /// </summary>
+    private static void ApplyCxAreaFill(OpenXmlCompositeElement container, string value)
+    {
+        var spPr = container.GetFirstChild<CX.ShapeProperties>();
+        if (spPr == null)
+        {
+            spPr = new CX.ShapeProperties();
+            container.AppendChild(spPr);
+        }
+        spPr.RemoveAllChildren<Drawing.SolidFill>();
+        spPr.RemoveAllChildren<Drawing.NoFill>();
+        if (value.Equals("none", StringComparison.OrdinalIgnoreCase))
+        {
+            spPr.PrependChild(new Drawing.NoFill());
+            return;
+        }
+        var (rgb, _) = ParseHelpers.SanitizeColorForOoxml(value);
+        spPr.PrependChild(new Drawing.SolidFill(
+            new Drawing.RgbColorModelHex { Val = rgb }));
+    }
+
+    /// <summary>
+    /// Apply an a:ln outline border to a cx:plotArea or cx:chartSpace via its
+    /// own cx:spPr child. Shares the "color / color:width / color:width:dash"
+    /// vocabulary with ChartHelper.BuildOutlineElement.
+    /// </summary>
+    private static void ApplyCxAreaBorder(OpenXmlCompositeElement container, string value)
+    {
+        var spPr = container.GetFirstChild<CX.ShapeProperties>();
+        if (spPr == null)
+        {
+            spPr = new CX.ShapeProperties();
+            container.AppendChild(spPr);
+        }
+        spPr.RemoveAllChildren<Drawing.Outline>();
+        if (value.Equals("none", StringComparison.OrdinalIgnoreCase))
+        {
+            var noFillOutline = new Drawing.Outline();
+            noFillOutline.AppendChild(new Drawing.NoFill());
+            spPr.AppendChild(noFillOutline);
+            return;
+        }
+        spPr.AppendChild(ChartHelper.BuildOutlineElement(value));
     }
 
     // Build the category axis (X axis for histogram / boxWhisker). Schema
@@ -244,6 +464,11 @@ internal static partial class ChartExBuilder
     private static CX.Axis BuildCategoryAxis(uint id, string chartType, Dictionary<string, string> properties)
     {
         var axis = new CX.Axis { Id = id };
+
+        // CONSISTENCY(chart-axis-visibility): apply @hidden from axis.visible
+        // / cataxis.visible / axis.delete props. See ApplyAxisHiddenFromProps
+        // for the precedence rules.
+        ApplyAxisHiddenFromProps(axis, properties, catOnly: true, valOnly: false);
 
         // catScaling is required. histogram defaults gapWidth="0" (bars touch)
         // because that's what real Excel emits and it's what users expect.
@@ -293,13 +518,32 @@ internal static partial class ChartExBuilder
             if (tickTxPr != null) axis.AppendChild(tickTxPr);
         }
 
+        // CONSISTENCY(chart-axis-line): optional category-axis spine outline.
+        // cataxis.line takes precedence over the shared axis.line.
+        var catAxisLine = properties.GetValueOrDefault("cataxisline")
+                       ?? properties.GetValueOrDefault("cataxis.line")
+                       ?? properties.GetValueOrDefault("axisline")
+                       ?? properties.GetValueOrDefault("axis.line");
+        if (!string.IsNullOrEmpty(catAxisLine))
+            ApplyCxAxisLine(axis, catAxisLine);
+
         return axis;
     }
 
     private static CX.Axis BuildValueAxis(uint id, Dictionary<string, string> properties)
     {
         var axis = new CX.Axis { Id = id };
-        axis.AppendChild(new CX.ValueAxisScaling());
+
+        // CONSISTENCY(chart-axis-visibility): axis.visible / axis.delete are
+        // mutually exclusive aliases for the same knob. valaxis.visible is
+        // the value-axis-only variant (matches ChartHelper.Setter.cs:817).
+        ApplyAxisHiddenFromProps(axis, properties, catOnly: false, valOnly: true);
+
+        // CONSISTENCY(chart-axis-scaling): parse axismin/axismax/majorunit/
+        // minorunit at Build time so newly created charts already have them.
+        var valScaling = new CX.ValueAxisScaling();
+        ApplyValueAxisScalingFromProps(valScaling, properties);
+        axis.AppendChild(valScaling);
 
         if (properties.TryGetValue("yAxisTitle", out var yTitle) && !string.IsNullOrEmpty(yTitle))
             axis.AppendChild(BuildAxisTitle(yTitle, properties));
@@ -329,7 +573,85 @@ internal static partial class ChartExBuilder
             if (tickTxPr != null) axis.AppendChild(tickTxPr);
         }
 
+        // CONSISTENCY(chart-axis-line): optional value-axis spine outline.
+        // Accepts "color", "color:width", "color:width:dash", or "none".
+        // ApplyCxAxisLine handles placement within the cx:axis schema.
+        var valAxisLine = properties.GetValueOrDefault("valaxisline")
+                       ?? properties.GetValueOrDefault("valaxis.line")
+                       ?? properties.GetValueOrDefault("axisline")
+                       ?? properties.GetValueOrDefault("axis.line");
+        if (!string.IsNullOrEmpty(valAxisLine))
+            ApplyCxAxisLine(axis, valAxisLine);
+
         return axis;
+    }
+
+    /// <summary>
+    /// Apply CX.Axis.Hidden from the three-way prop set: axis.visible /
+    /// axisvisible / axis.delete (both axes), cataxis.visible /
+    /// cataxisvisible (category-only), valaxis.visible / valaxisvisible
+    /// (value-only). The caller passes catOnly/valOnly flags indicating
+    /// which specific axis is being built; the shared prop still applies
+    /// universally. Matches ChartHelper.Setter.cs:795.
+    /// </summary>
+    private static void ApplyAxisHiddenFromProps(
+        CX.Axis axis, Dictionary<string, string> properties, bool catOnly, bool valOnly)
+    {
+        // Universal axis.visible / axis.delete first (if present).
+        var universalVisible = properties.GetValueOrDefault("axis.visible")
+                            ?? properties.GetValueOrDefault("axisvisible");
+        if (!string.IsNullOrEmpty(universalVisible))
+            axis.Hidden = !ParseHelpers.IsTruthy(universalVisible);
+
+        var universalDelete = properties.GetValueOrDefault("axis.delete");
+        if (!string.IsNullOrEmpty(universalDelete))
+            axis.Hidden = ParseHelpers.IsTruthy(universalDelete);
+
+        // Axis-specific override (takes precedence over the universal form).
+        if (catOnly)
+        {
+            var cv = properties.GetValueOrDefault("cataxis.visible")
+                  ?? properties.GetValueOrDefault("cataxisvisible");
+            if (!string.IsNullOrEmpty(cv)) axis.Hidden = !ParseHelpers.IsTruthy(cv);
+        }
+        if (valOnly)
+        {
+            var vv = properties.GetValueOrDefault("valaxis.visible")
+                  ?? properties.GetValueOrDefault("valaxisvisible");
+            if (!string.IsNullOrEmpty(vv)) axis.Hidden = !ParseHelpers.IsTruthy(vv);
+        }
+    }
+
+    /// <summary>
+    /// Copy axismin / axismax / majorunit / minorunit from properties onto
+    /// a <see cref="CX.ValueAxisScaling"/>. These are string-typed attributes
+    /// in cx namespace (unlike c:scaling which uses typed doubles), but we
+    /// still round-trip through <see cref="ParseHelpers.SafeParseDouble"/>
+    /// so NaN/Infinity are rejected.
+    /// </summary>
+    private static void ApplyValueAxisScalingFromProps(
+        CX.ValueAxisScaling scaling, Dictionary<string, string> properties)
+    {
+        string? FormatIfPresent(string keyA, string? keyB)
+        {
+            var v = properties.GetValueOrDefault(keyA);
+            if (string.IsNullOrEmpty(v) && keyB != null) v = properties.GetValueOrDefault(keyB);
+            if (string.IsNullOrEmpty(v)) return null;
+            var d = ParseHelpers.SafeParseDouble(v, keyA);
+            return d.ToString("G", CultureInfo.InvariantCulture);
+        }
+
+        var min = FormatIfPresent("axismin", "min");
+        if (min != null) scaling.Min = min;
+
+        var max = FormatIfPresent("axismax", "max");
+        if (max != null) scaling.Max = max;
+
+        var maj = FormatIfPresent("majorunit", null);
+        if (maj != null) scaling.MajorUnit = maj;
+
+        var mnr = FormatIfPresent("minorunit", null);
+        if (mnr != null) scaling.MinorUnit = mnr;
     }
 
     private static bool IsTruthyProp(Dictionary<string, string> properties, string key, bool defaultValue)
