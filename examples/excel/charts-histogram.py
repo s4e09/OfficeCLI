@@ -227,8 +227,21 @@ LAB = (
 )
 
 # officecli add charts-histogram.xlsx "/1-Binning Lab" --type chart \
-#   --prop chartType=histogram --prop title="1 · Auto-binning (Excel default)" \
-#   --prop series1="Samples:<bell>" ... <LAB styling>
+#   --prop chartType=histogram \
+#   --prop title="1 · Auto-binning (Excel default)" \
+#   --prop series1="Samples:<200 bell values>" \
+#   --prop fill=4472C4 \
+#   --prop title.color=1F2937 --prop title.size=13 --prop title.bold=true \
+#   --prop title.font="Helvetica Neue" \
+#   --prop xAxisTitle="Score" --prop yAxisTitle="Count" \
+#   --prop axisTitle.color=6B7280 --prop axisTitle.size=10 \
+#   --prop axisTitle.font="Helvetica Neue" \
+#   --prop "axisfont=9:6B7280:Helvetica Neue" \
+#   --prop gridlineColor=F0F0F0 \
+#   --prop plotareafill=FFFFFF --prop "plotarea.border=E5E7EB:0.75" \
+#   --prop chartareafill=F9FAFB --prop "chartarea.border=E5E7EB:0.75" \
+#   --prop "axisline=9CA3AF:0.75" \
+#   --prop x=0 --prop y=0 --prop width=13 --prop height=18
 # Features: no binCount, no binSize — Excel picks the bin count automatically.
 cli(f'add "{FILE}" "/1-Binning Lab" --type chart'
     f' --prop chartType=histogram'
@@ -237,6 +250,23 @@ cli(f'add "{FILE}" "/1-Binning Lab" --type chart'
     f'{LAB}'
     f' --prop x=0 --prop y=0 --prop width=13 --prop height=18')
 
+# officecli add charts-histogram.xlsx "/1-Binning Lab" --type chart \
+#   --prop chartType=histogram \
+#   --prop title="2 · binCount=8 (coarse)" \
+#   --prop series1="Samples:<200 bell values>" \
+#   --prop binCount=8 \
+#   --prop fill=4472C4 \
+#   --prop title.color=1F2937 --prop title.size=13 --prop title.bold=true \
+#   --prop title.font="Helvetica Neue" \
+#   --prop xAxisTitle="Score" --prop yAxisTitle="Count" \
+#   --prop axisTitle.color=6B7280 --prop axisTitle.size=10 \
+#   --prop axisTitle.font="Helvetica Neue" \
+#   --prop "axisfont=9:6B7280:Helvetica Neue" \
+#   --prop gridlineColor=F0F0F0 \
+#   --prop plotareafill=FFFFFF --prop "plotarea.border=E5E7EB:0.75" \
+#   --prop chartareafill=F9FAFB --prop "chartarea.border=E5E7EB:0.75" \
+#   --prop "axisline=9CA3AF:0.75" \
+#   --prop x=14 --prop y=0 --prop width=13 --prop height=18
 # Features: binCount=8 — coarse. Fewer, wider bars. Good for "what's the mode?"
 cli(f'add "{FILE}" "/1-Binning Lab" --type chart'
     f' --prop chartType=histogram'
@@ -246,6 +276,23 @@ cli(f'add "{FILE}" "/1-Binning Lab" --type chart'
     f'{LAB}'
     f' --prop x=14 --prop y=0 --prop width=13 --prop height=18')
 
+# officecli add charts-histogram.xlsx "/1-Binning Lab" --type chart \
+#   --prop chartType=histogram \
+#   --prop title="3 · binCount=32 (fine)" \
+#   --prop series1="Samples:<200 bell values>" \
+#   --prop binCount=32 \
+#   --prop fill=4472C4 \
+#   --prop title.color=1F2937 --prop title.size=13 --prop title.bold=true \
+#   --prop title.font="Helvetica Neue" \
+#   --prop xAxisTitle="Score" --prop yAxisTitle="Count" \
+#   --prop axisTitle.color=6B7280 --prop axisTitle.size=10 \
+#   --prop axisTitle.font="Helvetica Neue" \
+#   --prop "axisfont=9:6B7280:Helvetica Neue" \
+#   --prop gridlineColor=F0F0F0 \
+#   --prop plotareafill=FFFFFF --prop "plotarea.border=E5E7EB:0.75" \
+#   --prop chartareafill=F9FAFB --prop "chartarea.border=E5E7EB:0.75" \
+#   --prop "axisline=9CA3AF:0.75" \
+#   --prop x=0 --prop y=19 --prop width=13 --prop height=18
 # Features: binCount=32 — fine. Many narrow bars. Good for "is it really Gaussian?"
 cli(f'add "{FILE}" "/1-Binning Lab" --type chart'
     f' --prop chartType=histogram'
@@ -255,6 +302,23 @@ cli(f'add "{FILE}" "/1-Binning Lab" --type chart'
     f'{LAB}'
     f' --prop x=0 --prop y=19 --prop width=13 --prop height=18')
 
+# officecli add charts-histogram.xlsx "/1-Binning Lab" --type chart \
+#   --prop chartType=histogram \
+#   --prop title="4 · binSize=5 (fixed-width bins)" \
+#   --prop series1="Samples:<200 bell values>" \
+#   --prop binSize=5 \
+#   --prop fill=4472C4 \
+#   --prop title.color=1F2937 --prop title.size=13 --prop title.bold=true \
+#   --prop title.font="Helvetica Neue" \
+#   --prop xAxisTitle="Score" --prop yAxisTitle="Count" \
+#   --prop axisTitle.color=6B7280 --prop axisTitle.size=10 \
+#   --prop axisTitle.font="Helvetica Neue" \
+#   --prop "axisfont=9:6B7280:Helvetica Neue" \
+#   --prop gridlineColor=F0F0F0 \
+#   --prop plotareafill=FFFFFF --prop "plotarea.border=E5E7EB:0.75" \
+#   --prop chartareafill=F9FAFB --prop "chartarea.border=E5E7EB:0.75" \
+#   --prop "axisline=9CA3AF:0.75" \
+#   --prop x=14 --prop y=19 --prop width=13 --prop height=18
 # Features: binSize=5 — fixed bin width. Use when you want human-friendly
 # bin boundaries (multiples of 5, 10, etc) regardless of data range.
 cli(f'add "{FILE}" "/1-Binning Lab" --type chart'
@@ -265,6 +329,23 @@ cli(f'add "{FILE}" "/1-Binning Lab" --type chart'
     f'{LAB}'
     f' --prop x=14 --prop y=19 --prop width=13 --prop height=18')
 
+# officecli add charts-histogram.xlsx "/1-Binning Lab" --type chart \
+#   --prop chartType=histogram \
+#   --prop title="5 · underflow=55 · overflow=95 (fencing)" \
+#   --prop series1="Samples:<200 bell values>" \
+#   --prop binSize=5 --prop underflowBin=55 --prop overflowBin=95 \
+#   --prop fill=4472C4 \
+#   --prop title.color=1F2937 --prop title.size=13 --prop title.bold=true \
+#   --prop title.font="Helvetica Neue" \
+#   --prop xAxisTitle="Score" --prop yAxisTitle="Count" \
+#   --prop axisTitle.color=6B7280 --prop axisTitle.size=10 \
+#   --prop axisTitle.font="Helvetica Neue" \
+#   --prop "axisfont=9:6B7280:Helvetica Neue" \
+#   --prop gridlineColor=F0F0F0 \
+#   --prop plotareafill=FFFFFF --prop "plotarea.border=E5E7EB:0.75" \
+#   --prop chartareafill=F9FAFB --prop "chartarea.border=E5E7EB:0.75" \
+#   --prop "axisline=9CA3AF:0.75" \
+#   --prop x=0 --prop y=38 --prop width=13 --prop height=18
 # Features: underflowBin=55 + overflowBin=95 — outlier fencing. Everything
 # below 55 or above 95 collapses into a single <55 / >95 bar.
 cli(f'add "{FILE}" "/1-Binning Lab" --type chart'
@@ -275,6 +356,23 @@ cli(f'add "{FILE}" "/1-Binning Lab" --type chart'
     f'{LAB}'
     f' --prop x=0 --prop y=38 --prop width=13 --prop height=18')
 
+# officecli add charts-histogram.xlsx "/1-Binning Lab" --type chart \
+#   --prop chartType=histogram \
+#   --prop title="6 · [a,b) intervals + gapWidth=30" \
+#   --prop series1="Samples:<200 bell values>" \
+#   --prop binCount=16 --prop intervalClosed=l --prop gapWidth=30 \
+#   --prop fill=4472C4 \
+#   --prop title.color=1F2937 --prop title.size=13 --prop title.bold=true \
+#   --prop title.font="Helvetica Neue" \
+#   --prop xAxisTitle="Score" --prop yAxisTitle="Count" \
+#   --prop axisTitle.color=6B7280 --prop axisTitle.size=10 \
+#   --prop axisTitle.font="Helvetica Neue" \
+#   --prop "axisfont=9:6B7280:Helvetica Neue" \
+#   --prop gridlineColor=F0F0F0 \
+#   --prop plotareafill=FFFFFF --prop "plotarea.border=E5E7EB:0.75" \
+#   --prop chartareafill=F9FAFB --prop "chartarea.border=E5E7EB:0.75" \
+#   --prop "axisline=9CA3AF:0.75" \
+#   --prop x=14 --prop y=38 --prop width=13 --prop height=18
 # Features: intervalClosed=l (half-open [a,b)) + gapWidth=30 — shows the
 # "left-closed" variant AND pushes bars apart so you can see each one.
 # Useful when the dataset has values lying exactly on a bin boundary.
@@ -313,6 +411,22 @@ ZOO = (
     ' --prop "axisline=9CA3AF:0.75"'
 )
 
+# officecli add charts-histogram.xlsx "/2-Distribution Zoo" --type chart \
+#   --prop chartType=histogram \
+#   --prop title="Normal · bell curve (reference)" \
+#   --prop series1="Samples:<200 bell values>" \
+#   --prop binCount=18 --prop fill=2F5597 \
+#   --prop xAxisTitle="Score" --prop yAxisTitle="Count" \
+#   --prop title.color=1F2937 --prop title.size=13 --prop title.bold=true \
+#   --prop title.font="Helvetica Neue" \
+#   --prop axisTitle.color=6B7280 --prop axisTitle.size=10 \
+#   --prop axisTitle.font="Helvetica Neue" \
+#   --prop "axisfont=9:6B7280:Helvetica Neue" \
+#   --prop gridlineColor=EFEFEF \
+#   --prop plotareafill=FFFFFF --prop "plotarea.border=E5E7EB:0.75" \
+#   --prop chartareafill=F9FAFB --prop "chartarea.border=E5E7EB:0.75" \
+#   --prop "axisline=9CA3AF:0.75" \
+#   --prop x=0 --prop y=0 --prop width=13 --prop height=18
 # Features: classic bell curve reference, binCount=18, midnight blue fill.
 cli(f'add "{FILE}" "/2-Distribution Zoo" --type chart'
     f' --prop chartType=histogram'
@@ -323,6 +437,22 @@ cli(f'add "{FILE}" "/2-Distribution Zoo" --type chart'
     f'{ZOO}'
     f' --prop x=0 --prop y=0 --prop width=13 --prop height=18')
 
+# officecli add charts-histogram.xlsx "/2-Distribution Zoo" --type chart \
+#   --prop chartType=histogram \
+#   --prop title="Bimodal · two hidden cohorts" \
+#   --prop series1="Score:<160 bimodal values>" \
+#   --prop binCount=22 --prop fill=ED7D31 \
+#   --prop xAxisTitle="Test score" --prop yAxisTitle="Students" \
+#   --prop title.color=1F2937 --prop title.size=13 --prop title.bold=true \
+#   --prop title.font="Helvetica Neue" \
+#   --prop axisTitle.color=6B7280 --prop axisTitle.size=10 \
+#   --prop axisTitle.font="Helvetica Neue" \
+#   --prop "axisfont=9:6B7280:Helvetica Neue" \
+#   --prop gridlineColor=EFEFEF \
+#   --prop plotareafill=FFFFFF --prop "plotarea.border=E5E7EB:0.75" \
+#   --prop chartareafill=F9FAFB --prop "chartarea.border=E5E7EB:0.75" \
+#   --prop "axisline=9CA3AF:0.75" \
+#   --prop x=14 --prop y=0 --prop width=13 --prop height=18
 # Features: bimodal — two hidden populations. Narrow bins reveal the split.
 cli(f'add "{FILE}" "/2-Distribution Zoo" --type chart'
     f' --prop chartType=histogram'
@@ -333,6 +463,22 @@ cli(f'add "{FILE}" "/2-Distribution Zoo" --type chart'
     f'{ZOO}'
     f' --prop x=14 --prop y=0 --prop width=13 --prop height=18')
 
+# officecli add charts-histogram.xlsx "/2-Distribution Zoo" --type chart \
+#   --prop chartType=histogram \
+#   --prop title="Right-skewed · log-normal (income)" \
+#   --prop series1="Income:<180 log-normal values>" \
+#   --prop binCount=20 --prop fill=70AD47 \
+#   --prop xAxisTitle="Monthly income ($k)" --prop yAxisTitle="People" \
+#   --prop title.color=1F2937 --prop title.size=13 --prop title.bold=true \
+#   --prop title.font="Helvetica Neue" \
+#   --prop axisTitle.color=6B7280 --prop axisTitle.size=10 \
+#   --prop axisTitle.font="Helvetica Neue" \
+#   --prop "axisfont=9:6B7280:Helvetica Neue" \
+#   --prop gridlineColor=EFEFEF \
+#   --prop plotareafill=FFFFFF --prop "plotarea.border=E5E7EB:0.75" \
+#   --prop chartareafill=F9FAFB --prop "chartarea.border=E5E7EB:0.75" \
+#   --prop "axisline=9CA3AF:0.75" \
+#   --prop x=0 --prop y=19 --prop width=13 --prop height=18
 # Features: right-skewed log-normal. Mean >> median, long tail to the right.
 cli(f'add "{FILE}" "/2-Distribution Zoo" --type chart'
     f' --prop chartType=histogram'
@@ -343,6 +489,22 @@ cli(f'add "{FILE}" "/2-Distribution Zoo" --type chart'
     f'{ZOO}'
     f' --prop x=0 --prop y=19 --prop width=13 --prop height=18')
 
+# officecli add charts-histogram.xlsx "/2-Distribution Zoo" --type chart \
+#   --prop chartType=histogram \
+#   --prop title="Left-skewed · retirement ages" \
+#   --prop series1="Age:<140 left-skewed values>" \
+#   --prop binCount=18 --prop fill=7030A0 \
+#   --prop xAxisTitle="Age at retirement" --prop yAxisTitle="Retirees" \
+#   --prop title.color=1F2937 --prop title.size=13 --prop title.bold=true \
+#   --prop title.font="Helvetica Neue" \
+#   --prop axisTitle.color=6B7280 --prop axisTitle.size=10 \
+#   --prop axisTitle.font="Helvetica Neue" \
+#   --prop "axisfont=9:6B7280:Helvetica Neue" \
+#   --prop gridlineColor=EFEFEF \
+#   --prop plotareafill=FFFFFF --prop "plotarea.border=E5E7EB:0.75" \
+#   --prop chartareafill=F9FAFB --prop "chartarea.border=E5E7EB:0.75" \
+#   --prop "axisline=9CA3AF:0.75" \
+#   --prop x=14 --prop y=19 --prop width=13 --prop height=18
 # Features: left-skewed — retirement ages cluster high, tail stretches left.
 cli(f'add "{FILE}" "/2-Distribution Zoo" --type chart'
     f' --prop chartType=histogram'
@@ -353,6 +515,22 @@ cli(f'add "{FILE}" "/2-Distribution Zoo" --type chart'
     f'{ZOO}'
     f' --prop x=14 --prop y=19 --prop width=13 --prop height=18')
 
+# officecli add charts-histogram.xlsx "/2-Distribution Zoo" --type chart \
+#   --prop chartType=histogram \
+#   --prop title="Uniform · flat floor" \
+#   --prop series1="Draws:<160 uniform values>" \
+#   --prop binSize=10 --prop fill=00B0F0 \
+#   --prop xAxisTitle="Random draw (0-100)" --prop yAxisTitle="Count" \
+#   --prop title.color=1F2937 --prop title.size=13 --prop title.bold=true \
+#   --prop title.font="Helvetica Neue" \
+#   --prop axisTitle.color=6B7280 --prop axisTitle.size=10 \
+#   --prop axisTitle.font="Helvetica Neue" \
+#   --prop "axisfont=9:6B7280:Helvetica Neue" \
+#   --prop gridlineColor=EFEFEF \
+#   --prop plotareafill=FFFFFF --prop "plotarea.border=E5E7EB:0.75" \
+#   --prop chartareafill=F9FAFB --prop "chartarea.border=E5E7EB:0.75" \
+#   --prop "axisline=9CA3AF:0.75" \
+#   --prop x=0 --prop y=38 --prop width=13 --prop height=18
 # Features: uniform — every value equally likely. binSize emphasizes the
 # "flat floor" visual tell.
 cli(f'add "{FILE}" "/2-Distribution Zoo" --type chart'
@@ -364,6 +542,22 @@ cli(f'add "{FILE}" "/2-Distribution Zoo" --type chart'
     f'{ZOO}'
     f' --prop x=0 --prop y=38 --prop width=13 --prop height=18')
 
+# officecli add charts-histogram.xlsx "/2-Distribution Zoo" --type chart \
+#   --prop chartType=histogram \
+#   --prop title="Heavy-tailed · Pareto (overflow=250)" \
+#   --prop series1="Latency:<200 Pareto values>" \
+#   --prop binSize=20 --prop overflowBin=250 --prop fill=C00000 \
+#   --prop xAxisTitle="Latency (ms)" --prop yAxisTitle="Requests" \
+#   --prop title.color=1F2937 --prop title.size=13 --prop title.bold=true \
+#   --prop title.font="Helvetica Neue" \
+#   --prop axisTitle.color=6B7280 --prop axisTitle.size=10 \
+#   --prop axisTitle.font="Helvetica Neue" \
+#   --prop "axisfont=9:6B7280:Helvetica Neue" \
+#   --prop gridlineColor=EFEFEF \
+#   --prop plotareafill=FFFFFF --prop "plotarea.border=E5E7EB:0.75" \
+#   --prop chartareafill=F9FAFB --prop "chartarea.border=E5E7EB:0.75" \
+#   --prop "axisline=9CA3AF:0.75" \
+#   --prop x=14 --prop y=38 --prop width=13 --prop height=18
 # Features: heavy-tailed Pareto + overflowBin. Fences the catastrophic tail
 # so the interesting bulk of the distribution stays readable.
 cli(f'add "{FILE}" "/2-Distribution Zoo" --type chart'
@@ -396,7 +590,24 @@ cli(f'add "{FILE}" "/2-Distribution Zoo" --type chart'
 print("\n--- 3-Theme Gallery ---")
 cli(f'add "{FILE}" / --type sheet --prop name="3-Theme Gallery"')
 
-# Theme 1 · Midnight Academia (dark navy + gold, serif title)
+# officecli add charts-histogram.xlsx "/3-Theme Gallery" --type chart \
+#   --prop chartType=histogram \
+#   --prop title="Midnight Academia" \
+#   --prop title.color=F5F1E0 --prop title.size=14 --prop title.bold=true \
+#   --prop title.font="Georgia" \
+#   --prop "title.shadow=000000-6-45-3-70" \
+#   --prop series1="Samples:<200 bell values>" \
+#   --prop binCount=18 --prop fill=F0C96A \
+#   --prop "series.shadow=000000-6-45-3-55" \
+#   --prop plotareafill=1A1F2C --prop "plotarea.border=3A3E4E:1" \
+#   --prop chartareafill=0B0F18 --prop "chartarea.border=2A2E3E:0.75" \
+#   --prop gridlineColor=2F3544 \
+#   --prop "axisfont=9:B8B090:Georgia" \
+#   --prop xAxisTitle="Score" --prop yAxisTitle="Count" \
+#   --prop axisTitle.color=C9B87A --prop axisTitle.size=10 \
+#   --prop axisTitle.font="Georgia" \
+#   --prop "axisline=5A5848:1" \
+#   --prop x=0 --prop y=0 --prop width=13 --prop height=18
 # Features: dark plot area, gold bars, series.shadow, title.shadow
 cli(f'add "{FILE}" "/3-Theme Gallery" --type chart'
     f' --prop chartType=histogram'
@@ -417,6 +628,22 @@ cli(f'add "{FILE}" "/3-Theme Gallery" --type chart'
     f' --prop "axisline=5A5848:1"'
     f' --prop x=0 --prop y=0 --prop width=13 --prop height=18')
 
+# officecli add charts-histogram.xlsx "/3-Theme Gallery" --type chart \
+#   --prop chartType=histogram \
+#   --prop title="Sunset Terracotta" \
+#   --prop title.color=3F2818 --prop title.size=14 --prop title.bold=true \
+#   --prop title.font="Georgia" \
+#   --prop series1="Samples:<200 bell values>" \
+#   --prop binCount=18 --prop fill=E85D4A \
+#   --prop plotareafill=FFF5E8 --prop "plotarea.border=F0D8B0:1" \
+#   --prop chartareafill=FFE6C7 --prop "chartarea.border=E6BC88:1" \
+#   --prop gridlineColor=F5C98A \
+#   --prop "axisfont=9:6B4A2A:Georgia" \
+#   --prop xAxisTitle="Score" --prop yAxisTitle="Count" \
+#   --prop axisTitle.color=A8522C --prop axisTitle.size=10 \
+#   --prop axisTitle.font="Georgia" \
+#   --prop "axisline=C08050:1" \
+#   --prop x=14 --prop y=0 --prop width=13 --prop height=18
 # Theme 2 · Sunset Terracotta (warm cream + coral, serif)
 cli(f'add "{FILE}" "/3-Theme Gallery" --type chart'
     f' --prop chartType=histogram'
@@ -435,6 +662,22 @@ cli(f'add "{FILE}" "/3-Theme Gallery" --type chart'
     f' --prop "axisline=C08050:1"'
     f' --prop x=14 --prop y=0 --prop width=13 --prop height=18')
 
+# officecli add charts-histogram.xlsx "/3-Theme Gallery" --type chart \
+#   --prop chartType=histogram \
+#   --prop title="Forest Parchment" \
+#   --prop title.color=1F3A1F --prop title.size=14 --prop title.bold=true \
+#   --prop title.font="Georgia" \
+#   --prop series1="Samples:<200 bell values>" \
+#   --prop binCount=18 --prop fill=2F5D3A \
+#   --prop plotareafill=F3EDD8 --prop "plotarea.border=C8B890:1" \
+#   --prop chartareafill=EADFBE --prop "chartarea.border=A89858:1" \
+#   --prop gridlineColor=C0B888 \
+#   --prop "axisfont=9:4A5A3A:Georgia" \
+#   --prop xAxisTitle="Score" --prop yAxisTitle="Count" \
+#   --prop axisTitle.color=3F5A2F --prop axisTitle.size=10 \
+#   --prop axisTitle.font="Georgia" \
+#   --prop "axisline=6A7A4A:1" \
+#   --prop x=0 --prop y=19 --prop width=13 --prop height=18
 # Theme 3 · Forest Parchment (beige + forest green, serif)
 cli(f'add "{FILE}" "/3-Theme Gallery" --type chart'
     f' --prop chartType=histogram'
@@ -453,6 +696,22 @@ cli(f'add "{FILE}" "/3-Theme Gallery" --type chart'
     f' --prop "axisline=6A7A4A:1"'
     f' --prop x=0 --prop y=19 --prop width=13 --prop height=18')
 
+# officecli add charts-histogram.xlsx "/3-Theme Gallery" --type chart \
+#   --prop chartType=histogram \
+#   --prop title="Editorial Mono" \
+#   --prop title.color=111111 --prop title.size=14 --prop title.bold=true \
+#   --prop title.font="Helvetica Neue" \
+#   --prop series1="Samples:<200 bell values>" \
+#   --prop binCount=18 --prop fill=2A2A2A \
+#   --prop plotareafill=FFFFFF --prop "plotarea.border=CCCCCC:0.75" \
+#   --prop chartareafill=FAFAFA --prop "chartarea.border=E0E0E0:0.75" \
+#   --prop gridlineColor=EEEEEE \
+#   --prop "axisfont=9:555555:Helvetica Neue" \
+#   --prop xAxisTitle="Score" --prop yAxisTitle="Count" \
+#   --prop axisTitle.color=333333 --prop axisTitle.size=10 \
+#   --prop axisTitle.font="Helvetica Neue" \
+#   --prop "axisline=888888:1" \
+#   --prop x=14 --prop y=19 --prop width=13 --prop height=18
 # Theme 4 · Editorial Mono (pure grayscale, sans)
 cli(f'add "{FILE}" "/3-Theme Gallery" --type chart'
     f' --prop chartType=histogram'
@@ -471,6 +730,24 @@ cli(f'add "{FILE}" "/3-Theme Gallery" --type chart'
     f' --prop "axisline=888888:1"'
     f' --prop x=14 --prop y=19 --prop width=13 --prop height=18')
 
+# officecli add charts-histogram.xlsx "/3-Theme Gallery" --type chart \
+#   --prop chartType=histogram \
+#   --prop title="Neon Terminal" \
+#   --prop title.color=00F0C8 --prop title.size=14 --prop title.bold=true \
+#   --prop title.font="Courier New" \
+#   --prop "title.shadow=00F0C8-6-45-0-40" \
+#   --prop series1="Samples:<200 bell values>" \
+#   --prop binCount=18 --prop fill=00F0C8 \
+#   --prop "series.shadow=00F0C8-8-45-0-45" \
+#   --prop plotareafill=0A0A14 --prop "plotarea.border=1F2F3F:1" \
+#   --prop chartareafill=000008 --prop "chartarea.border=1F1F2F:1" \
+#   --prop gridlineColor=1A2A3A \
+#   --prop "axisfont=9:00D0E8:Courier New" \
+#   --prop xAxisTitle="Score" --prop yAxisTitle="Count" \
+#   --prop axisTitle.color=00D0E8 --prop axisTitle.size=10 \
+#   --prop axisTitle.font="Courier New" \
+#   --prop "axisline=00707F:1" \
+#   --prop x=0 --prop y=38 --prop width=13 --prop height=18
 # Theme 5 · Neon Terminal (black + electric cyan, mono)
 cli(f'add "{FILE}" "/3-Theme Gallery" --type chart'
     f' --prop chartType=histogram'
@@ -491,6 +768,22 @@ cli(f'add "{FILE}" "/3-Theme Gallery" --type chart'
     f' --prop "axisline=00707F:1"'
     f' --prop x=0 --prop y=38 --prop width=13 --prop height=18')
 
+# officecli add charts-histogram.xlsx "/3-Theme Gallery" --type chart \
+#   --prop chartType=histogram \
+#   --prop title="Pastel Bloom" \
+#   --prop title.color=5A3C4A --prop title.size=14 --prop title.bold=true \
+#   --prop title.font="Helvetica Neue" \
+#   --prop series1="Samples:<200 bell values>" \
+#   --prop binCount=18 --prop fill=F5A7C8 \
+#   --prop plotareafill=FDF4F8 --prop "plotarea.border=F0D0E0:1" \
+#   --prop chartareafill=FAEDF2 --prop "chartarea.border=F0C0D8:1" \
+#   --prop gridlineColor=F5D8E5 \
+#   --prop "axisfont=9:8A6878:Helvetica Neue" \
+#   --prop xAxisTitle="Score" --prop yAxisTitle="Count" \
+#   --prop axisTitle.color=A04C6A --prop axisTitle.size=10 \
+#   --prop axisTitle.font="Helvetica Neue" \
+#   --prop "axisline=C888A0:1" \
+#   --prop x=14 --prop y=38 --prop width=13 --prop height=18
 # Theme 6 · Pastel Bloom (lavender cream + rose, sans)
 cli(f'add "{FILE}" "/3-Theme Gallery" --type chart'
     f' --prop chartType=histogram'
@@ -521,6 +814,21 @@ cli(f'add "{FILE}" "/3-Theme Gallery" --type chart'
 print("\n--- 4-Typography ---")
 cli(f'add "{FILE}" / --type sheet --prop name="4-Typography"')
 
+# officecli add charts-histogram.xlsx "/4-Typography" --type chart \
+#   --prop chartType=histogram \
+#   --prop title="Helvetica Neue · modern sans" \
+#   --prop title.color=1F2937 --prop title.size=16 --prop title.bold=true \
+#   --prop title.font="Helvetica Neue" \
+#   --prop series1="Samples:<200 bell values>" \
+#   --prop binCount=18 --prop fill=4472C4 \
+#   --prop xAxisTitle="Score" --prop yAxisTitle="Count" \
+#   --prop axisTitle.color=4472C4 --prop axisTitle.size=11 \
+#   --prop axisTitle.font="Helvetica Neue" \
+#   --prop "axisfont=10:6B7280:Helvetica Neue" \
+#   --prop gridlineColor=EEEEEE \
+#   --prop plotareafill=FFFFFF --prop "plotarea.border=E5E7EB:0.75" \
+#   --prop chartareafill=F9FAFB --prop "chartarea.border=E5E7EB:0.75" \
+#   --prop x=0 --prop y=0 --prop width=13 --prop height=18
 # Specimen 1 · Helvetica Neue (modern sans — dashboards, corporate reports)
 cli(f'add "{FILE}" "/4-Typography" --type chart'
     f' --prop chartType=histogram'
@@ -538,6 +846,21 @@ cli(f'add "{FILE}" "/4-Typography" --type chart'
     f' --prop chartareafill=F9FAFB --prop "chartarea.border=E5E7EB:0.75"'
     f' --prop x=0 --prop y=0 --prop width=13 --prop height=18')
 
+# officecli add charts-histogram.xlsx "/4-Typography" --type chart \
+#   --prop chartType=histogram \
+#   --prop title="Georgia · editorial serif" \
+#   --prop title.color=3F2818 --prop title.size=16 --prop title.bold=true \
+#   --prop title.font="Georgia" \
+#   --prop series1="Samples:<200 bell values>" \
+#   --prop binCount=18 --prop fill=A8522C \
+#   --prop xAxisTitle="Score" --prop yAxisTitle="Count" \
+#   --prop axisTitle.color=A8522C --prop axisTitle.size=11 \
+#   --prop axisTitle.font="Georgia" \
+#   --prop "axisfont=10:6B4A2A:Georgia" \
+#   --prop gridlineColor=F0E8D8 \
+#   --prop plotareafill=FFFBF3 --prop "plotarea.border=E8D8B8:0.75" \
+#   --prop chartareafill=FDF6E8 --prop "chartarea.border=E8D8B8:0.75" \
+#   --prop x=14 --prop y=0 --prop width=13 --prop height=18
 # Specimen 2 · Georgia (editorial serif — magazines, long-form reports)
 cli(f'add "{FILE}" "/4-Typography" --type chart'
     f' --prop chartType=histogram'
@@ -555,6 +878,21 @@ cli(f'add "{FILE}" "/4-Typography" --type chart'
     f' --prop chartareafill=FDF6E8 --prop "chartarea.border=E8D8B8:0.75"'
     f' --prop x=14 --prop y=0 --prop width=13 --prop height=18')
 
+# officecli add charts-histogram.xlsx "/4-Typography" --type chart \
+#   --prop chartType=histogram \
+#   --prop title="Courier New · data mono" \
+#   --prop title.color=1A3A1A --prop title.size=16 --prop title.bold=true \
+#   --prop title.font="Courier New" \
+#   --prop series1="Samples:<200 bell values>" \
+#   --prop binCount=18 --prop fill=2F8F4F \
+#   --prop xAxisTitle="Score" --prop yAxisTitle="Count" \
+#   --prop axisTitle.color=2F8F4F --prop axisTitle.size=11 \
+#   --prop axisTitle.font="Courier New" \
+#   --prop "axisfont=10:3A5A3A:Courier New" \
+#   --prop gridlineColor=E0EDE0 \
+#   --prop plotareafill=F7FBF7 --prop "plotarea.border=C8DCC8:0.75" \
+#   --prop chartareafill=F0F7F0 --prop "chartarea.border=C8DCC8:0.75" \
+#   --prop x=0 --prop y=19 --prop width=13 --prop height=18
 # Specimen 3 · Courier New (monospace — data, telemetry, engineering)
 cli(f'add "{FILE}" "/4-Typography" --type chart'
     f' --prop chartType=histogram'
@@ -572,6 +910,21 @@ cli(f'add "{FILE}" "/4-Typography" --type chart'
     f' --prop chartareafill=F0F7F0 --prop "chartarea.border=C8DCC8:0.75"'
     f' --prop x=0 --prop y=19 --prop width=13 --prop height=18')
 
+# officecli add charts-histogram.xlsx "/4-Typography" --type chart \
+#   --prop chartType=histogram \
+#   --prop title="Verdana · friendly sans" \
+#   --prop title.color=4A2B6A --prop title.size=16 --prop title.bold=true \
+#   --prop title.font="Verdana" \
+#   --prop series1="Samples:<200 bell values>" \
+#   --prop binCount=18 --prop fill=8E4DBB \
+#   --prop xAxisTitle="Score" --prop yAxisTitle="Count" \
+#   --prop axisTitle.color=8E4DBB --prop axisTitle.size=11 \
+#   --prop axisTitle.font="Verdana" \
+#   --prop "axisfont=10:6B4A8A:Verdana" \
+#   --prop gridlineColor=ECE0F4 \
+#   --prop plotareafill=FCF7FF --prop "plotarea.border=D8C4E8:0.75" \
+#   --prop chartareafill=F6EDFA --prop "chartarea.border=D8C4E8:0.75" \
+#   --prop x=14 --prop y=19 --prop width=13 --prop height=18
 # Specimen 4 · Verdana (friendly sans — onboarding, public-facing UI)
 cli(f'add "{FILE}" "/4-Typography" --type chart'
     f' --prop chartType=histogram'
@@ -619,6 +972,24 @@ DASH = (
     ' --prop dataLabels=false'
 )
 
+# officecli add charts-histogram.xlsx "/5-ML Dashboard" --type chart \
+#   --prop chartType=histogram \
+#   --prop title="Inference Latency · p50-p99 (ms)" \
+#   --prop series1="Latency:<250 Pareto latency values>" \
+#   --prop binSize=25 --prop overflowBin=300 --prop fill=EF4444 \
+#   --prop "series.shadow=EF4444-4-45-2-25" \
+#   --prop xAxisTitle="Latency (ms)" --prop yAxisTitle="Requests" \
+#   --prop title.color=1F2937 --prop title.size=12 --prop title.bold=true \
+#   --prop title.font="Helvetica Neue" \
+#   --prop axisTitle.color=6B7280 --prop axisTitle.size=9 \
+#   --prop axisTitle.font="Helvetica Neue" \
+#   --prop "axisfont=8:6B7280:Helvetica Neue" \
+#   --prop gridlineColor=F0F0F0 \
+#   --prop plotareafill=FFFFFF --prop "plotarea.border=E5E7EB:0.75" \
+#   --prop chartareafill=F9FAFB --prop "chartarea.border=E5E7EB:0.75" \
+#   --prop "axisline=9CA3AF:0.75" \
+#   --prop dataLabels=false \
+#   --prop x=0 --prop y=0 --prop width=13 --prop height=18
 # 1 · Inference Latency — heavy-tail, overflow-fenced, red for "watch this"
 cli(f'add "{FILE}" "/5-ML Dashboard" --type chart'
     f' --prop chartType=histogram'
@@ -630,6 +1001,24 @@ cli(f'add "{FILE}" "/5-ML Dashboard" --type chart'
     f'{DASH}'
     f' --prop x=0 --prop y=0 --prop width=13 --prop height=18')
 
+# officecli add charts-histogram.xlsx "/5-ML Dashboard" --type chart \
+#   --prop chartType=histogram \
+#   --prop title="Prediction Confidence" \
+#   --prop series1="Confidence:<240 beta confidence values>" \
+#   --prop binSize=5 --prop fill=10B981 \
+#   --prop axismin=0 --prop majorunit=50 \
+#   --prop xAxisTitle="Softmax confidence (%)" --prop yAxisTitle="Samples" \
+#   --prop title.color=1F2937 --prop title.size=12 --prop title.bold=true \
+#   --prop title.font="Helvetica Neue" \
+#   --prop axisTitle.color=6B7280 --prop axisTitle.size=9 \
+#   --prop axisTitle.font="Helvetica Neue" \
+#   --prop "axisfont=8:6B7280:Helvetica Neue" \
+#   --prop gridlineColor=F0F0F0 \
+#   --prop plotareafill=FFFFFF --prop "plotarea.border=E5E7EB:0.75" \
+#   --prop chartareafill=F9FAFB --prop "chartarea.border=E5E7EB:0.75" \
+#   --prop "axisline=9CA3AF:0.75" \
+#   --prop dataLabels=false \
+#   --prop x=14 --prop y=0 --prop width=13 --prop height=18
 # 2 · Prediction Confidence — beta-like, axismin/max locked to 0..100
 cli(f'add "{FILE}" "/5-ML Dashboard" --type chart'
     f' --prop chartType=histogram'
@@ -641,6 +1030,23 @@ cli(f'add "{FILE}" "/5-ML Dashboard" --type chart'
     f'{DASH}'
     f' --prop x=14 --prop y=0 --prop width=13 --prop height=18')
 
+# officecli add charts-histogram.xlsx "/5-ML Dashboard" --type chart \
+#   --prop chartType=histogram \
+#   --prop title="|Residual| · model calibration" \
+#   --prop series1="Residual:<180 half-normal error values>" \
+#   --prop binSize=0.25 --prop intervalClosed=l --prop fill=F59E0B \
+#   --prop xAxisTitle="|y - ŷ| (logit)" --prop yAxisTitle="Samples" \
+#   --prop title.color=1F2937 --prop title.size=12 --prop title.bold=true \
+#   --prop title.font="Helvetica Neue" \
+#   --prop axisTitle.color=6B7280 --prop axisTitle.size=9 \
+#   --prop axisTitle.font="Helvetica Neue" \
+#   --prop "axisfont=8:6B7280:Helvetica Neue" \
+#   --prop gridlineColor=F0F0F0 \
+#   --prop plotareafill=FFFFFF --prop "plotarea.border=E5E7EB:0.75" \
+#   --prop chartareafill=F9FAFB --prop "chartarea.border=E5E7EB:0.75" \
+#   --prop "axisline=9CA3AF:0.75" \
+#   --prop dataLabels=false \
+#   --prop x=0 --prop y=19 --prop width=13 --prop height=18
 # 3 · Residual Magnitude — half-normal, intervalClosed=l so bin=0 catches zeros
 cli(f'add "{FILE}" "/5-ML Dashboard" --type chart'
     f' --prop chartType=histogram'
@@ -651,6 +1057,23 @@ cli(f'add "{FILE}" "/5-ML Dashboard" --type chart'
     f'{DASH}'
     f' --prop x=0 --prop y=19 --prop width=13 --prop height=18')
 
+# officecli add charts-histogram.xlsx "/5-ML Dashboard" --type chart \
+#   --prop chartType=histogram \
+#   --prop title="Token Length · short vs long prompts" \
+#   --prop series1="Tokens:<180 bimodal token-length values>" \
+#   --prop binCount=24 --prop fill=6366F1 \
+#   --prop xAxisTitle="Tokens" --prop yAxisTitle="Requests" \
+#   --prop title.color=1F2937 --prop title.size=12 --prop title.bold=true \
+#   --prop title.font="Helvetica Neue" \
+#   --prop axisTitle.color=6B7280 --prop axisTitle.size=9 \
+#   --prop axisTitle.font="Helvetica Neue" \
+#   --prop "axisfont=8:6B7280:Helvetica Neue" \
+#   --prop gridlineColor=F0F0F0 \
+#   --prop plotareafill=FFFFFF --prop "plotarea.border=E5E7EB:0.75" \
+#   --prop chartareafill=F9FAFB --prop "chartarea.border=E5E7EB:0.75" \
+#   --prop "axisline=9CA3AF:0.75" \
+#   --prop dataLabels=false \
+#   --prop x=14 --prop y=19 --prop width=13 --prop height=18
 # 4 · Token Length — bimodal (short prompts vs long prompts)
 cli(f'add "{FILE}" "/5-ML Dashboard" --type chart'
     f' --prop chartType=histogram'
@@ -661,6 +1084,24 @@ cli(f'add "{FILE}" "/5-ML Dashboard" --type chart'
     f'{DASH}'
     f' --prop x=14 --prop y=19 --prop width=13 --prop height=18')
 
+# officecli add charts-histogram.xlsx "/5-ML Dashboard" --type chart \
+#   --prop chartType=histogram \
+#   --prop title="GPU Utilization" \
+#   --prop series1="GPU:<200 normal GPU utilization values>" \
+#   --prop binSize=5 --prop fill=8B5CF6 \
+#   --prop axismin=0 --prop axismax=50 --prop majorunit=10 \
+#   --prop xAxisTitle="Utilization (%)" --prop yAxisTitle="Samples" \
+#   --prop title.color=1F2937 --prop title.size=12 --prop title.bold=true \
+#   --prop title.font="Helvetica Neue" \
+#   --prop axisTitle.color=6B7280 --prop axisTitle.size=9 \
+#   --prop axisTitle.font="Helvetica Neue" \
+#   --prop "axisfont=8:6B7280:Helvetica Neue" \
+#   --prop gridlineColor=F0F0F0 \
+#   --prop plotareafill=FFFFFF --prop "plotarea.border=E5E7EB:0.75" \
+#   --prop chartareafill=F9FAFB --prop "chartarea.border=E5E7EB:0.75" \
+#   --prop "axisline=9CA3AF:0.75" \
+#   --prop dataLabels=false \
+#   --prop x=0 --prop y=38 --prop width=13 --prop height=18
 # 5 · GPU Utilization — locked axis range so dashboard charts share scale
 cli(f'add "{FILE}" "/5-ML Dashboard" --type chart'
     f' --prop chartType=histogram'
@@ -672,6 +1113,23 @@ cli(f'add "{FILE}" "/5-ML Dashboard" --type chart'
     f'{DASH}'
     f' --prop x=0 --prop y=38 --prop width=13 --prop height=18')
 
+# officecli add charts-histogram.xlsx "/5-ML Dashboard" --type chart \
+#   --prop chartType=histogram \
+#   --prop title="Cost per Request ($ × 0.001)" \
+#   --prop series1="Cost:<220 log-normal cost values>" \
+#   --prop binSize=5 --prop overflowBin=120 --prop fill=EC4899 \
+#   --prop dataLabels=true --prop "datalabels.numfmt=0" \
+#   --prop xAxisTitle="Cost (m$)" --prop yAxisTitle="Requests" \
+#   --prop title.color=1F2937 --prop title.size=12 --prop title.bold=true \
+#   --prop title.font="Helvetica Neue" \
+#   --prop axisTitle.color=6B7280 --prop axisTitle.size=9 \
+#   --prop axisTitle.font="Helvetica Neue" \
+#   --prop "axisfont=8:6B7280:Helvetica Neue" \
+#   --prop gridlineColor=F0F0F0 \
+#   --prop plotareafill=FFFFFF --prop "plotarea.border=E5E7EB:0.75" \
+#   --prop chartareafill=F9FAFB --prop "chartarea.border=E5E7EB:0.75" \
+#   --prop "axisline=9CA3AF:0.75" \
+#   --prop x=14 --prop y=38 --prop width=13 --prop height=18
 # 6 · Cost per Request — log-normal, overflow-fenced, data labels with numfmt
 cli(f'add "{FILE}" "/5-ML Dashboard" --type chart'
     f' --prop chartType=histogram'
