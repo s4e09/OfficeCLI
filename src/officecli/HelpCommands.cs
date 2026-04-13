@@ -831,7 +831,7 @@ Excel (.xlsx) — query
 
 Cell selectors:
   cell                          All cells
-  Sheet1!cell                   Cells in specific sheet
+  Sheet1!cell                   Cells in specific sheet (or /Sheet1/cell)
   A                             All cells in column A
   cell[value='text']            Exact value match
   cell[value!='text']           Value not equal
