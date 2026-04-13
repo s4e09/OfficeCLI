@@ -148,7 +148,8 @@ internal static partial class ChartHelper
                 needsAxes = false;
                 break;
             case "scatter":
-                chartElement = BuildScatterChart(categories, seriesData, catAxisId, valAxisId);
+                var scatterStyle = properties.GetValueOrDefault("scatterStyle", "lineMarker");
+                chartElement = BuildScatterChart(categories, seriesData, catAxisId, valAxisId, scatterStyle);
                 break;
             case "bubble":
                 chartElement = BuildBubbleChart(categories, seriesData, catAxisId, valAxisId, colors);
@@ -572,10 +573,18 @@ internal static partial class ChartHelper
 
     internal static C.ScatterChart BuildScatterChart(
         string[]? categories, List<(string name, double[] values)> seriesData,
-        uint catAxisId, uint valAxisId)
+        uint catAxisId, uint valAxisId, string scatterStyle = "lineMarker")
     {
+        var styleVal = scatterStyle.ToLowerInvariant() switch
+        {
+            "marker" => C.ScatterStyleValues.Marker,
+            "line" => C.ScatterStyleValues.Line,
+            "smooth" => C.ScatterStyleValues.SmoothMarker,
+            "smoothmarker" => C.ScatterStyleValues.SmoothMarker,
+            _ => C.ScatterStyleValues.LineMarker
+        };
         var scatterChart = new C.ScatterChart(
-            new C.ScatterStyle { Val = C.ScatterStyleValues.LineMarker },
+            new C.ScatterStyle { Val = styleVal },
             new C.VaryColors { Val = false }
         );
 
@@ -583,10 +592,20 @@ internal static partial class ChartHelper
         if (categories != null)
             xValues = categories.Select(c => double.TryParse(c, out var v) ? v : 0).ToArray();
 
+        var hideLines = styleVal == C.ScatterStyleValues.Marker;
         for (int i = 0; i < seriesData.Count; i++)
         {
-            scatterChart.AppendChild(BuildScatterSeries((uint)i, seriesData[i].name,
-                xValues, seriesData[i].values));
+            var ser = BuildScatterSeries((uint)i, seriesData[i].name,
+                xValues, seriesData[i].values);
+            // For marker-only style, explicitly hide connecting lines
+            if (hideLines)
+            {
+                var spPr = ser.GetFirstChild<C.ChartShapeProperties>() ?? new C.ChartShapeProperties();
+                if (ser.GetFirstChild<C.ChartShapeProperties>() == null) ser.AppendChild(spPr);
+                spPr.RemoveAllChildren<Drawing.Outline>();
+                spPr.AppendChild(new Drawing.Outline(new Drawing.NoFill()));
+            }
+            scatterChart.AppendChild(ser);
         }
 
         scatterChart.AppendChild(new C.AxisId { Val = catAxisId });

@@ -1072,6 +1072,16 @@ internal static partial class ChartHelper
                     var showVal = ParseHelpers.IsTruthy(value);
                     foreach (var lc in plotArea2.Elements<C.LineChart>())
                     { lc.RemoveAllChildren<C.ShowMarker>(); InsertLineChartChildInOrder(lc, new C.ShowMarker { Val = showVal }); }
+                    // For scatter charts, set per-series marker symbol to none when hiding markers
+                    if (!showVal)
+                    {
+                        foreach (var ser in plotArea2.Descendants<OpenXmlCompositeElement>()
+                            .Where(e => e.LocalName == "ser" && e.Parent is C.ScatterChart))
+                        {
+                            ser.RemoveAllChildren<C.Marker>();
+                            InsertSeriesChildInOrder(ser, new C.Marker(new C.Symbol { Val = C.MarkerStyleValues.None }));
+                        }
+                    }
                     break;
                 }
 
