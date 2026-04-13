@@ -1563,7 +1563,7 @@ internal static partial class ChartHelper
                             dLbls.AppendChild(new C.ShowCategoryName { Val = false });
                             dLbls.AppendChild(new C.ShowSeriesName { Val = false });
                             dLbls.AppendChild(new C.ShowPercent { Val = false });
-                            firstSer.AppendChild(dLbls);
+                            InsertSeriesChildInOrder(firstSer, dLbls);
                         }
                         // Find or create individual dLbl for the point index (0-based in OOXML)
                         var ooxmlIdx = (uint)(dlPointIdx - 1);

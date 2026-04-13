@@ -329,6 +329,7 @@ internal static partial class ChartHelper
         "view3d", "camera", "perspective",
         "holesize", "firstsliceangle", "sliceangle",
         "axisvisible", "axis.visible", "axis.delete",
+        "cataxisvisible", "valaxisvisible",
         "majortickmark", "majortick", "minortickmark", "minortick",
         "ticklabelpos", "ticklabelposition",
         "smooth", "showmarker", "showmarkers",
@@ -352,8 +353,37 @@ internal static partial class ChartHelper
         "datalabels.numfmt", "labelnumfmt",
         "datalabels.showleaderlines", "leaderlines",
         "datalabels.showbubblesize",
-        "axisfont", "axis.font", "legendfont", "legend.font"
+        "axisfont", "axis.font", "legendfont", "legend.font",
+        // Title styling
+        "title.font", "titlefont", "title.size", "titlesize",
+        "title.color", "titlecolor", "title.bold", "titlebold",
+        "title.glow", "titleglow", "title.shadow", "titleshadow",
+        // Area fill
+        "areafill", "area.fill",
     };
+
+    /// <summary>
+    /// Prefixes for dynamic deferred keys (e.g. title.x, plotArea.y, legend.w,
+    /// dataLabel1.text, dataTable.show*, displayUnitsLabel.*, trendlineLabel.*).
+    /// </summary>
+    private static readonly string[] DeferredPrefixes =
+    [
+        "title.", "plotarea.", "legend.", "datalabel",
+        "datatable.", "displayunitslabel.", "trendlinelabel."
+    ];
+
+    /// <summary>
+    /// Check if a property key should be deferred from BuildChartSpace to SetChartProperties.
+    /// Matches exact keys in <see cref="DeferredAddKeys"/> plus dynamic prefix patterns.
+    /// </summary>
+    internal static bool IsDeferredKey(string key)
+    {
+        if (DeferredAddKeys.Contains(key)) return true;
+        var lower = key.ToLowerInvariant();
+        foreach (var prefix in DeferredPrefixes)
+            if (lower.StartsWith(prefix)) return true;
+        return false;
+    }
 
     // ==================== Chart Type Builders ====================
 

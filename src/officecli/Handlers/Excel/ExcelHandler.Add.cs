@@ -1698,7 +1698,7 @@ public partial class ExcelHandler
 
                 // Apply deferred properties (axisTitle, dataLabels, etc.) via SetChartProperties
                 var deferredProps = properties
-                    .Where(kv => ChartHelper.DeferredAddKeys.Contains(kv.Key))
+                    .Where(kv => ChartHelper.IsDeferredKey(kv.Key))
                     .ToDictionary(kv => kv.Key, kv => kv.Value);
                 if (deferredProps.Count > 0)
                     ChartHelper.SetChartProperties(chartPart, deferredProps);

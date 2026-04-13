@@ -298,7 +298,37 @@ internal static partial class ChartHelper
         if (layout == null)
         {
             layout = new C.Layout();
-            parent.InsertAt(layout, 0);
+            // Insert layout after structural elements to respect schema order.
+            // c:title  → tx, [layout], overlay, ...
+            // c:legend → legendPos, legendEntry*, [layout], overlay, ...
+            // c:dLbl   → idx, delete, [layout], ...
+            // c:plotArea → layout is first child (InsertAt 0 is correct)
+            if (isPlotArea)
+            {
+                parent.InsertAt(layout, 0);
+            }
+            else if (parent is C.DataLabel)
+            {
+                // CT_DLbl: idx, delete, [layout], tx, numFmt, spPr, ...
+                var insertAfter = parent.GetFirstChild<C.Delete>() as OpenXmlElement
+                    ?? parent.GetFirstChild<C.Index>() as OpenXmlElement;
+                if (insertAfter != null)
+                    insertAfter.InsertAfterSelf(layout);
+                else
+                    parent.InsertAt(layout, 0);
+            }
+            else
+            {
+                // c:title  → tx, [layout], overlay, ...
+                // c:legend → legendPos, legendEntry*, [layout], overlay, ...
+                var insertAfter = parent.GetFirstChild<C.ChartText>() as OpenXmlElement
+                    ?? parent.ChildElements.LastOrDefault(
+                        e => e.LocalName is "legendPos" or "legendEntry") as OpenXmlElement;
+                if (insertAfter != null)
+                    insertAfter.InsertAfterSelf(layout);
+                else
+                    parent.InsertAt(layout, 0);
+            }
         }
         var ml = layout.GetFirstChild<C.ManualLayout>();
         if (ml == null)

@@ -499,10 +499,7 @@ internal static partial class ChartHelper
             dLbls.AppendChild(new C.ShowCategoryName { Val = false });
             dLbls.AppendChild(new C.ShowSeriesName { Val = false });
             dLbls.AppendChild(new C.ShowPercent { Val = false });
-            // Insert before AxId or at end of series, per schema order
-            var insertBefore = firstSer.GetFirstChild<C.AxisId>() as OpenXmlElement;
-            if (insertBefore != null) firstSer.InsertBefore(dLbls, insertBefore);
-            else firstSer.AppendChild(dLbls);
+            InsertSeriesChildInOrder(firstSer, dLbls);
         }
         if (dLbls == null) return;
 
@@ -679,6 +676,7 @@ internal static partial class ChartHelper
     {
         string[] insertBeforeNames = child.LocalName switch
         {
+            "dLbls" => ["trendline", "errBars", "cat", "val", "xVal", "yVal", "bubbleSize", "bubble3D", "smooth", "extLst"],
             "trendline" => ["errBars", "cat", "val", "xVal", "yVal", "bubbleSize", "bubble3D", "smooth", "extLst"],
             "errBars" => ["cat", "val", "xVal", "yVal", "bubbleSize", "bubble3D", "smooth", "extLst"],
             "smooth" => ["extLst"],
