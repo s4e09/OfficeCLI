@@ -716,7 +716,6 @@
                 _selection = [path];
                 _anchor = cell;
             }
-            _suppressNextClick = true;
             applySelectionToDom(); // immediate visual feedback
             postSelection(_selection);
             return;
