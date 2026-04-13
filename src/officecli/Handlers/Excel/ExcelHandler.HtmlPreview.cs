@@ -1877,6 +1877,7 @@ public partial class ExcelHandler
             z-index: 3;
             background: #f8f8f8;
             min-width: 50px;
+            cursor: s-resize;
         }
         .row-header {
             position: sticky;
@@ -1884,6 +1885,7 @@ public partial class ExcelHandler
             z-index: 2;
             background: #f8f8f8;
             min-width: 40px;
+            cursor: e-resize;
             /* Drop right border so the data cell's own (often darker) left border shows through.
                Otherwise, with border-collapse, the row-header's light grey right border can win
                the collapse contest and erase the merged-cell left border (rowspan cells especially). */

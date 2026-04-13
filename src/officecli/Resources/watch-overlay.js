@@ -19,35 +19,35 @@
     var _selection = [];
 
     function applySelectionToDom() {
-        document.querySelectorAll('.officecli-selected').forEach(function(el) {
+        document.querySelectorAll('.officecli-selected, .officecli-sel-range').forEach(function(el) {
             el.classList.remove('officecli-selected');
+            el.classList.remove('officecli-sel-range');
         });
         _selection.forEach(function(path) {
             try {
                 var sel = '[data-path="' + path.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"]';
                 document.querySelectorAll(sel).forEach(function(el) {
                     el.classList.add('officecli-selected');
-                    // Excel row header: also highlight all data cells in the same <tr>
+                    // Excel row header: highlight all data cells in the row as range
                     var rowMatch = path.match(/^(\/[^/]+)\/row\[(\d+)\]$/);
                     if (rowMatch && el.tagName === 'TH') {
                         var tr = el.closest('tr');
                         if (tr) tr.querySelectorAll('td[data-path]').forEach(function(td) {
-                            td.classList.add('officecli-selected');
+                            td.classList.add('officecli-sel-range');
                         });
                     }
-                    // Excel column header: highlight all cells in that column
+                    // Excel column header: highlight all cells in column as range
                     var colMatch = path.match(/^(\/[^/]+)\/col\[([A-Za-z]+)\]$/);
                     if (colMatch && el.tagName === 'TH') {
                         var sheet = colMatch[1], col = colMatch[2];
-                        // Match cells whose data-path is /{sheet}/{Col}{digits}
                         var re = new RegExp('^' + sheet.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\/' + col + '\\d+$', 'i');
                         document.querySelectorAll('td[data-path]').forEach(function(td) {
                             if (re.test(td.getAttribute('data-path'))) {
-                                td.classList.add('officecli-selected');
+                                td.classList.add('officecli-sel-range');
                             }
                         });
                     }
-                    // Excel cell: also highlight the corresponding row header and col header (crosshair)
+                    // Excel cell: crosshair row/col headers
                     var cellMatch = path.match(/^(\/[^/]+)\/([A-Za-z]+)(\d+)$/);
                     if (cellMatch && el.tagName === 'TD') {
                         var sheet = cellMatch[1], col = cellMatch[2], row = cellMatch[3];
@@ -89,7 +89,11 @@
                 'width:6px;height:6px;background:#217346;' +
                 'border:1px solid #fff;z-index:1001;' +
             '}' +
-            // Excel-style header highlight: dark background when crosshair
+            // Row/column range highlight: light fill, no individual borders
+            'td.officecli-sel-range{' +
+                'background:rgba(33,115,70,0.12) !important;' +
+            '}' +
+            // Excel-style header highlight: dark background
             'th.officecli-selected{' +
                 'background:#217346 !important;color:#fff !important;' +
             '}' +
