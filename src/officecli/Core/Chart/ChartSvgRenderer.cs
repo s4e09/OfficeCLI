@@ -280,7 +280,9 @@ internal partial class ChartSvgRenderer
         string? upBarColor = null, string? downBarColor = null,
         double? axisMin = null, double? axisMax = null, double? majorUnit = null, string? valNumFmt = null,
         List<(string Name, double Value, string Color, double WidthPt, string Dash)>? referenceLines = null,
-        List<bool>? smooth = null, List<string>? lineDashes = null)
+        List<bool>? smooth = null, List<string>? lineDashes = null, List<double>? lineWidths = null,
+        string? dropLineColor = null, double dropLineWidth = 0.7, string? dropLineDash = null,
+        string? highLowLineColor = null, double highLowLineWidth = 1)
     {
         var allValues = series.SelectMany(s => s.values).ToArray();
         if (allValues.Length == 0) return;
@@ -367,7 +369,8 @@ internal partial class ChartSvgRenderer
                 if (yVals.Length >= 2)
                 {
                     var px = allPoints[0][c].x;
-                    sb.AppendLine($"        <line x1=\"{px:0.#}\" y1=\"{yVals.Min():0.#}\" x2=\"{px:0.#}\" y2=\"{yVals.Max():0.#}\" stroke=\"#666\" stroke-width=\"1\"/>");
+                    var hlColor = highLowLineColor ?? "#666";
+                    sb.AppendLine($"        <line x1=\"{px:0.#}\" y1=\"{yVals.Min():0.#}\" x2=\"{px:0.#}\" y2=\"{yVals.Max():0.#}\" stroke=\"{hlColor}\" stroke-width=\"{highLowLineWidth:0.#}\"/>");
                 }
             }
         }
@@ -400,6 +403,7 @@ internal partial class ChartSvgRenderer
             var isSmooth = smooth != null && s < smooth.Count && smooth[s];
             var dashName = lineDashes != null && s < lineDashes.Count ? lineDashes[s] : "solid";
             var dashAttr = dashName != "solid" ? $" stroke-dasharray=\"{RefLineDashArray(dashName)}\"" : "";
+            var lw = lineWidths != null && s < lineWidths.Count ? lineWidths[s] : 2;
 
             if (isSmooth && pts.Count >= 2)
             {
@@ -418,20 +422,22 @@ internal partial class ChartSvgRenderer
                     var cp2y = p2.y - (p3.y - p1.y) / 6.0;
                     d.Append($" C{cp1x:0.#},{cp1y:0.#} {cp2x:0.#},{cp2y:0.#} {p2.x:0.#},{p2.y:0.#}");
                 }
-                sb.AppendLine($"        <path d=\"{d}\" fill=\"none\" stroke=\"{lineColor}\" stroke-width=\"2\"{dashAttr}/>");
+                sb.AppendLine($"        <path d=\"{d}\" fill=\"none\" stroke=\"{lineColor}\" stroke-width=\"{lw:0.#}\"{dashAttr}/>");
             }
             else
             {
                 var pointStr = string.Join(" ", pts.Select(p => $"{p.x:0.#},{p.y:0.#}"));
-                sb.AppendLine($"        <polyline points=\"{pointStr}\" fill=\"none\" stroke=\"{lineColor}\" stroke-width=\"2\"{dashAttr}/>");
+                sb.AppendLine($"        <polyline points=\"{pointStr}\" fill=\"none\" stroke=\"{lineColor}\" stroke-width=\"{lw:0.#}\"{dashAttr}/>");
             }
 
             // Drop lines (vertical from each data point down to X axis)
             if (hasDropLines)
             {
                 var baseY = isReversed ? oy : oy + ph;
+                var dlColor = dropLineColor ?? "#888";
+                var dlDash = dropLineDash != null ? RefLineDashArray(dropLineDash) : "3,2";
                 foreach (var pt in pts)
-                    sb.AppendLine($"        <line x1=\"{pt.x:0.#}\" y1=\"{pt.y:0.#}\" x2=\"{pt.x:0.#}\" y2=\"{baseY}\" stroke=\"#888\" stroke-width=\"0.7\" stroke-dasharray=\"3,2\"/>");
+                    sb.AppendLine($"        <line x1=\"{pt.x:0.#}\" y1=\"{pt.y:0.#}\" x2=\"{pt.x:0.#}\" y2=\"{baseY}\" stroke=\"{dlColor}\" stroke-width=\"{dropLineWidth:0.#}\" stroke-dasharray=\"{dlDash}\"/>");
             }
 
             var shape = markerShapes != null && s < markerShapes.Count ? markerShapes[s] : "circle";
@@ -1141,13 +1147,21 @@ internal partial class ChartSvgRenderer
         // --- Dash pattern per series (solid, dash, dot, dashDot, lgDash, etc.) ---
         public List<string> LineDashes { get; set; } = [];
 
+        // --- Line width per series (in points, from a:ln w="...") ---
+        public List<double> LineWidths { get; set; } = [];
+
         // --- Axis features ---
         public double? LogBase { get; set; }
         public bool IsReversed { get; set; }
 
         // --- Line elements ---
         public bool HasDropLines { get; set; }
+        public string? DropLineColor { get; set; }
+        public double DropLineWidth { get; set; } = 0.7;
+        public string? DropLineDash { get; set; }
         public bool HasHighLowLines { get; set; }
+        public string? HighLowLineColor { get; set; }
+        public double HighLowLineWidth { get; set; } = 1;
         public bool HasUpDownBars { get; set; }
         public string? UpBarColor { get; set; }
         public string? DownBarColor { get; set; }
@@ -1386,17 +1400,43 @@ internal partial class ChartSvgRenderer
                     ? (serSmoothVal == "1" || serSmoothVal == "true")
                     : chartIsSmooth);
 
-                // Per-series dash pattern
+                // Per-series dash pattern and line width
                 var spPr = ser.Elements().FirstOrDefault(e => e.LocalName == "spPr");
                 var ln = spPr?.Elements().FirstOrDefault(e => e.LocalName == "ln");
                 var prstDash = ln?.Elements().FirstOrDefault(e => e.LocalName == "prstDash");
                 var dashVal = prstDash?.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value;
                 info.LineDashes.Add(dashVal ?? "solid");
+
+                // Per-series line width (a:ln w="..." in EMU, convert to pt: 1pt = 12700 EMU)
+                var lnWidth = ln?.GetAttributes().FirstOrDefault(a => a.LocalName == "w").Value;
+                info.LineWidths.Add(lnWidth != null && int.TryParse(lnWidth, out var lw) ? Math.Round(lw / 12700.0, 1) : 2);
             }
 
             // Line elements: dropLines, hiLowLines, upDownBars
-            info.HasDropLines = chartTypeEl.Elements().Any(e => e.LocalName == "dropLines");
-            info.HasHighLowLines = chartTypeEl.Elements().Any(e => e.LocalName == "hiLowLines");
+            var dropLinesEl = chartTypeEl.Elements().FirstOrDefault(e => e.LocalName == "dropLines");
+            info.HasDropLines = dropLinesEl != null;
+            if (dropLinesEl != null)
+            {
+                var dlSpPr = dropLinesEl.Elements().FirstOrDefault(e => e.LocalName == "spPr");
+                var dlLn = dlSpPr?.Elements().FirstOrDefault(e => e.LocalName == "ln");
+                info.DropLineColor = ExtractLineColor(dlSpPr);
+                if (dlLn?.GetAttributes().FirstOrDefault(a => a.LocalName == "w").Value is string dlw
+                    && int.TryParse(dlw, out var dlwPt))
+                    info.DropLineWidth = Math.Round(dlwPt / 12700.0, 1);
+                var dlDash = dlLn?.Elements().FirstOrDefault(e => e.LocalName == "prstDash");
+                info.DropLineDash = dlDash?.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value;
+            }
+            var hiLowEl = chartTypeEl.Elements().FirstOrDefault(e => e.LocalName == "hiLowLines");
+            info.HasHighLowLines = hiLowEl != null;
+            if (hiLowEl != null)
+            {
+                var hlSpPr = hiLowEl.Elements().FirstOrDefault(e => e.LocalName == "spPr");
+                var hlLn = hlSpPr?.Elements().FirstOrDefault(e => e.LocalName == "ln");
+                info.HighLowLineColor = ExtractLineColor(hlSpPr);
+                if (hlLn?.GetAttributes().FirstOrDefault(a => a.LocalName == "w").Value is string hlw
+                    && int.TryParse(hlw, out var hlwPt))
+                    info.HighLowLineWidth = Math.Round(hlwPt / 12700.0, 1);
+            }
             var upDownBars = chartTypeEl.Elements().FirstOrDefault(e => e.LocalName == "upDownBars");
             info.HasUpDownBars = upDownBars != null;
             if (upDownBars != null)
@@ -1572,7 +1612,9 @@ internal partial class ChartSvgRenderer
                     info.ShowDataLabels, info.MarkerShapes, info.MarkerSizes, info.LogBase, info.IsReversed,
                     info.HasDropLines, info.HasHighLowLines, info.HasUpDownBars,
                     info.UpBarColor, info.DownBarColor, info.AxisMin, info.AxisMax, info.MajorUnit, info.ValNumFmt,
-                    info.ReferenceLines, info.Smooth, info.LineDashes);
+                    info.ReferenceLines, info.Smooth, info.LineDashes, info.LineWidths,
+                    info.DropLineColor, info.DropLineWidth, info.DropLineDash,
+                    info.HighLowLineColor, info.HighLowLineWidth);
         }
         else
         {
