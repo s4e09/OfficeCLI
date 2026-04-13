@@ -1621,7 +1621,8 @@ public partial class ExcelHandler
                 // Context-sensitive m/mm: after h → minute, otherwise → month
                 // Strategy: mark minute 'm' as '\x01' placeholder, then convert remaining m→M
                 var dotnetFmt = fmtCode
-                    .Replace("AM/PM", "tt").Replace("am/pm", "tt");
+                    .Replace("AM/PM", "tt").Replace("am/pm", "tt")
+                    .Replace('Y', 'y').Replace('D', 'd');
                 // Step 1: Replace h:mm and h:m patterns → mark minutes as placeholder
                 dotnetFmt = System.Text.RegularExpressions.Regex.Replace(dotnetFmt, @"([hH]+)([:.])(mm?)", m =>
                     m.Groups[1].Value + m.Groups[2].Value + new string('\x01', m.Groups[3].Value.Length));
