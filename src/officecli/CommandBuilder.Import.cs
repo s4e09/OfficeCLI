@@ -104,6 +104,8 @@ static partial class CommandBuilder
                     delimiter = '\t';
             }
 
+            // Release any running resident's file lock before direct-open (import bypasses resident)
+            ResidentClient.SendClose(file.FullName);
             using var handler = new OfficeCli.Handlers.ExcelHandler(file.FullName, editable: true);
             var msg = handler.Import(parentPath, csvContent, delimiter, header, startCell);
             if (json)
