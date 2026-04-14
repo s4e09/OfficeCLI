@@ -261,9 +261,18 @@ internal static class Installer
         string profilePath;
         if (OperatingSystem.IsWindows())
         {
-            // Windows: just advise, don't auto-modify registry
-            if (!quiet)
-                Console.WriteLine($"  Add {BinDir} to your system PATH.");
+            // Windows: add to user PATH via registry (same as install.ps1)
+            var currentPath = Environment.GetEnvironmentVariable("Path", EnvironmentVariableTarget.User) ?? "";
+            if (!currentPath.Split(Path.PathSeparator).Contains(BinDir, StringComparer.OrdinalIgnoreCase))
+            {
+                var newPath = string.IsNullOrEmpty(currentPath) ? BinDir : $"{currentPath}{Path.PathSeparator}{BinDir}";
+                Environment.SetEnvironmentVariable("Path", newPath, EnvironmentVariableTarget.User);
+                if (!quiet)
+                {
+                    Console.WriteLine($"  Added {BinDir} to PATH.");
+                    Console.WriteLine($"  Restart your terminal to apply changes.");
+                }
+            }
             return;
         }
 
