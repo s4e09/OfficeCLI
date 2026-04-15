@@ -9,6 +9,7 @@ using OfficeCli.Core;
 using Drawing = DocumentFormat.OpenXml.Drawing;
 using X14 = DocumentFormat.OpenXml.Office2010.Excel;
 using XDR = DocumentFormat.OpenXml.Drawing.Spreadsheet;
+using ThreadedCmt = DocumentFormat.OpenXml.Office2019.Excel.ThreadedComments;
 
 
 namespace OfficeCli.Handlers;
@@ -2416,6 +2417,29 @@ public partial class ExcelHandler
                 }
                 if (changed) commentsPart.Comments.Save();
             }
+        }
+
+        // ---- Threaded Comments (Excel 365) ----
+        // R5-2: threadedComments<N>.xml is a separate part from legacy comments<N>.xml
+        // (same storage model: per-cell <threadedComment ref="..."> entries). Rewriting
+        // legacy comments but not threaded ones left 365-authored files with threaded
+        // bubbles anchored to the wrong rows post-sort. Cell-anchored refs only; any
+        // non-single-cell ref is left untouched (same scoping rule as legacy comments).
+        foreach (var threadedPart in worksheet.WorksheetThreadedCommentsParts)
+        {
+            if (threadedPart?.ThreadedComments == null) continue;
+            bool tcChanged = false;
+            foreach (var tc in threadedPart.ThreadedComments.Elements<ThreadedCmt.ThreadedComment>())
+            {
+                var tref = tc.Ref?.Value;
+                if (tref == null) continue;
+                if (CellInRect(tref, out var tcc, out var tcr) && oldToNewRow.TryGetValue(tcr, out var newR))
+                {
+                    tc.Ref = $"{tcc.ToUpperInvariant()}{newR}";
+                    tcChanged = true;
+                }
+            }
+            if (tcChanged) threadedPart.ThreadedComments.Save();
         }
 
         // ---- DataValidations ----
