@@ -1861,134 +1861,43 @@ public partial class ExcelHandler
                 }
 
                 // ==================== Sorting ====================
+                // CONSISTENCY(range-action): sort is a region action like merge.
+                // Sheet-level path auto-detects the full used range; explicit ranges
+                // go through SetRange → SortRangeRows. Keep both entry points in
+                // sync. See CLAUDE.md "Consistency > Robustness".
                 case "sort":
                 {
-                    // Remove existing sort state
                     ws.GetFirstChild<SortState>()?.Remove();
+                    if (string.IsNullOrEmpty(value) || value.Equals("none", StringComparison.OrdinalIgnoreCase))
+                        break;
 
-                    if (!string.IsNullOrEmpty(value) && !value.Equals("none", StringComparison.OrdinalIgnoreCase))
-                    {
-                        var sd = ws.GetFirstChild<SheetData>();
-                        if (sd == null) break;
+                    var sd = ws.GetFirstChild<SheetData>();
+                    if (sd == null) break;
+                    var rows = sd.Elements<Row>().ToList();
+                    if (rows.Count == 0) break;
 
-                        // Value format: "A:asc" or "A:asc,B:desc" with optional range property
-                        var sortRange = properties.GetValueOrDefault("range", "");
-                        int startRow, endRow;
-                        if (string.IsNullOrEmpty(sortRange))
+                    int maxCol = 1;
+                    foreach (var r in rows)
+                        foreach (var c in r.Elements<Cell>())
                         {
-                            var rows = sd.Elements<Row>().ToList();
-                            if (rows.Count == 0) break;
-                            var maxCol = rows.SelectMany(r => r.Elements<Cell>())
-                                .Select(c => ParseCellReference(c.CellReference?.Value ?? "A1"))
-                                .Max(p => ColumnNameToIndex(p.Column));
-                            startRow = 1;
-                            endRow = rows.Count;
-                            sortRange = $"A1:{IndexToColumnName(maxCol)}{rows.Count}";
+                            var cref = c.CellReference?.Value;
+                            if (cref == null) continue;
+                            maxCol = Math.Max(maxCol, ColumnNameToIndex(ParseCellReference(cref).Column));
                         }
-                        else
-                        {
-                            var rangeParts = sortRange.Split(':');
-                            startRow = ParseCellReference(rangeParts[0]).Row;
-                            endRow = ParseCellReference(rangeParts[1]).Row;
-                        }
+                    int minRowIdx = (int)rows.Min(r => r.RowIndex?.Value ?? 1u);
+                    int maxRowIdx = (int)rows.Max(r => r.RowIndex?.Value ?? 1u);
 
-                        // Parse sort specifications
-                        var specs = value.Split(',', StringSplitOptions.RemoveEmptyEntries);
-                        var sortKeys = new List<(int ColIndex, bool Descending)>();
-                        foreach (var spec in specs)
-                        {
-                            var specParts = spec.Trim().Split(':');
-                            var colName = specParts[0].Trim().ToUpperInvariant();
-                            bool descending = specParts.Length > 1 &&
-                                specParts[1].Trim().Equals("desc", StringComparison.OrdinalIgnoreCase);
-                            sortKeys.Add((ColumnNameToIndex(colName), descending));
-                        }
-
-                        // Actually sort the rows in SheetData
-                        var rowsInRange = sd.Elements<Row>()
-                            .Where(r => r.RowIndex?.Value >= (uint)startRow && r.RowIndex?.Value <= (uint)endRow)
-                            .ToList();
-
-                        // Extract sort values for each row
-                        string GetCellSortValue(Row row, int colIdx)
-                        {
-                            var colLetter = IndexToColumnName(colIdx);
-                            var cell = row.Elements<Cell>().FirstOrDefault(c =>
-                                c.CellReference?.Value?.StartsWith(colLetter, StringComparison.OrdinalIgnoreCase) == true &&
-                                ParseCellReference(c.CellReference.Value).Row == (int)(row.RowIndex?.Value ?? 0));
-                            return cell != null ? GetCellDisplayValue(cell) : "";
-                        }
-
-                        var sorted = rowsInRange.OrderBy(_ => 0); // identity
-                        foreach (var (colIdx, desc) in sortKeys)
-                        {
-                            var col = colIdx;
-                            var d = desc;
-                            // Always sort by rank ascending (empties last), then by value in requested direction
-                            sorted = sorted.ThenBy(r => ParseSortValue(GetCellSortValue(r, col)).Rank);
-                            sorted = d
-                                ? sorted.ThenByDescending(r => ParseSortValue(GetCellSortValue(r, col)).NumVal)
-                                         .ThenByDescending(r => ParseSortValue(GetCellSortValue(r, col)).StrVal)
-                                : sorted.ThenBy(r => ParseSortValue(GetCellSortValue(r, col)).NumVal)
-                                         .ThenBy(r => ParseSortValue(GetCellSortValue(r, col)).StrVal);
-                        }
-                        var sortedList = sorted.ToList();
-
-                        // Collect original row indices and reassign
-                        var originalIndices = rowsInRange.Select(r => r.RowIndex!.Value).ToList();
-                        for (int si = 0; si < sortedList.Count; si++)
-                        {
-                            var row = sortedList[si];
-                            var newRowIdx = originalIndices[si];
-                            // Update row index and all cell references
-                            row.RowIndex = newRowIdx;
-                            foreach (var cell in row.Elements<Cell>())
-                            {
-                                if (cell.CellReference?.Value != null)
-                                {
-                                    var (col, _) = ParseCellReference(cell.CellReference.Value);
-                                    cell.CellReference = $"{col}{newRowIdx}";
-                                }
-                            }
-                        }
-
-                        // Remove old rows and reinsert in sorted order
-                        var beforeRow = sd.Elements<Row>()
-                            .LastOrDefault(r => r.RowIndex?.Value < (uint)startRow);
-                        foreach (var r in rowsInRange) r.Remove();
-                        OpenXmlElement insertAfter = beforeRow ?? (OpenXmlElement)sd;
-                        foreach (var row in sortedList)
-                        {
-                            if (insertAfter == sd)
-                            {
-                                sd.InsertAt(row, 0);
-                                insertAfter = row;
-                            }
-                            else
-                            {
-                                insertAfter.InsertAfterSelf(row);
-                                insertAfter = row;
-                            }
-                        }
-
-                        // Write SortState metadata
-                        var sortState = new SortState { Reference = sortRange };
-                        foreach (var (colIdx, desc) in sortKeys)
-                        {
-                            var colName = IndexToColumnName(colIdx);
-                            var condRef = $"{colName}{startRow}:{colName}{endRow}";
-                            var sortCondition = new SortCondition { Reference = condRef };
-                            if (desc) sortCondition.Descending = true;
-                            sortState.AppendChild(sortCondition);
-                        }
-                        ws.AppendChild(sortState);
-                    }
+                    bool sortHeader = properties.TryGetValue("sortheader", out var shv) && IsTruthy(shv);
+                    SortRangeRows(worksheet, 1, minRowIdx, maxCol, maxRowIdx, value, sortHeader);
                     break;
                 }
+                case "sortheader":
+                    // consumed by "sort" case above; ignore silently here so it doesn't show unsupported
+                    break;
 
                 default:
                     unsupported.Add(unsupported.Count == 0
-                        ? $"{key} (valid sheet props: name, freeze, zoom, showGridLines, showRowColHeaders, tabcolor, autofilter, merge, protect, password, printarea, orientation, papersize, fittopage, header, footer, sort)"
+                        ? $"{key} (valid sheet props: name, freeze, zoom, showGridLines, showRowColHeaders, tabcolor, autofilter, merge, protect, password, printarea, orientation, papersize, fittopage, header, footer, sort, sortHeader)"
                         : key);
                     break;
             }
@@ -2007,10 +1916,21 @@ public partial class ExcelHandler
 
         // Separate range-level props from cell-level props
         var cellProps = new Dictionary<string, string>();
+        // CONSISTENCY(range-action): sort/sortHeader are consumed together as a
+        // range action (see sheet-level dispatch). If sort is present, apply it
+        // after cell-level props are processed.
+        string? sortSpec = null;
+        bool sortHeader = false;
         foreach (var (key, value) in properties)
         {
             switch (key.ToLowerInvariant())
             {
+                case "sort":
+                    sortSpec = value;
+                    break;
+                case "sortheader":
+                    sortHeader = IsTruthy(value);
+                    break;
                 case "merge":
                 {
                     bool doMerge = value.Equals("true", StringComparison.OrdinalIgnoreCase)
@@ -2100,9 +2020,210 @@ public partial class ExcelHandler
             }
         }
 
+        // Apply sort after cell-level props (range-action handler)
+        if (sortSpec != null)
+        {
+            var parts = rangeRef.Split(':');
+            var (sc, sr) = ParseCellReference(parts[0]);
+            var (ec, er) = ParseCellReference(parts[1]);
+            SortRangeRows(worksheet, ColumnNameToIndex(sc), sr, ColumnNameToIndex(ec), er, sortSpec, sortHeader);
+        }
+
         DeleteCalcChainIfPresent();
         SaveWorksheet(worksheet);
         return unsupported;
+    }
+
+    // ==================== Range Sort (region action) ====================
+
+    /// <summary>
+    /// Physically reorder rows in the given range by the given sort keys, then
+    /// write sortState metadata. Rejects ranges that intersect merged cells.
+    /// sortSpec format: "A asc, B desc" (direction optional, defaults to asc).
+    /// Column addressing is column letters only (A, B, AA); column names are not supported.
+    /// </summary>
+    private void SortRangeRows(WorksheetPart worksheet, int col1, int row1, int col2, int row2,
+        string sortSpec, bool sortHeader)
+    {
+        if (string.IsNullOrWhiteSpace(sortSpec) || sortSpec.Equals("none", StringComparison.OrdinalIgnoreCase))
+        {
+            GetSheet(worksheet).GetFirstChild<SortState>()?.Remove();
+            return;
+        }
+
+        var ws = GetSheet(worksheet);
+        var sd = ws.GetFirstChild<SheetData>();
+        if (sd == null) return;
+
+        // Reject if any merged cell intersects sort range
+        var mergeCells = ws.GetFirstChild<MergeCells>();
+        if (mergeCells != null)
+        {
+            foreach (var mc in mergeCells.Elements<MergeCell>())
+            {
+                var mref = mc.Reference?.Value;
+                if (string.IsNullOrEmpty(mref) || !mref.Contains(':')) continue;
+                var mparts = mref.Split(':');
+                var (mac, mar) = ParseCellReference(mparts[0]);
+                var (mbc, mbr) = ParseCellReference(mparts[1]);
+                int maci = ColumnNameToIndex(mac), mbci = ColumnNameToIndex(mbc);
+                bool rowsOverlap = !(mbr < row1 || mar > row2);
+                bool colsOverlap = !(mbci < col1 || maci > col2);
+                if (rowsOverlap && colsOverlap)
+                    throw new InvalidOperationException(
+                        $"Cannot sort range containing merged cells (found {mref}). Unmerge first or exclude merged cells from the sort range.");
+            }
+        }
+
+        // Parse sort spec: "A asc, B desc" — default direction is asc
+        var sortKeys = new List<(int ColIndex, bool Descending)>();
+        foreach (var spec in sortSpec.Split(',', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var tokens = spec.Trim().Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+            if (tokens.Length == 0) continue;
+            var colName = tokens[0].ToUpperInvariant();
+            if (!Regex.IsMatch(colName, @"^[A-Z]+$"))
+                throw new ArgumentException(
+                    $"Invalid sort column '{tokens[0]}'. Expected column letters (A, B, AA). Column names are not supported; use letters.");
+            bool desc = tokens.Length > 1 && tokens[1].Equals("desc", StringComparison.OrdinalIgnoreCase);
+            if (tokens.Length > 1 && !desc && !tokens[1].Equals("asc", StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException($"Invalid sort direction '{tokens[1]}'. Expected 'asc' or 'desc'.");
+            sortKeys.Add((ColumnNameToIndex(colName), desc));
+        }
+        if (sortKeys.Count == 0) return;
+
+        int dataStartRow = sortHeader ? row1 + 1 : row1;
+        if (dataStartRow > row2)
+        {
+            WriteSortState(ws, col1, row1, col2, row2, sortKeys);
+            return;
+        }
+
+        var rowsInRange = sd.Elements<Row>()
+            .Where(r => r.RowIndex?.Value >= (uint)dataStartRow && r.RowIndex?.Value <= (uint)row2)
+            .ToList();
+        if (rowsInRange.Count <= 1)
+        {
+            WriteSortState(ws, col1, row1, col2, row2, sortKeys);
+            return;
+        }
+
+        // Reject if any cell carries a shared formula group — sort would corrupt the ref anchor
+        foreach (var r in rowsInRange)
+            foreach (var c in r.Elements<Cell>())
+                if (c.CellFormula?.FormulaType?.Value == CellFormulaValues.Shared)
+                    throw new InvalidOperationException(
+                        "Cannot sort range containing shared formulas. Rewrite them as per-cell formulas first.");
+
+        // Materialize sort keys once (O(rows × keys × cells) → O(rows × keys))
+        var keyed = rowsInRange.Select(r =>
+        {
+            var keys = new (int Rank, double NumVal, string StrVal)[sortKeys.Count];
+            for (int k = 0; k < sortKeys.Count; k++)
+                keys[k] = ParseSortValue(GetCellRawSortValueString(r, sortKeys[k].ColIndex));
+            return (Row: r, Keys: keys);
+        }).ToList();
+
+        // Stable multi-key sort: first key primary, rest tiebreakers
+        IOrderedEnumerable<(Row Row, (int Rank, double NumVal, string StrVal)[] Keys)>? ordered = null;
+        for (int i = 0; i < sortKeys.Count; i++)
+        {
+            int idx = i;
+            bool desc = sortKeys[i].Descending;
+            if (ordered == null)
+            {
+                ordered = keyed.OrderBy(x => x.Keys[idx].Rank);
+            }
+            else
+            {
+                ordered = ordered.ThenBy(x => x.Keys[idx].Rank);
+            }
+            ordered = desc
+                ? ordered.ThenByDescending(x => x.Keys[idx].NumVal)
+                         .ThenByDescending(x => x.Keys[idx].StrVal, StringComparer.Ordinal)
+                : ordered.ThenBy(x => x.Keys[idx].NumVal)
+                         .ThenBy(x => x.Keys[idx].StrVal, StringComparer.Ordinal);
+        }
+        var sortedRows = ordered!.Select(x => x.Row).ToList();
+
+        var originalIndices = rowsInRange.Select(r => r.RowIndex!.Value).ToList();
+
+        // Detach from SheetData, invalidate row-index cache
+        foreach (var r in rowsInRange) r.Remove();
+        InvalidateRowIndex(sd);
+
+        // Rewrite row index + cell refs on sorted rows
+        for (int i = 0; i < sortedRows.Count; i++)
+        {
+            var newIdx = originalIndices[i];
+            var r = sortedRows[i];
+            r.RowIndex = newIdx;
+            foreach (var cell in r.Elements<Cell>())
+            {
+                var cref = cell.CellReference?.Value;
+                if (cref == null) continue;
+                var (cc, _) = ParseCellReference(cref);
+                cell.CellReference = $"{cc}{newIdx}";
+            }
+        }
+
+        // Reinsert in sorted order, preserving rows outside the data range
+        var beforeRow = sd.Elements<Row>().LastOrDefault(r => r.RowIndex?.Value < (uint)dataStartRow);
+        OpenXmlElement insertAfter = beforeRow ?? (OpenXmlElement)sd;
+        foreach (var r in sortedRows)
+        {
+            if (insertAfter == sd) sd.InsertAt(r, 0);
+            else insertAfter.InsertAfterSelf(r);
+            insertAfter = r;
+        }
+        InvalidateRowIndex(sd);
+
+        WriteSortState(ws, col1, row1, col2, row2, sortKeys);
+    }
+
+    /// <summary>Write sortState metadata. sortState@ref = full range; sortCondition@ref = key column within range.</summary>
+    private static void WriteSortState(Worksheet ws, int col1, int row1, int col2, int row2,
+        List<(int ColIndex, bool Descending)> sortKeys)
+    {
+        ws.GetFirstChild<SortState>()?.Remove();
+        var fullRef = $"{IndexToColumnName(col1)}{row1}:{IndexToColumnName(col2)}{row2}";
+        var ss = new SortState { Reference = fullRef };
+        foreach (var (colIdx, desc) in sortKeys)
+        {
+            var keyRef = $"{IndexToColumnName(colIdx)}{row1}:{IndexToColumnName(colIdx)}{row2}";
+            var sc = new SortCondition { Reference = keyRef };
+            if (desc) sc.Descending = true;
+            ss.AppendChild(sc);
+        }
+        // Place sortState after SheetData (standard position; autoFilter-nested placement is for filter-driven sort which we don't wire here).
+        var sheetData = ws.GetFirstChild<SheetData>();
+        if (sheetData != null) sheetData.InsertAfterSelf(ss);
+        else ws.AppendChild(ss);
+    }
+
+    /// <summary>Raw cell value for sorting: resolves SharedString/InlineString, skips number formatting. Precise column-letter match (no prefix bug).</summary>
+    private string GetCellRawSortValueString(Row row, int colIdx)
+    {
+        var colLetter = IndexToColumnName(colIdx);
+        foreach (var cell in row.Elements<Cell>())
+        {
+            var cref = cell.CellReference?.Value;
+            if (cref == null) continue;
+            var (cc, _) = ParseCellReference(cref);
+            if (!cc.Equals(colLetter, StringComparison.OrdinalIgnoreCase)) continue;
+
+            if (cell.DataType?.Value == CellValues.SharedString)
+            {
+                var sst = _doc.WorkbookPart?.GetPartsOfType<SharedStringTablePart>().FirstOrDefault();
+                if (sst?.SharedStringTable != null && int.TryParse(cell.CellValue?.Text, out int idx))
+                    return sst.SharedStringTable.Elements<SharedStringItem>().ElementAtOrDefault(idx)?.InnerText ?? "";
+                return "";
+            }
+            if (cell.DataType?.Value == CellValues.InlineString)
+                return cell.InlineString?.InnerText ?? "";
+            return cell.CellValue?.Text ?? "";
+        }
+        return "";
     }
 
     // ==================== Column Set (width, hidden) ====================
