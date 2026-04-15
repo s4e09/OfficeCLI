@@ -2092,6 +2092,10 @@ public partial class ExcelHandler
         {
             var tokens = spec.Trim().Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
             if (tokens.Length == 0) continue;
+            // Reject trailing junk like "A asc B" instead of silently dropping the tail.
+            if (tokens.Length > 2)
+                throw new ArgumentException(
+                    $"Invalid sort key '{spec.Trim()}': too many tokens. Expected '<col> [asc|desc]'");
             var colName = tokens[0].ToUpperInvariant();
             if (!Regex.IsMatch(colName, @"^[A-Z]+$"))
                 throw new ArgumentException(
