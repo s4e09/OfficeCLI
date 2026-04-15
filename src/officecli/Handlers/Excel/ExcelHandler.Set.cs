@@ -2187,7 +2187,10 @@ public partial class ExcelHandler
         }
         var sortedRows = ordered!.Select(x => x.Row).ToList();
 
-        var originalIndices = rowsInRange.Select(r => r.RowIndex!.Value).ToList();
+        // The sorted slots must be assigned by ascending row index; SheetData document
+        // order is not guaranteed to be ascending (malformed files, or legitimate writer
+        // output), so rely on RowIndex values rather than List position.
+        var originalIndices = rowsInRange.Select(r => r.RowIndex!.Value).OrderBy(v => v).ToList();
 
         // Detach from SheetData, invalidate row-index cache
         foreach (var r in rowsInRange) r.Remove();
