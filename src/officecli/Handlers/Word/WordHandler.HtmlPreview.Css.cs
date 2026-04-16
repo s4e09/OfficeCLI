@@ -285,16 +285,29 @@ public partial class WordHandler
             var indFirstLine = directInd?.FirstLine?.Value ?? styleInd?.FirstLine?.Value;
             var indHanging = directInd?.Hanging?.Value ?? styleInd?.Hanging?.Value;
 
+            // Hanging indent needs left padding/margin equal to the hanging
+            // amount to produce the visual effect (first line at 0, follow
+            // lines indented). When only `hanging` is set without `left`,
+            // use hanging as the left margin too.
+            double? hangPt = null;
+            if (indHanging is string hpTwips && hpTwips != "0")
+                hangPt = Units.TwipsToPt(hpTwips);
+            double leftPt = 0;
             if (indLeft is string leftTwips && leftTwips != "0")
-                parts.Add($"margin-left:{Units.TwipsToPt(leftTwips):0.##}pt");
+                leftPt = Units.TwipsToPt(leftTwips);
+            // When hanging is set and left is 0, promote hanging into left
+            // margin so subsequent lines visibly indent.
+            if (hangPt.HasValue && leftPt == 0) leftPt = hangPt.Value;
+            if (leftPt != 0)
+                parts.Add($"margin-left:{leftPt:0.##}pt");
             if (indRight is string rightTwips && rightTwips != "0")
                 parts.Add($"margin-right:{Units.TwipsToPt(rightTwips):0.##}pt");
             if (!hasDropCap)
             {
                 if (indFirstLine is string firstLineTwips && firstLineTwips != "0")
                     parts.Add($"text-indent:{Units.TwipsToPt(firstLineTwips):0.##}pt");
-                if (indHanging is string hangTwips && hangTwips != "0")
-                    parts.Add($"text-indent:-{Units.TwipsToPt(hangTwips):0.##}pt");
+                if (hangPt.HasValue)
+                    parts.Add($"text-indent:-{hangPt.Value:0.##}pt");
             }
         }
 
