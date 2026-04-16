@@ -197,12 +197,24 @@ public partial class WordHandler
         var pageNumPattern = new Regex(@"(<span[^>]*>)\s*\d+\s*(</span>)");
         var footerTemplate = pageNumPattern.Replace(footerHtml, "$1<!--PAGE_NUM-->$2", 1);
 
+        // Section-level multi-column layout: w:cols num=N sep=true
+        var sectCols = _doc.MainDocumentPart?.Document?.Body?.GetFirstChild<SectionProperties>()?.GetFirstChild<Columns>();
+        var colCount = sectCols?.ColumnCount?.Value ?? 1;
+        var colSep = sectCols?.Separator?.Value == true;
+        var colSpacing = sectCols?.Space?.Value;
+        var colBodyStyle = colCount > 1
+            ? $" style=\"column-count:{colCount}"
+                + (colSep ? ";column-rule:1px solid #000" : "")
+                + (int.TryParse(colSpacing, out var csp) && csp > 0 ? $";column-gap:{csp / 20.0:0.##}pt" : "")
+                + "\""
+            : "";
+
         for (int i = 0; i < pageList.Count; i++)
         {
             sb.AppendLine($"<div class=\"page-wrapper\" data-section=\"{i + 1}\">");
             sb.AppendLine($"<div class=\"page\" data-page=\"{i + 1}\" style=\"{maxW}\">");
             if (i == 0) sb.Append(headerHtml);
-            sb.Append("<div class=\"page-body\">");
+            sb.Append($"<div class=\"page-body\"{colBodyStyle}>");
             sb.Append(pageList[i]);
             // Place footnotes on the page that contains the footnote reference
             if (!string.IsNullOrEmpty(footnotesHtml) && pageList[i].Contains("fn-ref"))
