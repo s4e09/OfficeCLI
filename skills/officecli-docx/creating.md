@@ -894,32 +894,17 @@ officecli add doc.docx "/body/p[1]" --type field --prop fieldType=author
 # Field at body level (creates paragraph)
 officecli add doc.docx /body --type pagenum --prop alignment=center
 
-# Merge field (for mail merge templates)
+# Parameterized fields — each type requires its own key prop
 officecli add doc.docx "/body/p[1]" --type mergefield --prop fieldName=CustomerName
-officecli add doc.docx "/body/p[1]" --type mergefield --prop fieldName=CompanyName --prop text="[Company]"
-
-# Cross-reference (REF / PAGEREF)
 officecli add doc.docx "/body/p[1]" --type ref --prop bookmarkName=MyBookmark --prop hyperlink=true
-officecli add doc.docx "/body/p[1]" --type pageref --prop bookmarkName=MyBookmark
-
-# Sequence numbering (Figure 1, Table 2, etc.)
 officecli add doc.docx "/body/p[1]" --type seq --prop identifier=Figure
-officecli add doc.docx "/body/p[1]" --type seq --prop identifier=Table
-
-# Conditional field (IF)
+officecli add doc.docx "/body/p[1]" --type styleref --prop styleName="Heading 1"
 officecli add doc.docx "/body/p[1]" --type if --prop expression="MERGEFIELD Gender = \"Male\"" --prop trueText=Mr. --prop falseText=Ms.
 
-# Document info fields
-officecli add doc.docx "/body/p[1]" --type createdate     # document creation date
-officecli add doc.docx "/body/p[1]" --type lastsavedby    # last saved by
-officecli add doc.docx "/body/p[1]" --type numwords       # word count
-officecli add doc.docx "/body/p[1]" --type sectionpages   # pages in current section
-
-# STYLEREF — show current heading in header (e.g. running header)
-officecli add doc.docx "/body/p[1]" --type styleref --prop styleName="Heading 1"
-
-# DOCPROPERTY — custom document property
-officecli add doc.docx "/body/p[1]" --type docproperty --prop propertyName=Department
+# Zero-param fields — just --type is enough
+# createdate, savedate, printdate, lastsavedby, numwords, numchars,
+# sectionpages, section, edittime, revnum, template, comments, keywords
+officecli add doc.docx "/body/p[1]" --type createdate
 ```
 
 ### Comments
