@@ -1399,6 +1399,10 @@ internal partial class ChartSvgRenderer
         public string? PlotFillColor { get; set; }
         public string? ChartFillColor { get; set; }
         public bool HasLegend { get; set; }
+        /// <summary>#7f: OOXML c:legendPos InnerText — "b" (bottom, default),
+        /// "t" (top), "r" (right), "l" (left), "tr" (top-right). Rendering
+        /// adapts the wrapper layout to each position.</summary>
+        public string LegendPos { get; set; } = "b";
         public string LegendFontSize { get; set; } = "8pt";
         public string? LegendFontColor { get; set; }
         public int ValFontPx { get; set; } = 9;
@@ -1698,6 +1702,10 @@ internal partial class ChartSvgRenderer
             if (legendFontSize != null && int.TryParse(legendFontSize, out var lfs))
                 info.LegendFontSize = $"{lfs / 100.0:0.##}pt";
             info.LegendFontColor = ExtractFontColor(legendRPr);
+            // #7f: honor <c:legendPos w:val="r|l|t|b|tr"/>.
+            var posEl = legendEl.Elements().FirstOrDefault(e => e.LocalName == "legendPos");
+            var posVal = posEl?.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value;
+            if (!string.IsNullOrEmpty(posVal)) info.LegendPos = posVal!;
         }
         else
         {
@@ -2073,7 +2081,14 @@ internal partial class ChartSvgRenderer
         if (!info.HasLegend) return;
         var legendColor = info.LegendFontColor ?? fontColor;
         var isPieType = info.ChartType.Contains("pie") || info.ChartType.Contains("doughnut");
-        sb.Append($"<div style=\"display:flex;justify-content:center;gap:16px;padding:4px 0;font-size:{info.LegendFontSize};color:{legendColor}\">");
+        // #7f: legendPos "r" / "l" / "tr" stack swatches vertically; "b" / "t"
+        // keep the horizontal row layout but the caller wraps with flex so
+        // they appear above / below the SVG.
+        var isVertical = info.LegendPos is "r" or "l" or "tr";
+        var layoutCss = isVertical
+            ? "display:flex;flex-direction:column;gap:6px;padding:4px 6px;align-items:flex-start"
+            : "display:flex;flex-wrap:wrap;justify-content:center;gap:16px;padding:4px 0";
+        sb.Append($"<div class=\"chart-legend\" data-legend-pos=\"{info.LegendPos}\" style=\"{layoutCss};font-size:{info.LegendFontSize};color:{legendColor}\">");
         if (isPieType && info.Categories.Length > 0)
         {
             for (int i = 0; i < info.Categories.Length; i++)
