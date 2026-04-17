@@ -332,43 +332,35 @@ public partial class WordHandler
         NoVBand = 0x0400,
     }
 
-    /// <summary>Parse tblLook from table properties. Individual attributes
-    /// (firstRow/firstColumn/…) take precedence over the legacy val hex
-    /// bitmask — spec §17.7.6.7 marks val as deprecated.</summary>
+    /// <summary>Parse tblLook from table properties. Start from the legacy
+    /// val hex bitmask (if present) and let each authored individual attr
+    /// override only the bit it names — per ECMA-376 §17.7.6.7, individual
+    /// attrs are independent overrides of val, not a full replacement.</summary>
     private static TableLookFlags ParseTableLook(TableProperties? tblPr)
     {
         var tblLook = tblPr?.GetFirstChild<TableLook>();
         if (tblLook == null) return TableLookFlags.None;
 
-        // If ANY individual boolean attr is set (true OR false), use them
-        // exclusively — a firstColumn="0" authored to turn OFF conditional
-        // formatting must win over a legacy Val bitmask that would set it.
-        var hasIndividualAttrs =
-            tblLook.FirstRow != null ||
-            tblLook.LastRow != null ||
-            tblLook.FirstColumn != null ||
-            tblLook.LastColumn != null ||
-            tblLook.NoHorizontalBand != null ||
-            tblLook.NoVerticalBand != null;
-
-        if (hasIndividualAttrs)
-        {
-            var flags = TableLookFlags.None;
-            if (tblLook.FirstRow?.Value == true) flags |= TableLookFlags.FirstRow;
-            if (tblLook.LastRow?.Value == true) flags |= TableLookFlags.LastRow;
-            if (tblLook.FirstColumn?.Value == true) flags |= TableLookFlags.FirstColumn;
-            if (tblLook.LastColumn?.Value == true) flags |= TableLookFlags.LastColumn;
-            if (tblLook.NoHorizontalBand?.Value == true) flags |= TableLookFlags.NoHBand;
-            if (tblLook.NoVerticalBand?.Value == true) flags |= TableLookFlags.NoVBand;
-            return flags;
-        }
-
-        // Fall back to val hex bitmask when no individual attrs are authored.
+        var flags = TableLookFlags.None;
         var val = tblLook.Val?.Value;
         if (val != null && int.TryParse(val, System.Globalization.NumberStyles.HexNumber, null, out var hex))
-            return (TableLookFlags)hex;
+            flags = (TableLookFlags)hex;
 
-        return TableLookFlags.None;
+        // Each authored attr (regardless of true/false) overrides its bit.
+        if (tblLook.FirstRow != null)
+            flags = tblLook.FirstRow.Value == true ? flags | TableLookFlags.FirstRow : flags & ~TableLookFlags.FirstRow;
+        if (tblLook.LastRow != null)
+            flags = tblLook.LastRow.Value == true ? flags | TableLookFlags.LastRow : flags & ~TableLookFlags.LastRow;
+        if (tblLook.FirstColumn != null)
+            flags = tblLook.FirstColumn.Value == true ? flags | TableLookFlags.FirstColumn : flags & ~TableLookFlags.FirstColumn;
+        if (tblLook.LastColumn != null)
+            flags = tblLook.LastColumn.Value == true ? flags | TableLookFlags.LastColumn : flags & ~TableLookFlags.LastColumn;
+        if (tblLook.NoHorizontalBand != null)
+            flags = tblLook.NoHorizontalBand.Value == true ? flags | TableLookFlags.NoHBand : flags & ~TableLookFlags.NoHBand;
+        if (tblLook.NoVerticalBand != null)
+            flags = tblLook.NoVerticalBand.Value == true ? flags | TableLookFlags.NoVBand : flags & ~TableLookFlags.NoVBand;
+
+        return flags;
     }
 
     /// <summary>Cached conditional format data from a table style.</summary>
