@@ -1415,6 +1415,11 @@ public partial class WordHandler
                 CloseAllLists(sb, listStack, ref currentListType, ref pendingLiClose);
                 RenderTableHtml(sb, table, dataPath: $"/body/table[{wTableCount}]");
             }
+            else if (element is AltChunk altChunk)
+            {
+                CloseAllLists(sb, listStack, ref currentListType, ref pendingLiClose);
+                RenderAltChunkHtml(sb, altChunk);
+            }
         }
 
         // Close any pending block (last element was non-list with continue, or last list block)
@@ -1423,6 +1428,66 @@ public partial class WordHandler
         if (inMultiColumn) sb.AppendLine("</div>");
         if (dropCapWrapRemaining > 0) sb.Append("</div>");
         CloseAllLists(sb, listStack, ref currentListType, ref pendingLiClose);
+    }
+
+    /// <summary>
+    /// #8b: emit the alternate content referenced by a <c>&lt;w:altChunk&gt;</c>
+    /// relationship. text/html is injected (with <c>&lt;script&gt;</c> tags
+    /// stripped); text/plain is wrapped in <c>&lt;pre&gt;</c>; RTF and
+    /// other binary-ish formats fall back to a stripped-text placeholder.
+    /// Opens the door to rendering HTML fragments authors embed in Word
+    /// via "Insert File → HTML" instead of rendering a blank gap.
+    /// </summary>
+    private void RenderAltChunkHtml(StringBuilder sb, AltChunk altChunk)
+    {
+        var rId = altChunk.Id?.Value;
+        if (string.IsNullOrEmpty(rId)) return;
+        try
+        {
+            var part = _doc.MainDocumentPart?.GetPartById(rId)
+                       as AlternativeFormatImportPart;
+            if (part == null) return;
+            using var stream = part.GetStream();
+            using var reader = new StreamReader(stream);
+            var content = reader.ReadToEnd();
+            var contentType = (part.ContentType ?? "").ToLowerInvariant();
+
+            if (contentType is "text/html" or "application/xhtml+xml")
+            {
+                var bodyMatch = Regex.Match(content,
+                    @"<body[^>]*>(.*?)</body>",
+                    RegexOptions.Singleline | RegexOptions.IgnoreCase);
+                var inner = bodyMatch.Success ? bodyMatch.Groups[1].Value : content;
+                inner = Regex.Replace(inner,
+                    @"<script[^>]*>.*?</script>",
+                    "",
+                    RegexOptions.Singleline | RegexOptions.IgnoreCase);
+                inner = Regex.Replace(inner,
+                    @"<(?:link|meta|iframe|object|embed)[^>]*>",
+                    "",
+                    RegexOptions.IgnoreCase);
+                sb.AppendLine($"<div class=\"alt-chunk-html\">{inner}</div>");
+            }
+            else if (contentType is "text/plain" or "text/css")
+            {
+                sb.AppendLine($"<pre class=\"alt-chunk-text\">{HtmlEncode(content)}</pre>");
+            }
+            else
+            {
+                // RTF etc.: strip control words and braces, emit as plain-text block.
+                var plain = Regex.Replace(content, @"\\[a-zA-Z]+-?\d*\s?|[{}]", " ");
+                plain = Regex.Replace(plain, @"\s+", " ").Trim();
+                if (plain.Length > 1000) plain = plain[..1000] + "…";
+                sb.AppendLine(
+                    $"<div class=\"alt-chunk-fallback\" " +
+                    $"style=\"border:1px dashed #bbb;padding:4px;font-style:italic;color:#555\">" +
+                    $"{HtmlEncode(plain)}</div>");
+            }
+        }
+        catch
+        {
+            // Silent skip: altChunk part missing / unreadable shouldn't break the whole preview.
+        }
     }
 
     private static void CloseAllLists(StringBuilder sb, Stack<string> listStack, ref string? currentListType, ref bool pendingLiClose)
