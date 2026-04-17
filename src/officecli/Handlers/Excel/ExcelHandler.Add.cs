@@ -170,7 +170,14 @@ public partial class ExcelHandler
                 }
                 if (properties.TryGetValue("formula", out var formula))
                 {
-                    cell.CellFormula = new CellFormula(formula.TrimStart('='));
+                    // Strip a leading '=' (formula-bar copy) and reject
+                    // literal `{...}` array-formula wrapping — users must use
+                    // the dedicated `arrayformula=` prop for that, since
+                    // `<x:f>{=...}</x:f>` causes Excel to reject the file.
+                    var fTrim = formula.TrimStart('=').Trim();
+                    if (fTrim.StartsWith("{") && fTrim.EndsWith("}"))
+                        throw new ArgumentException("Literal braces '{...}' around a formula create an Excel-rejected file. Use --prop arrayformula=... (without braces) to declare a CSE array formula.");
+                    cell.CellFormula = new CellFormula(fTrim);
                     cell.CellValue = null;
                 }
                 if (properties.TryGetValue("type", out var cellType))
@@ -389,7 +396,20 @@ public partial class ExcelHandler
                 var nrName = properties.GetValueOrDefault("name", "");
                 if (string.IsNullOrEmpty(nrName))
                     throw new ArgumentException("'name' property is required for namedrange");
-                var refVal = properties.GetValueOrDefault("ref", "");
+                // Per OOXML §18.2.5: defined-name identifiers must start with
+                // letter/underscore/backslash, contain only letter/digit/
+                // underscore/period/backslash, and must not parse as a cell
+                // reference. Otherwise Excel rejects the file with 0x800A03EC.
+                if (!System.Text.RegularExpressions.Regex.IsMatch(nrName, @"^[A-Za-z_\\][A-Za-z0-9_\\.]*$"))
+                    throw new ArgumentException($"Invalid defined-name '{nrName}': must start with a letter/underscore and contain only letters, digits, underscores, or periods (no spaces).");
+                if (LooksLikeCellReference(nrName))
+                    throw new ArgumentException($"Invalid defined-name '{nrName}': name parses as a cell reference; choose a different name.");
+                // `refersTo` is the common Excel-documented alias for `ref`;
+                // silently map it so users don't end up with an empty
+                // <x:definedName/> that corrupts the file.
+                var refVal = properties.GetValueOrDefault("ref",
+                    properties.GetValueOrDefault("refersTo",
+                        properties.GetValueOrDefault("formula", "")));
 
                 var workbook = GetWorkbook();
                 var definedNames = workbook.GetFirstChild<DefinedNames>();
@@ -470,11 +490,16 @@ public partial class ExcelHandler
                 }
 
                 var comment = new Comment { Reference = cmtRef.ToUpperInvariant(), AuthorId = authorId };
+                // Support user-supplied `\n` (literal two-char sequence from
+                // CLI) and real LF as line breaks — Excel renders the
+                // preserved newline in the comment body. Matches the shape
+                // `text` behavior documented in add-shape help.
+                var cmtNormalized = (cmtText ?? "").Replace("\r\n", "\n").Replace("\\n", "\n");
                 comment.CommentText = new CommentText(
                     new Run(
                         new RunProperties(new FontSize { Val = 9 }, new Color { Indexed = 81 },
                             new RunFont { Val = "Tahoma" }),
-                        new Text(cmtText) { Space = SpaceProcessingModeValues.Preserve }
+                        new Text(cmtNormalized) { Space = SpaceProcessingModeValues.Preserve }
                     )
                 );
                 commentList.AppendChild(comment);
@@ -637,6 +662,8 @@ public partial class ExcelHandler
                     "duplicatevalues" => Add(parentPath, "duplicatevalues", position, properties),
                     "containstext" => Add(parentPath, "containstext", position, properties),
                     "dateoccurring" or "timeperiod" => Add(parentPath, "dateoccurring", position, properties),
+                    "belowaverage" or "containsblanks" or "notcontainsblanks" or "containserrors" or "notcontainserrors" or "contains" or "notcontains" or "beginswith" or "endswith"
+                        => Add(parentPath, "cfextended", position, properties),
                     _ => Add(parentPath, "conditionalformatting", position, properties)
                 };
             }
@@ -657,6 +684,8 @@ public partial class ExcelHandler
                     if (cfTypeLower is "duplicatevalues") return Add(parentPath, "duplicatevalues", position, properties);
                     if (cfTypeLower is "containstext") return Add(parentPath, "containstext", position, properties);
                     if (cfTypeLower is "dateoccurring" or "timeperiod") return Add(parentPath, "dateoccurring", position, properties);
+                    if (cfTypeLower is "belowaverage" or "containsblanks" or "notcontainsblanks" or "containserrors" or "notcontainserrors" or "contains" or "notcontains" or "beginswith" or "endswith")
+                        return Add(parentPath, "cfextended", position, properties);
                 }
                 var cfSegments = parentPath.TrimStart('/').Split('/', 2);
                 var cfSheetName = cfSegments[0];
@@ -1174,20 +1203,7 @@ public partial class ExcelHandler
                         new XDR.RowId((py + (int)picWholeRows).ToString()),
                         new XDR.RowOffset(picRemRows.ToString())
                     ),
-                    new XDR.Picture(
-                        new XDR.NonVisualPictureProperties(
-                            new XDR.NonVisualDrawingProperties { Id = picId, Name = $"Picture {picId}", Description = alt },
-                            new XDR.NonVisualPictureDrawingProperties(new Drawing.PictureLocks { NoChangeAspect = true })
-                        ),
-                        BuildPictureBlipFill(imgRelId, xlSvgRelId),
-                        new XDR.ShapeProperties(
-                            new Drawing.Transform2D(
-                                new Drawing.Offset { X = 0, Y = 0 },
-                                new Drawing.Extents { Cx = 0, Cy = 0 }
-                            ),
-                            new Drawing.PresetGeometry(new Drawing.AdjustValueList()) { Preset = Drawing.ShapeTypeValues.Rectangle }
-                        )
-                    ),
+                    BuildPictureElementWithTransform(picId, alt ?? "", imgRelId, xlSvgRelId, properties),
                     new XDR.ClientData()
                 );
 
@@ -1242,11 +1258,13 @@ public partial class ExcelHandler
                     shpPreset = ParseExcelShapePreset(shpPresetRaw);
 
                 // Build ShapeProperties
+                var shpXfrm = new Drawing.Transform2D(
+                    new Drawing.Offset { X = 0, Y = 0 },
+                    new Drawing.Extents { Cx = 0, Cy = 0 }
+                );
+                ApplyTransform2DRotationFlip(shpXfrm, properties);
                 var spPr = new XDR.ShapeProperties(
-                    new Drawing.Transform2D(
-                        new Drawing.Offset { X = 0, Y = 0 },
-                        new Drawing.Extents { Cx = 0, Cy = 0 }
-                    ),
+                    shpXfrm,
                     new Drawing.PresetGeometry(new Drawing.AdjustValueList()) { Preset = shpPreset }
                 );
 
@@ -1568,6 +1586,13 @@ public partial class ExcelHandler
                     }
 
                     var tblCols = tableColumns.Elements<TableColumn>().ToList();
+                    // Per-column totalsRowFunction tokens: "none,sum,average"
+                    // → first col = label/none, rest = sum, average. If the
+                    // user didn't pass it, default to "none" on col0 + "sum"
+                    // on the rest (legacy behavior).
+                    string[] trfTokens = properties.TryGetValue("totalsRowFunction", out var trfRaw)
+                        ? trfRaw.Split(',').Select(s => s.Trim()).ToArray()
+                        : Array.Empty<string>();
                     for (int ci = 0; ci < tblCols.Count; ci++)
                     {
                         var colLetter = IndexToColumnName(startColIdx + ci);
@@ -1580,21 +1605,33 @@ public partial class ExcelHandler
                             totalRow.AppendChild(existingCell);
                         }
 
-                        if (ci == 0)
+                        var tokRaw = ci < trfTokens.Length ? trfTokens[ci].ToLowerInvariant() : "";
+                        var (trfEnum, subtotalCode) = MapTotalsRowFunction(tokRaw);
+
+                        if (ci == 0 && (tokRaw == "" || tokRaw == "none" || tokRaw == "label"))
                         {
                             // First column: label "Total"
                             tblCols[ci].TotalsRowLabel = "Total";
                             existingCell.CellValue = new CellValue("Total");
                             existingCell.DataType = new EnumValue<CellValues>(CellValues.String);
                         }
+                        else if (trfEnum == TotalsRowFunctionValues.None)
+                        {
+                            // Skip — leave cell empty, no function set.
+                        }
                         else
                         {
-                            // Other columns: SUBTOTAL(109, range) formula for SUM
-                            tblCols[ci].TotalsRowFunction = TotalsRowFunctionValues.Sum;
+                            // Default non-first column (no explicit token) = SUM
+                            if (ci > 0 && tokRaw == "")
+                            {
+                                trfEnum = TotalsRowFunctionValues.Sum;
+                                subtotalCode = 109;
+                            }
+                            tblCols[ci].TotalsRowFunction = trfEnum;
                             var dataStartRow = hasHeader ? startRow + 1 : startRow;
                             var dataEndRow = (int)totalRowIdx - 1;
                             var formulaRange = $"{colLetter}{dataStartRow}:{colLetter}{dataEndRow}";
-                            existingCell.CellFormula = new CellFormula($"SUBTOTAL(109,{formulaRange})");
+                            existingCell.CellFormula = new CellFormula($"SUBTOTAL({subtotalCode},{formulaRange})");
                         }
                     }
                 }
@@ -2177,6 +2214,7 @@ public partial class ExcelHandler
             case "duplicatevalues":
             case "containstext":
             case "dateoccurring":
+            case "cfextended":
             {
                 var cfNewSegments = parentPath.TrimStart('/').Split('/', 2);
                 var cfNewSheetName = cfNewSegments[0];
@@ -2187,12 +2225,23 @@ public partial class ExcelHandler
 
                 ConditionalFormattingRule cfNewRule;
                 var typeLower = type.ToLowerInvariant();
+                // For cfextended dispatch, the actual requested sub-type is in
+                // properties["type"] (the user-facing switch; the outer `type`
+                // variable is literal "cfextended" here).
+                if (typeLower == "cfextended")
+                    typeLower = (properties.GetValueOrDefault("type", "") ?? "").ToLowerInvariant();
 
                 switch (typeLower)
                 {
                     case "topn":
                     {
-                        var rank = uint.TryParse(properties.GetValueOrDefault("rank", "10"), out var r) ? r : 10u;
+                        // Accept both `rank=` (OOXML attribute name) and `top=`
+                        // (user-facing alias documented in the topn help).
+                        var rankStr = properties.GetValueOrDefault("rank")
+                            ?? properties.GetValueOrDefault("top")
+                            ?? properties.GetValueOrDefault("bottomN")
+                            ?? "10";
+                        var rank = uint.TryParse(rankStr, out var r) ? r : 10u;
                         var percent = ParseHelpers.IsTruthy(properties.GetValueOrDefault("percent", "false"));
                         var bottom = ParseHelpers.IsTruthy(properties.GetValueOrDefault("bottom", "false"));
                         cfNewRule = new ConditionalFormattingRule
@@ -2250,7 +2299,12 @@ public partial class ExcelHandler
                     }
                     case "dateoccurring":
                     {
-                        var period = properties.GetValueOrDefault("period", "today");
+                        // Accept both `period=` (docs/canonical) and `timePeriod=`
+                        // (OOXML attribute spelling) as input aliases.
+                        var period = properties.GetValueOrDefault("period")
+                            ?? properties.GetValueOrDefault("timePeriod")
+                            ?? properties.GetValueOrDefault("timeperiod")
+                            ?? "today";
                         var normalizedPeriod = period.ToLowerInvariant() switch
                         {
                             "today" => "today",
@@ -2284,6 +2338,116 @@ public partial class ExcelHandler
                                 _ => TimePeriodValues.Today
                             })
                         };
+                        break;
+                    }
+                    case "belowaverage":
+                    {
+                        cfNewRule = new ConditionalFormattingRule
+                        {
+                            Type = ConditionalFormatValues.AboveAverage,
+                            Priority = cfNewPriority,
+                            AboveAverage = false
+                        };
+                        break;
+                    }
+                    case "containsblanks":
+                    {
+                        cfNewRule = new ConditionalFormattingRule
+                        {
+                            Type = ConditionalFormatValues.ContainsBlanks,
+                            Priority = cfNewPriority
+                        };
+                        var fc0 = cfNewSqref.Split(':')[0].TrimStart('$');
+                        cfNewRule.AppendChild(new Formula($"LEN(TRIM({fc0}))=0"));
+                        break;
+                    }
+                    case "notcontainsblanks":
+                    {
+                        cfNewRule = new ConditionalFormattingRule
+                        {
+                            Type = ConditionalFormatValues.NotContainsBlanks,
+                            Priority = cfNewPriority
+                        };
+                        var fc1 = cfNewSqref.Split(':')[0].TrimStart('$');
+                        cfNewRule.AppendChild(new Formula($"LEN(TRIM({fc1}))>0"));
+                        break;
+                    }
+                    case "containserrors":
+                    {
+                        cfNewRule = new ConditionalFormattingRule
+                        {
+                            Type = ConditionalFormatValues.ContainsErrors,
+                            Priority = cfNewPriority
+                        };
+                        var fc2 = cfNewSqref.Split(':')[0].TrimStart('$');
+                        cfNewRule.AppendChild(new Formula($"ISERROR({fc2})"));
+                        break;
+                    }
+                    case "notcontainserrors":
+                    {
+                        cfNewRule = new ConditionalFormattingRule
+                        {
+                            Type = ConditionalFormatValues.NotContainsErrors,
+                            Priority = cfNewPriority
+                        };
+                        var fc3 = cfNewSqref.Split(':')[0].TrimStart('$');
+                        cfNewRule.AppendChild(new Formula($"NOT(ISERROR({fc3}))"));
+                        break;
+                    }
+                    case "contains":
+                    {
+                        var ctext = properties.GetValueOrDefault("text", "");
+                        cfNewRule = new ConditionalFormattingRule
+                        {
+                            Type = ConditionalFormatValues.ContainsText,
+                            Priority = cfNewPriority,
+                            Text = ctext,
+                            Operator = ConditionalFormattingOperatorValues.ContainsText
+                        };
+                        var fc4 = cfNewSqref.Split(':')[0].TrimStart('$');
+                        cfNewRule.AppendChild(new Formula($"NOT(ISERROR(SEARCH(\"{ctext}\",{fc4})))"));
+                        break;
+                    }
+                    case "notcontains":
+                    {
+                        var nctext = properties.GetValueOrDefault("text", "");
+                        cfNewRule = new ConditionalFormattingRule
+                        {
+                            Type = ConditionalFormatValues.NotContainsText,
+                            Priority = cfNewPriority,
+                            Text = nctext,
+                            Operator = ConditionalFormattingOperatorValues.NotContains
+                        };
+                        var fc5 = cfNewSqref.Split(':')[0].TrimStart('$');
+                        cfNewRule.AppendChild(new Formula($"ISERROR(SEARCH(\"{nctext}\",{fc5}))"));
+                        break;
+                    }
+                    case "beginswith":
+                    {
+                        var btext = properties.GetValueOrDefault("text", "");
+                        cfNewRule = new ConditionalFormattingRule
+                        {
+                            Type = ConditionalFormatValues.BeginsWith,
+                            Priority = cfNewPriority,
+                            Text = btext,
+                            Operator = ConditionalFormattingOperatorValues.BeginsWith
+                        };
+                        var fc6 = cfNewSqref.Split(':')[0].TrimStart('$');
+                        cfNewRule.AppendChild(new Formula($"LEFT({fc6},{btext.Length})=\"{btext}\""));
+                        break;
+                    }
+                    case "endswith":
+                    {
+                        var etext = properties.GetValueOrDefault("text", "");
+                        cfNewRule = new ConditionalFormattingRule
+                        {
+                            Type = ConditionalFormatValues.EndsWith,
+                            Priority = cfNewPriority,
+                            Text = etext,
+                            Operator = ConditionalFormattingOperatorValues.EndsWith
+                        };
+                        var fc7 = cfNewSqref.Split(':')[0].TrimStart('$');
+                        cfNewRule.AppendChild(new Formula($"RIGHT({fc7},{etext.Length})=\"{etext}\""));
                         break;
                     }
                     default:
@@ -2369,7 +2533,7 @@ public partial class ExcelHandler
                 var spkType = spkTypeStr switch
                 {
                     "column" => X14.SparklineTypeValues.Column,
-                    "stacked" => X14.SparklineTypeValues.Stacked,
+                    "stacked" or "winloss" or "win-loss" => X14.SparklineTypeValues.Stacked,
                     _ => X14.SparklineTypeValues.Line
                 };
 

@@ -27,6 +27,77 @@ public partial class ExcelHandler
         return new XDR.BlipFill(blip, new Drawing.Stretch(new Drawing.FillRectangle()));
     }
 
+    // Build an <xdr:pic> element with an initial Transform2D, applying any
+    // user-supplied rotation/flip props. Keeps the Add.cs path readable.
+    internal static XDR.Picture BuildPictureElementWithTransform(
+        uint picId, string alt, string imgRelId, string? svgRelId,
+        Dictionary<string, string> properties)
+    {
+        var xfrm = new Drawing.Transform2D(
+            new Drawing.Offset { X = 0, Y = 0 },
+            new Drawing.Extents { Cx = 0, Cy = 0 });
+        ApplyTransform2DRotationFlip(xfrm, properties);
+        return new XDR.Picture(
+            new XDR.NonVisualPictureProperties(
+                new XDR.NonVisualDrawingProperties { Id = picId, Name = $"Picture {picId}", Description = alt },
+                new XDR.NonVisualPictureDrawingProperties(new Drawing.PictureLocks { NoChangeAspect = true })
+            ),
+            BuildPictureBlipFill(imgRelId, svgRelId),
+            new XDR.ShapeProperties(
+                xfrm,
+                new Drawing.PresetGeometry(new Drawing.AdjustValueList()) { Preset = Drawing.ShapeTypeValues.Rectangle }
+            )
+        );
+    }
+
+    // Map a table-column totals-row function token to its OOXML enum and the
+    // SUBTOTAL function code Excel uses. Unknown tokens fall back to SUM (109)
+    // — previously all non-"sum" tokens silently became SUM; this keeps the
+    // same fallback for unknown tokens but routes known ones to the right
+    // enum + SUBTOTAL code.
+    internal static (TotalsRowFunctionValues, int) MapTotalsRowFunction(string tok) => tok switch
+    {
+        "sum" => (TotalsRowFunctionValues.Sum, 109),
+        "average" or "avg" => (TotalsRowFunctionValues.Average, 101),
+        "count" => (TotalsRowFunctionValues.Count, 103),
+        "countnums" or "countnumbers" => (TotalsRowFunctionValues.CountNumbers, 102),
+        "max" or "maximum" => (TotalsRowFunctionValues.Maximum, 104),
+        "min" or "minimum" => (TotalsRowFunctionValues.Minimum, 105),
+        "stddev" or "stdev" => (TotalsRowFunctionValues.StandardDeviation, 107),
+        "var" or "variance" => (TotalsRowFunctionValues.Variance, 110),
+        "none" or "label" or "" => (TotalsRowFunctionValues.None, 0),
+        "custom" => (TotalsRowFunctionValues.Custom, 109),
+        _ => (TotalsRowFunctionValues.Sum, 109)
+    };
+
+    // Apply `rotation=<deg>` / `flip=h|v|both|hv|vh` from the user properties
+    // dict to a Drawing.Transform2D node. Silently no-op on missing props.
+    // Mirrors PowerPointHandler's shape rotation semantics: angles are in
+    // degrees (positive = clockwise), OOXML stores them as 60000ths of a
+    // degree in the `rot` attribute. Values are normalized modulo 360.
+    internal static void ApplyTransform2DRotationFlip(
+        Drawing.Transform2D xfrm, Dictionary<string, string> properties)
+    {
+        if (xfrm == null) return;
+        if (properties.TryGetValue("rotation", out var rotStr) && !string.IsNullOrWhiteSpace(rotStr))
+        {
+            if (double.TryParse(rotStr, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var deg))
+            {
+                var normalized = ((deg % 360) + 360) % 360;
+                xfrm.Rotation = (int)Math.Round(normalized * 60000);
+            }
+        }
+        if (properties.TryGetValue("flip", out var flipStr) && !string.IsNullOrWhiteSpace(flipStr))
+        {
+            var f = flipStr.Trim().ToLowerInvariant();
+            bool flipH = f == "h" || f == "horizontal" || f == "both" || f == "hv" || f == "vh";
+            bool flipV = f == "v" || f == "vertical" || f == "both" || f == "hv" || f == "vh";
+            if (flipH) xfrm.HorizontalFlip = true;
+            if (flipV) xfrm.VerticalFlip = true;
+        }
+    }
+
     // Normalize user-supplied data-validation formula values so Excel accepts
     // them. `type=list` auto-quotes bare lists. `type=time` accepts HH:MM /
     // HH:MM:SS and converts to the Excel time serial fraction. `type=date`
@@ -1662,10 +1733,20 @@ public partial class ExcelHandler
     /// </summary>
     private static long ParseAnchorDimensionEmu(string value, string name)
     {
-        if (int.TryParse(value, out var plainInt))
+        if (long.TryParse(value, out var plainInt))
         {
+            // Bare integers are interpreted as cell counts (original grammar),
+            // but values that exceed the sheet's column/row max are obviously
+            // meant as EMU — the cell-count interpretation would overflow the
+            // ToMarker coordinate and make Excel reject the file. Excel's hard
+            // limits: 16384 columns, 1048576 rows. Anything bigger is EMU.
+            const int MaxCols = 16384;
+            const int MaxRows = 1048576;
+            long boundary = (name == "height") ? MaxRows : MaxCols;
+            if (plainInt >= boundary)
+                return Math.Max(0, plainInt);
             long perCell = (name == "height") ? EmuPerRowApprox : EmuPerColApprox;
-            return Math.Max(0, (long)plainInt) * perCell;
+            return Math.Max(0, plainInt) * perCell;
         }
 
         try
