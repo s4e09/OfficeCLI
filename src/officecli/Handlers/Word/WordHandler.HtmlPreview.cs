@@ -212,10 +212,38 @@ public partial class WordHandler
                 + "\""
             : "";
 
+        // Per-section page layout (#7a00): each page carries one or more
+        // <!--SECT:N--> markers inserted by RenderBodyHtml. The last marker
+        // seen (inclusive of this page) decides the page's size/margins;
+        // pages with no marker inherit from the previous page.
+        var sections = CollectSections(body);
+        var sectRegex = new Regex(@"<!--SECT:(\d+)-->");
+        var activeLayout = pgLayout;
         for (int i = 0; i < pageList.Count; i++)
         {
+            var pgContent = pageList[i];
+            var sectMatches = sectRegex.Matches(pgContent);
+            if (sectMatches.Count > 0)
+            {
+                var lastIdx = int.Parse(sectMatches[^1].Groups[1].Value);
+                if (lastIdx >= 0 && lastIdx < sections.Count)
+                    activeLayout = GetPageLayoutFor(sections[lastIdx]);
+                pgContent = sectRegex.Replace(pgContent, "");
+                pageList[i] = pgContent;
+            }
+            // Per-page inline style carries full geometry (width / min-height
+            // / padding) so sections with different page sizes or margins
+            // override the base .page CSS rules.
+            var ci = System.Globalization.CultureInfo.InvariantCulture;
+            var pageStyle =
+                $"width:{activeLayout.WidthPt.ToString("0.#", ci)}pt;" +
+                $"min-height:{activeLayout.HeightPt.ToString("0.#", ci)}pt;" +
+                $"padding:{activeLayout.MarginTopPt.ToString("0.#", ci)}pt " +
+                $"{activeLayout.MarginRightPt.ToString("0.#", ci)}pt " +
+                $"{activeLayout.MarginBottomPt.ToString("0.#", ci)}pt " +
+                $"{activeLayout.MarginLeftPt.ToString("0.#", ci)}pt";
             sb.AppendLine($"<div class=\"page-wrapper\" data-section=\"{i + 1}\">");
-            sb.AppendLine($"<div class=\"page\" data-page=\"{i + 1}\" style=\"{maxW}\">");
+            sb.AppendLine($"<div class=\"page\" data-page=\"{i + 1}\" style=\"{pageStyle}\">");
             if (i == 0) sb.Append(headerHtml);
             sb.Append($"<div class=\"page-body\"{colBodyStyle}>");
             sb.Append(pageList[i]);
@@ -490,23 +518,51 @@ public partial class WordHandler
     {
         if (_ctx?.CachedPageLayout != null) return _ctx.CachedPageLayout;
         var sectPr = _doc.MainDocumentPart?.Document?.Body?.GetFirstChild<SectionProperties>();
+        var result = GetPageLayoutFor(sectPr);
+        if (_ctx != null) _ctx.CachedPageLayout = result;
+        return result;
+    }
+
+    private static PageLayout GetPageLayoutFor(SectionProperties? sectPr)
+    {
         var pgSz = sectPr?.GetFirstChild<PageSize>();
         var pgMar = sectPr?.GetFirstChild<PageMargin>();
         const double c = 2.54 / 1440.0; // twips → cm
         const double p = 1.0 / 20.0;    // twips → pt (exact)
         var wTwips = (double)(pgSz?.Width?.Value ?? 11906);
         var hTwips = (double)(pgSz?.Height?.Value ?? 16838);
+        // Landscape: OOXML orient=landscape flips the width/height semantics.
+        // w:w/w:h already reflect the orientation in most real-world docs,
+        // but guard against the rare case where w:w < w:h but orient=landscape.
+        if (pgSz?.Orient?.Value == PageOrientationValues.Landscape && wTwips < hTwips)
+            (wTwips, hTwips) = (hTwips, wTwips);
         var tTwips = (double)(pgMar?.Top?.Value ?? 1440);
         var bTwips = (double)(pgMar?.Bottom?.Value ?? 1440);
         var lTwips = (double)(pgMar?.Left?.Value ?? 1440u);
         var rTwips = (double)(pgMar?.Right?.Value ?? 1440u);
         var hdTwips = (double)(pgMar?.Header?.Value ?? 851u);
         var fdTwips = (double)(pgMar?.Footer?.Value ?? 992u);
-        var result = new PageLayout(
+        return new PageLayout(
             wTwips * c, hTwips * c, tTwips * c, bTwips * c, lTwips * c, rTwips * c, hdTwips * c, fdTwips * c,
             wTwips * p, hTwips * p, tTwips * p, bTwips * p, lTwips * p, rTwips * p, hdTwips * p, fdTwips * p);
-        if (_ctx != null) _ctx.CachedPageLayout = result;
-        return result;
+    }
+
+    /// <summary>
+    /// Collect sectPrs in document order. Each paragraph's inline sectPr
+    /// (held in its pPr) terminates a section; the body's trailing sectPr
+    /// owns everything after the last inline one.
+    /// </summary>
+    private List<SectionProperties> CollectSections(Body body)
+    {
+        var list = new List<SectionProperties>();
+        foreach (var p in body.Elements<Paragraph>())
+        {
+            var inline = p.ParagraphProperties?.GetFirstChild<SectionProperties>();
+            if (inline != null) list.Add(inline);
+        }
+        var trailing = body.GetFirstChild<SectionProperties>();
+        if (trailing != null) list.Add(trailing);
+        return list;
     }
 
     private record DocDef(string Font, double SizePt, double LineHeight, string Color, double GridLinePitchPt,
@@ -851,6 +907,14 @@ public partial class WordHandler
         int wBlockCount = 0;
         bool inList = false;
         int pendingBlockClose = 0; // block number that needs <!--wE:N--> before next block starts
+
+        // Section tracking for per-section page layout (#7a00). The first
+        // section owns page 1; each inline sectPr ends its section and
+        // bumps the index so the next page can adopt the next section's
+        // width/height/margins.
+        int currentSectionIdx = 0;
+        sb.Append($"<!--SECT:{currentSectionIdx}-->");
+
         for (int ei = 0; ei < elements.Count; ei++)
         {
             var element = elements[ei];
@@ -902,6 +966,10 @@ public partial class WordHandler
                 {
                     sb.Append("<!--PAGE_BREAK-->");
                 }
+                // Advance section index whether or not a page break fires,
+                // so the continuous-section layout still updates.
+                currentSectionIdx++;
+                sb.Append($"<!--SECT:{currentSectionIdx}-->");
 
                 var nextCols = GetNextSectionColumnCount(elements, ei, bodyColCount);
                 if (nextCols > 1 && !inMultiColumn)
