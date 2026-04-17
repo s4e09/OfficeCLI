@@ -111,8 +111,13 @@ public static class WordNumFmtRenderer
     private static string ToAlpha(int n, bool uppercase)
     {
         // Word's behavior: A,B,...,Z,AA,BB,CC,... (repeating letter at 27+), not Excel column-style.
+        if (n < 1) n = 1;
         var letter = (char)(((n - 1) % 26) + (uppercase ? 'A' : 'a'));
-        var repeat = ((n - 1) / 26) + 1;
+        // Cap repeat to a sensible upper bound — an adversarial
+        // <w:start val="2000000000"/> otherwise allocates a 160MB string
+        // per list item (DoS). Word itself stops reasonably at a few
+        // dozen repeats in practice.
+        var repeat = Math.Min(((n - 1) / 26) + 1, 64);
         return new string(letter, repeat);
     }
 

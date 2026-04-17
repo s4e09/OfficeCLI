@@ -1458,12 +1458,15 @@ public partial class ExcelHandler
 
     private static string FormatColorForCss(string raw)
     {
-        // ARGB "FFFF0000" → "#FF0000", or 6-char hex
-        if (raw.Length == 8)
-            return "#" + raw[2..];
-        if (raw.Length == 6)
-            return "#" + raw;
-        return "#" + raw;
+        // Reject non-hex raw values before interpolating into inline CSS —
+        // styles.xml / indexedColors attrs are attacker-controlled, and an
+        // unvalidated raw flows into `color:#{raw}` / `background:#{raw}`
+        // as an XSS sink.
+        static bool isHex(string s) =>
+            s.All(c => (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f'));
+        if (raw.Length == 8 && isHex(raw)) return "#" + raw[2..];
+        if (raw.Length is 6 or 3 && isHex(raw)) return "#" + raw;
+        return "#000";
     }
 
     // ==================== Formatted Cell Value ====================

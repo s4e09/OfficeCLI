@@ -1947,7 +1947,7 @@ internal partial class ChartSvgRenderer
         var solidFill = rPr.Elements().FirstOrDefault(e => e.LocalName == "solidFill");
         var srgb = solidFill?.Elements().FirstOrDefault(e => e.LocalName == "srgbClr");
         var val = srgb?.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value;
-        return val != null ? $"#{val}" : null;
+        return HexOrNull(val);
     }
 
     /// <summary>Extract line/outline color from spPr (ln > solidFill > srgbClr).</summary>
@@ -1959,7 +1959,19 @@ internal partial class ChartSvgRenderer
         var solidFill = ln.Elements().FirstOrDefault(e => e.LocalName == "solidFill");
         var srgb = solidFill?.Elements().FirstOrDefault(e => e.LocalName == "srgbClr");
         var val = srgb?.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value;
-        return val != null ? $"#{val}" : null;
+        return HexOrNull(val);
+    }
+
+    // Hex-only stripper: reject non-hex so these chart-color getters can't
+    // become XSS sinks when their return flows into SVG style/fill/stroke
+    // attributes downstream in Excel/PPTX/Word previews.
+    private static string? HexOrNull(string? v)
+    {
+        if (v == null) return null;
+        if (v.Length is not (3 or 6 or 8)) return null;
+        foreach (var c in v)
+            if (!((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f'))) return null;
+        return v;
     }
 
     /// <summary>Render the chart SVG content (inside an already-opened svg tag) based on ChartInfo.</summary>

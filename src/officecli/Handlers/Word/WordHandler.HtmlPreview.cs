@@ -912,8 +912,12 @@ public partial class WordHandler
         }
         if (font == null)
         {
-            var minor = _doc.MainDocumentPart?.ThemePart?.Theme?.ThemeElements?.FontScheme?.MinorFont;
-            font = NonEmpty(minor?.EastAsianFont?.Typeface) ?? NonEmpty(minor?.LatinFont?.Typeface);
+            try
+            {
+                var minor = _doc.MainDocumentPart?.ThemePart?.Theme?.ThemeElements?.FontScheme?.MinorFont;
+                font = NonEmpty(minor?.EastAsianFont?.Typeface) ?? NonEmpty(minor?.LatinFont?.Typeface);
+            }
+            catch (System.Xml.XmlException) { }
         }
 
         // Size: docDefaults → Normal style → fallback (half-points → pt)
@@ -1001,12 +1005,16 @@ public partial class WordHandler
                 if (!string.IsNullOrEmpty(rf.Ascii?.Value)) fonts.Add(rf.Ascii.Value);
                 if (!string.IsNullOrEmpty(rf.HighAnsi?.Value)) fonts.Add(rf.HighAnsi.Value);
             }
-        // From theme
-        var theme = _doc.MainDocumentPart?.ThemePart?.Theme?.ThemeElements?.FontScheme;
-        var majFont = theme?.MajorFont?.LatinFont?.Typeface?.Value;
-        if (!string.IsNullOrEmpty(majFont)) fonts.Add(majFont);
-        var minFont = theme?.MinorFont?.LatinFont?.Typeface?.Value;
-        if (!string.IsNullOrEmpty(minFont)) fonts.Add(minFont);
+        // From theme (malformed theme1.xml shouldn't taint the font set).
+        try
+        {
+            var theme = _doc.MainDocumentPart?.ThemePart?.Theme?.ThemeElements?.FontScheme;
+            var majFont = theme?.MajorFont?.LatinFont?.Typeface?.Value;
+            if (!string.IsNullOrEmpty(majFont)) fonts.Add(majFont);
+            var minFont = theme?.MinorFont?.LatinFont?.Typeface?.Value;
+            if (!string.IsNullOrEmpty(minFont)) fonts.Add(minFont);
+        }
+        catch (System.Xml.XmlException) { }
         // Remove fonts that have no usable @font-face (symbols, wingdings)
         fonts.RemoveWhere(f => f.StartsWith("Symbol") || f.StartsWith("Wingding"));
         return fonts;
@@ -1345,6 +1353,20 @@ public partial class WordHandler
         for (int ei = 0; ei < elements.Count; ei++)
         {
             var element = elements[ei];
+
+            // Emit body-level <w:bookmarkStart> as a navigable <a id="...">.
+            // Word places bookmarkStart directly under <w:body> when the
+            // bookmark spans multiple paragraphs; the paragraph-level
+            // emitter in RenderParagraphContentHtml only catches bookmarks
+            // authored inside a <w:p>. Without this, TOC hyperlinks and
+            // in-document #anchor hrefs resolve to nothing.
+            if (element is BookmarkStart bmStart)
+            {
+                var bmName = bmStart.Name?.Value;
+                if (!string.IsNullOrEmpty(bmName) && !bmName.StartsWith("_GoBack"))
+                    sb.Append($"<a id=\"{HtmlEncodeAttr(bmName)}\"></a>");
+                continue;
+            }
 
             // #7c: close drop cap wrap once the follow-on paragraph has
             // emitted. If we hit a non-paragraph (table, SectionProperties)
