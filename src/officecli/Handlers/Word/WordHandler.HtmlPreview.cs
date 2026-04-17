@@ -216,10 +216,14 @@ public partial class WordHandler
         // Match a single-digit-only run rendered as either <span> or <p>.
         // The footer's PAGE field is typically a single run; the tag name
         // depends on whether the run carries rPr styling.
+        // Wrap the matched digit run in a sentinel span so the per-page
+        // paginate JS can locate PAGE/NUMPAGES fields without clobbering
+        // unrelated digit-only content (e.g. "2026", "5 USD", chapter ids).
         var pageNumPattern = new Regex(@"(<(?:span|p)[^>]*>)\s*\d+\s*(</(?:span|p)>)");
-        var footerTemplate = pageNumPattern.Replace(footerHtml, "$1<!--PAGE_NUM-->$2", 1);
-        // Second single-digit match = NUMPAGES in "Page X of Y"
-        var footerTemplateWithTotal = pageNumPattern.Replace(footerTemplate, "$1<!--NUM_PAGES-->$2", 1);
+        var footerTemplate = pageNumPattern.Replace(footerHtml,
+            "$1<span class=\"page-num-field\"><!--PAGE_NUM--></span>$2", 1);
+        var footerTemplateWithTotal = pageNumPattern.Replace(footerTemplate,
+            "$1<span class=\"num-pages-field\"><!--NUM_PAGES--></span>$2", 1);
         footerTemplate = footerTemplateWithTotal;
 
         // Section-level multi-column layout: w:cols num=N sep=true
@@ -334,8 +338,10 @@ public partial class WordHandler
             // with field=page / field=numpages update per page instead of
             // rendering the author-time cached literal "1".
             var phdr = new Regex(@"(<(?:span|p)[^>]*>)\s*\d+\s*(</(?:span|p)>)");
-            var perPageHeaderTemplate = phdr.Replace(perPageHeader, "$1<!--PAGE_NUM-->$2", 1);
-            perPageHeaderTemplate = phdr.Replace(perPageHeaderTemplate, "$1<!--NUM_PAGES-->$2", 1);
+            var perPageHeaderTemplate = phdr.Replace(perPageHeader,
+                "$1<span class=\"page-num-field\"><!--PAGE_NUM--></span>$2", 1);
+            perPageHeaderTemplate = phdr.Replace(perPageHeaderTemplate,
+                "$1<span class=\"num-pages-field\"><!--NUM_PAGES--></span>$2", 1);
             sb.Append(perPageHeaderTemplate
                 .Replace("<!--PAGE_NUM-->", hdrPageNumStr)
                 .Replace("<!--NUM_PAGES-->", pageList.Count.ToString()));
@@ -355,8 +361,10 @@ public partial class WordHandler
                 isFirstPageOfSection, pageIsEven, evenAndOddGlobal, footerHtml);
             // Rebuild the PAGE field placeholder on the picked footer.
             var pf = new Regex(@"(<(?:span|p)[^>]*>)\s*\d+\s*(</(?:span|p)>)");
-            var perPageFooterTemplate = pf.Replace(perPageFooter, "$1<!--PAGE_NUM-->$2", 1);
-            perPageFooterTemplate = pf.Replace(perPageFooterTemplate, "$1<!--NUM_PAGES-->$2", 1);
+            var perPageFooterTemplate = pf.Replace(perPageFooter,
+                "$1<span class=\"page-num-field\"><!--PAGE_NUM--></span>$2", 1);
+            perPageFooterTemplate = pf.Replace(perPageFooterTemplate,
+                "$1<span class=\"num-pages-field\"><!--NUM_PAGES--></span>$2", 1);
             sb.Append(perPageFooterTemplate
                 .Replace("<!--PAGE_NUM-->", pageNumStr)
                 .Replace("<!--NUM_PAGES-->", pageList.Count.ToString()));
@@ -522,24 +530,10 @@ public partial class WordHandler
     allPages.forEach(function(p,i){
       var nums=p.querySelectorAll('.page-num');
       nums.forEach(function(n){n.textContent=(i+1);});
-      var footer=p.querySelector('.doc-footer');
-      if(footer){
-        var spans=footer.querySelectorAll('span');
-        spans.forEach(function(s){
-          if(s.textContent.trim().match(/^\d+$/)){
-            s.textContent=(i+1);
-          }
-        });
-      }
-      var header=p.querySelector('.doc-header');
-      if(header){
-        var hspans=header.querySelectorAll('span,p');
-        hspans.forEach(function(s){
-          if(s.children.length===0 && s.textContent.trim().match(/^\d+$/)){
-            s.textContent=(i+1);
-          }
-        });
-      }
+      // Only touch explicit PAGE/NUMPAGES sentinel spans — scanning every
+      // digit-only leaf silently rewrote years, prices, chapter ids etc.
+      p.querySelectorAll('.page-num-field').forEach(function(s){s.textContent=(i+1);});
+      p.querySelectorAll('.num-pages-field').forEach(function(s){s.textContent=allPages.length;});
     });
     // Recurse in case new pages also overflow. A page is only eligible for
     // another split when it has more than one visible child — otherwise the
@@ -1062,11 +1056,18 @@ public partial class WordHandler
     private static string? NonEmpty(string? s) => string.IsNullOrEmpty(s) ? null : s;
 
     /// <summary>Resolve shading fill color: direct hex or themeFill + themeFillTint/Shade.</summary>
+    // Strictly-hex check for OOXML color attrs that flow into inline style.
+    // Unvalidated interpolation into `background-color:#{fill}` lets a
+    // malicious fill attribute escape the style context and inject HTML.
+    private static bool IsHexColor(string s)
+        => s.Length is 3 or 6 or 8
+           && s.All(c => (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f'));
+
     private string? ResolveShadingFill(Shading? shading)
     {
         if (shading == null) return null;
         var fill = shading.Fill?.Value;
-        if (fill != null && fill != "auto") return $"#{fill}";
+        if (fill != null && fill != "auto" && IsHexColor(fill)) return $"#{fill}";
         // Check themeFill
         var themeFill = shading.GetAttributes().FirstOrDefault(a => a.LocalName == "themeFill").Value;
         if (themeFill != null)
@@ -1893,9 +1894,25 @@ public partial class WordHandler
                     @"<script[^>]*>.*?</script>",
                     "",
                     RegexOptions.Singleline | RegexOptions.IgnoreCase);
+                // <style> can override preview-wide CSS; strip alongside the
+                // other navigational/embed tags. on*= handlers and
+                // javascript:/data: URLs in href/src are XSS vectors that
+                // run when the preview opens in the user's browser.
+                inner = Regex.Replace(inner,
+                    @"<style[^>]*>.*?</style>",
+                    "",
+                    RegexOptions.Singleline | RegexOptions.IgnoreCase);
                 inner = Regex.Replace(inner,
                     @"<(?:link|meta|iframe|object|embed)[^>]*>",
                     "",
+                    RegexOptions.IgnoreCase);
+                inner = Regex.Replace(inner,
+                    @"\son[a-z]+\s*=\s*(?:""[^""]*""|'[^']*'|[^\s>]+)",
+                    "",
+                    RegexOptions.IgnoreCase);
+                inner = Regex.Replace(inner,
+                    @"(\s(?:href|src|action|formaction)\s*=\s*['""]?)\s*(?:javascript|vbscript|data):[^'""\s>]*",
+                    "$1about:blank",
                     RegexOptions.IgnoreCase);
                 sb.AppendLine($"<div class=\"alt-chunk-html\">{inner}</div>");
             }
