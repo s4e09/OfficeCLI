@@ -1439,7 +1439,7 @@ public partial class ExcelHandler
                     }
                     break;
                 case "formula":
-                    cell.CellFormula = new CellFormula(value.TrimStart('='));
+                    cell.CellFormula = new CellFormula(Core.ModernFunctionQualifier.Qualify(value.TrimStart('=')));
                     // Try to evaluate and cache the result immediately
                     var evalSheetData = GetSheet(worksheet).GetFirstChild<SheetData>();
                     var evaluator = new Core.FormulaEvaluator(evalSheetData!, _doc.WorkbookPart);
@@ -1521,7 +1521,7 @@ public partial class ExcelHandler
                 case "arrayformula":
                 {
                     var arrRef = properties.GetValueOrDefault("ref", cellRef);
-                    cell.CellFormula = new CellFormula(value.TrimStart('='))
+                    cell.CellFormula = new CellFormula(Core.ModernFunctionQualifier.Qualify(value.TrimStart('=')))
                     {
                         FormulaType = CellFormulaValues.Array,
                         Reference = arrRef

@@ -163,7 +163,7 @@ public partial class ExcelHandler
                     // Auto-detect formula: value starting with '=' is treated as formula
                     if (value.StartsWith('=') && value.Length > 1)
                     {
-                        cell.CellFormula = new CellFormula(value.TrimStart('='));
+                        cell.CellFormula = new CellFormula(Core.ModernFunctionQualifier.Qualify(value.TrimStart('=')));
                         cell.CellValue = null;
                     }
                     else
@@ -192,7 +192,7 @@ public partial class ExcelHandler
                     var fTrim = formula.TrimStart('=').Trim();
                     if (fTrim.StartsWith("{") && fTrim.EndsWith("}"))
                         throw new ArgumentException("Literal braces '{...}' around a formula create an Excel-rejected file. Use --prop arrayformula=... (without braces) to declare a CSE array formula.");
-                    cell.CellFormula = new CellFormula(fTrim);
+                    cell.CellFormula = new CellFormula(Core.ModernFunctionQualifier.Qualify(fTrim));
                     cell.CellValue = null;
                 }
                 // CE1: allow `runs=<json>` without an explicit `type=richtext`.
@@ -421,7 +421,7 @@ public partial class ExcelHandler
                 if (properties.TryGetValue("arrayformula", out var arrFormula))
                 {
                     var arrRef = properties.GetValueOrDefault("ref", cellRef);
-                    cell.CellFormula = new CellFormula(arrFormula.TrimStart('='))
+                    cell.CellFormula = new CellFormula(Core.ModernFunctionQualifier.Qualify(arrFormula.TrimStart('=')))
                     {
                         FormulaType = CellFormulaValues.Array,
                         Reference = arrRef

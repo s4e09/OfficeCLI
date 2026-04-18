@@ -958,7 +958,7 @@ public partial class ExcelHandler
                 if (evalResult != null && !evalResult.IsError)
                     return evalResult.ToCellValueText();
             }
-            return "=" + cell.CellFormula.Text;
+            return "=" + Core.ModernFunctionQualifier.Unqualify(cell.CellFormula.Text);
         }
 
         // Apply number format to numeric cells (dates, percentages, etc.)
@@ -1059,7 +1059,9 @@ public partial class ExcelHandler
     private DocumentNode CellToNode(string sheetName, Cell cell, WorksheetPart? part = null, Core.FormulaEvaluator? evaluator = null)
     {
         var cellRef = cell.CellReference?.Value ?? "?";
-        var formula = cell.CellFormula?.Text;
+        var formula = cell.CellFormula?.Text is { } fText
+            ? Core.ModernFunctionQualifier.Unqualify(fText)
+            : null;
         string type;
         if (cell.DataType?.HasValue != true)
             type = "Number";

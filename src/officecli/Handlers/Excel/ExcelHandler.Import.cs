@@ -137,7 +137,7 @@ public partial class ExcelHandler
         // Formula: starts with =
         if (value.StartsWith('='))
         {
-            cell.CellFormula = new CellFormula(value[1..]);
+            cell.CellFormula = new CellFormula(OfficeCli.Core.ModernFunctionQualifier.Qualify(value[1..]));
             cell.CellValue = null;
             cell.DataType = null;
             return;
