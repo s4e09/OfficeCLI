@@ -180,6 +180,9 @@ public partial class ExcelHandler
                     cell.CellFormula = new CellFormula(fTrim);
                     cell.CellValue = null;
                 }
+                // CE1: allow `runs=<json>` without an explicit `type=richtext`.
+                if (!properties.ContainsKey("type") && properties.ContainsKey("runs"))
+                    properties["type"] = "richtext";
                 if (properties.TryGetValue("type", out var cellType))
                 {
                     if (cellType.Equals("richtext", StringComparison.OrdinalIgnoreCase) ||
@@ -200,37 +203,89 @@ public partial class ExcelHandler
                         }
 
                         var ssi = new SharedStringItem();
-                        // Collect run1, run2, ... keys in order
-                        var runKeys = properties.Keys
-                            .Where(k => k.StartsWith("run", StringComparison.OrdinalIgnoreCase) && k.Length > 3 &&
-                                        int.TryParse(k.AsSpan(3), out _))
-                            .OrderBy(k => int.Parse(k.AsSpan(3).ToString()))
-                            .ToList();
-                        foreach (var runKey in runKeys)
+
+                        // Gather runs from either: (a) runs=<JSON array> or
+                        // (b) legacy run1=, run2=, ... mini-spec syntax.
+                        // CE1 fix: `runs=[{"text":"Hello","bold":true,...},...]`
+                        // is now the preferred, documented form.
+                        var gatheredRuns = new List<(string text, Dictionary<string, string> props)>();
+                        if (properties.TryGetValue("runs", out var runsJson) && !string.IsNullOrWhiteSpace(runsJson))
                         {
-                            var runVal = properties[runKey];
-                            // Format: "text:prop=val;prop=val" or just "text"
-                            var colonIdx = runVal.IndexOf(':');
-                            string runText;
-                            string[] runProps;
-                            if (colonIdx >= 0)
+                            try
                             {
-                                runText = runVal[..colonIdx];
-                                runProps = runVal[(colonIdx + 1)..].Split(';');
+                                using var jdoc = System.Text.Json.JsonDocument.Parse(runsJson);
+                                if (jdoc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Array)
+                                    throw new ArgumentException("'runs' must be a JSON array of run objects.");
+                                foreach (var el in jdoc.RootElement.EnumerateArray())
+                                {
+                                    if (el.ValueKind != System.Text.Json.JsonValueKind.Object)
+                                        throw new ArgumentException("Each run in 'runs' must be a JSON object.");
+                                    string text = "";
+                                    var pd = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                                    foreach (var p in el.EnumerateObject())
+                                    {
+                                        var sv = p.Value.ValueKind switch
+                                        {
+                                            System.Text.Json.JsonValueKind.True => "true",
+                                            System.Text.Json.JsonValueKind.False => "false",
+                                            System.Text.Json.JsonValueKind.Null => "",
+                                            System.Text.Json.JsonValueKind.Number => p.Value.GetRawText(),
+                                            _ => p.Value.GetString() ?? ""
+                                        };
+                                        if (p.NameEquals("text")) text = sv;
+                                        else pd[p.Name] = sv;
+                                    }
+                                    gatheredRuns.Add((text, pd));
+                                }
                             }
-                            else
+                            catch (System.Text.Json.JsonException jex)
                             {
-                                runText = runVal;
-                                runProps = [];
+                                throw new ArgumentException($"Invalid JSON for 'runs': {jex.Message}");
                             }
+                        }
+                        else
+                        {
+                            // Legacy path: run1=text:prop=val;prop=val, run2=...
+                            var runKeys = properties.Keys
+                                .Where(k => k.StartsWith("run", StringComparison.OrdinalIgnoreCase) && k.Length > 3 &&
+                                            int.TryParse(k.AsSpan(3), out _))
+                                .OrderBy(k => int.Parse(k.AsSpan(3).ToString()))
+                                .ToList();
+                            foreach (var runKey in runKeys)
+                            {
+                                var runVal = properties[runKey];
+                                var colonIdx = runVal.IndexOf(':');
+                                string runText;
+                                string[] runProps;
+                                if (colonIdx >= 0)
+                                {
+                                    runText = runVal[..colonIdx];
+                                    runProps = runVal[(colonIdx + 1)..].Split(';');
+                                }
+                                else
+                                {
+                                    runText = runVal;
+                                    runProps = [];
+                                }
+                                var pd = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                                foreach (var prop in runProps)
+                                {
+                                    var eqIdx = prop.IndexOf('=');
+                                    if (eqIdx < 0) continue;
+                                    pd[prop[..eqIdx].Trim()] = prop[(eqIdx + 1)..].Trim();
+                                }
+                                gatheredRuns.Add((runText, pd));
+                            }
+                        }
+
+                        foreach (var (runText, pd) in gatheredRuns)
+                        {
                             var run = new Run();
                             var rp = new RunProperties();
-                            foreach (var prop in runProps)
+                            foreach (var kv in pd)
                             {
-                                var eqIdx = prop.IndexOf('=');
-                                if (eqIdx < 0) continue;
-                                var pKey = prop[..eqIdx].Trim().ToLowerInvariant();
-                                var pVal = prop[(eqIdx + 1)..].Trim();
+                                var pKey = kv.Key.ToLowerInvariant();
+                                var pVal = kv.Value;
                                 switch (pKey)
                                 {
                                     case "bold" when ParseHelpers.IsTruthy(pVal): rp.AppendChild(new Bold()); break;
@@ -243,6 +298,12 @@ public partial class ExcelHandler
                                         rp.AppendChild(ul);
                                         break;
                                     }
+                                    case "superscript" when ParseHelpers.IsTruthy(pVal):
+                                        rp.AppendChild(new VerticalTextAlignment { Val = VerticalAlignmentRunValues.Superscript });
+                                        break;
+                                    case "subscript" when ParseHelpers.IsTruthy(pVal):
+                                        rp.AppendChild(new VerticalTextAlignment { Val = VerticalAlignmentRunValues.Subscript });
+                                        break;
                                     case "size" or "fontsize":
                                         if (double.TryParse(pVal.TrimEnd('p', 't'), out var sz))
                                             rp.AppendChild(new FontSize { Val = sz });
@@ -250,7 +311,7 @@ public partial class ExcelHandler
                                     case "color":
                                         rp.AppendChild(new Color { Rgb = new HexBinaryValue(ParseHelpers.NormalizeArgbColor(pVal)) });
                                         break;
-                                    case "font" or "fontname":
+                                    case "font" or "fontname" or "name":
                                         rp.AppendChild(new RunFont { Val = pVal });
                                         break;
                                 }
