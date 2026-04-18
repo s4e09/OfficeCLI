@@ -225,7 +225,11 @@ public partial class PowerPointHandler
         // Radial or linear?
         var pathGrad = gradFill.GetFirstChild<Drawing.PathGradientFill>();
         if (pathGrad != null)
-            return $"radial-gradient(circle, {string.Join(", ", cssStops)})";
+            // OOXML <a:path path="circle"> with default fill rectangle fills to the shape
+            // bounds (last stop at the edge). CSS default is `farthest-corner`, which overshoots
+            // for square-ish shapes. `closest-side` lands the final stop at the nearer edge,
+            // matching Office's rendering for rectangular shapes.
+            return $"radial-gradient(circle closest-side, {string.Join(", ", cssStops)})";
 
         var linear = gradFill.GetFirstChild<Drawing.LinearGradientFill>();
         var angleDeg = linear?.Angle?.HasValue == true ? linear.Angle.Value / 60000.0 : 90.0;
