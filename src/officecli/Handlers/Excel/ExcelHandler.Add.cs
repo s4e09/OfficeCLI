@@ -1283,6 +1283,29 @@ public partial class ExcelHandler
 
                 picDrawingsPart.WorksheetDrawing.AppendChild(anchor);
 
+                // P10: picture decorative=true — emit <a:extLst><a:ext uri="...">
+                // <a16:decorative val="1"/></a:ext></a:extLst> under <xdr:cNvPr>.
+                // Requires declaring xmlns:a16 on the drawing root; mirrors the
+                // sparkline pattern of adding namespaces idempotently.
+                if (properties.TryGetValue("decorative", out var picDec) && IsTruthy(picDec))
+                {
+                    var picCNvPrDec = anchor.Descendants<XDR.NonVisualDrawingProperties>().FirstOrDefault();
+                    if (picCNvPrDec != null)
+                    {
+                        const string a16Ns = "http://schemas.microsoft.com/office/drawing/2014/main";
+                        var wsDrawingRoot = picDrawingsPart.WorksheetDrawing;
+                        if (wsDrawingRoot.LookupNamespace("a16") == null)
+                            wsDrawingRoot.AddNamespaceDeclaration("a16", a16Ns);
+                        var decInner = new OpenXmlUnknownElement("a16", "decorative", a16Ns);
+                        decInner.SetAttribute(new OpenXmlAttribute("", "val", "", "1"));
+                        var ext = new Drawing.Extension { Uri = "{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}" };
+                        ext.Append(decInner);
+                        var extLst = picCNvPrDec.GetFirstChild<Drawing.ExtensionList>()
+                            ?? picCNvPrDec.AppendChild(new Drawing.ExtensionList());
+                        extLst.Append(ext);
+                    }
+                }
+
                 // P8: picture-level hyperlink — <a:hlinkClick> under <xdr:cNvPr>.
                 // External URL → add rel on DrawingsPart, reference its rId.
                 // Internal (starts with '#') → no rel, use Location attribute.
