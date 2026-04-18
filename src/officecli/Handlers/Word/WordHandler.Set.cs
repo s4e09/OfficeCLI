@@ -458,11 +458,13 @@ public partial class WordHandler
             return unsupported;
         }
 
-        // Section paths: /section[N]
-        var secSetMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/section\[(\d+)\]$");
+        // Section paths: /section[N] or /body/sectPr[N] (canonical form returned by Get/Query)
+        var secSetMatch = System.Text.RegularExpressions.Regex.Match(path, @"^(?:/section\[(\d+)\]|/body/sectPr(?:\[(\d+)\])?)$");
         if (secSetMatch.Success)
         {
-            var secIdx = int.Parse(secSetMatch.Groups[1].Value);
+            var secIdxStr = secSetMatch.Groups[1].Success ? secSetMatch.Groups[1].Value
+                : (secSetMatch.Groups[2].Success ? secSetMatch.Groups[2].Value : "1");
+            var secIdx = int.Parse(secIdxStr);
             var sectionProps = FindSectionProperties();
 
             // If no section properties exist and requesting section 1, create one
