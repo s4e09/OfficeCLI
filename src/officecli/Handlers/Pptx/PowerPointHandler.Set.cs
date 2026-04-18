@@ -1322,6 +1322,32 @@ public partial class PowerPointHandler
                     }
                     case "targets":
                         break; // consumed by align/distribute
+                    case "showfooter":
+                    case "showslidenumber":
+                    case "showdate":
+                    case "showheader":
+                    {
+                        // Toggle header/footer visibility flags on the slide.
+                        // Emits <p:hf ftr="1" sldNum="0" dt="1" hdr="0"/> as a
+                        // direct child of <p:sld>. The OpenXml SDK models this
+                        // via DocumentFormat.OpenXml.Presentation.HeaderFooter
+                        // (local name "hf"). Although CT_Slide's published
+                        // schema does not list hf, PowerPoint itself writes it
+                        // on slides when the "Insert > Header & Footer" dialog
+                        // toggles per-slide overrides — we mirror that.
+                        var hf = slide2.GetFirstChild<HeaderFooter>() ?? new HeaderFooter();
+                        bool isNew = hf.Parent == null;
+                        bool flag = IsTruthy(value);
+                        switch (key.ToLowerInvariant())
+                        {
+                            case "showfooter": hf.Footer = flag; break;
+                            case "showslidenumber": hf.SlideNumber = flag; break;
+                            case "showdate": hf.DateTime = flag; break;
+                            case "showheader": hf.Header = flag; break;
+                        }
+                        if (isNew) slide2.AppendChild(hf);
+                        break;
+                    }
                     case "layout":
                     {
                         // Change slide layout
@@ -1349,7 +1375,7 @@ public partial class PowerPointHandler
                         if (!GenericXmlQuery.SetGenericAttribute(slide2, key, value))
                         {
                             if (unsupported.Count == 0)
-                                unsupported.Add($"{key} (valid slide props: background, layout, transition, name, align, distribute, targets)");
+                                unsupported.Add($"{key} (valid slide props: background, layout, transition, name, align, distribute, targets, showFooter, showSlideNumber, showDate, showHeader)");
                             else
                                 unsupported.Add(key);
                         }

@@ -192,7 +192,110 @@ public partial class PowerPointHandler
                     if (cropB is not null) srcRect.Bottom = cropB;
                     picture.BlipFill.AppendChild(srcRect); // stretch not yet appended
                 }
-                picture.BlipFill.AppendChild(new Drawing.Stretch(new Drawing.FillRectangle()));
+                // Fill mode: stretch (default) | contain (letterbox) |
+                // cover (crop) | tile. stretch preserves the historical
+                // <a:stretch><a:fillRect/></a:stretch> emission so existing
+                // docs stay byte-identical. contain/cover require image and
+                // container dimensions; if either is unknown, we fall back
+                // to a bare stretch.
+                var fillMode = (properties.GetValueOrDefault("fill", "stretch") ?? "stretch")
+                    .Trim().ToLowerInvariant();
+                if (fillMode == "tile")
+                {
+                    double tileScale = 1.0;
+                    if (properties.TryGetValue("tilescale", out var tsStr)
+                        && double.TryParse(tsStr, System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out var ts) && ts > 0)
+                        tileScale = ts;
+                    var tile = new Drawing.Tile
+                    {
+                        HorizontalRatio = (int)(tileScale * 100000),
+                        VerticalRatio = (int)(tileScale * 100000),
+                        Flip = Drawing.TileFlipValues.None,
+                        Alignment = Drawing.RectangleAlignmentValues.TopLeft,
+                    };
+                    if (properties.TryGetValue("tilealign", out var taStr))
+                    {
+                        tile.Alignment = taStr.Trim().ToLowerInvariant() switch
+                        {
+                            "tl" or "topleft" => Drawing.RectangleAlignmentValues.TopLeft,
+                            "t" or "top" => Drawing.RectangleAlignmentValues.Top,
+                            "tr" or "topright" => Drawing.RectangleAlignmentValues.TopRight,
+                            "l" or "left" => Drawing.RectangleAlignmentValues.Left,
+                            "ctr" or "center" or "centre" => Drawing.RectangleAlignmentValues.Center,
+                            "r" or "right" => Drawing.RectangleAlignmentValues.Right,
+                            "bl" or "bottomleft" => Drawing.RectangleAlignmentValues.BottomLeft,
+                            "b" or "bottom" => Drawing.RectangleAlignmentValues.Bottom,
+                            "br" or "bottomright" => Drawing.RectangleAlignmentValues.BottomRight,
+                            _ => Drawing.RectangleAlignmentValues.TopLeft,
+                        };
+                    }
+                    if (properties.TryGetValue("tileflip", out var tfStr))
+                    {
+                        tile.Flip = tfStr.Trim().ToLowerInvariant() switch
+                        {
+                            "none" => Drawing.TileFlipValues.None,
+                            "x" => Drawing.TileFlipValues.Horizontal,
+                            "y" => Drawing.TileFlipValues.Vertical,
+                            "xy" or "both" => Drawing.TileFlipValues.HorizontalAndVertical,
+                            _ => Drawing.TileFlipValues.None,
+                        };
+                    }
+                    picture.BlipFill.AppendChild(tile);
+                }
+                else if (fillMode == "contain" || fillMode == "cover")
+                {
+                    // Compute native-vs-container aspect to derive fillRect
+                    // offsets. a:fillRect insets are in thousandths of a
+                    // percent (100000 = 100%). Positive insets shrink the
+                    // stretched area (letterbox for contain), negatives
+                    // enlarge it (crop for cover).
+                    imgStream.Position = 0;
+                    var dims = OfficeCli.Core.ImageSource.TryGetDimensions(imgStream);
+                    if (dims is { Width: > 0, Height: > 0 } d2 && cxEmu > 0 && cyEmu > 0)
+                    {
+                        double imgAspect = (double)d2.Width / d2.Height;
+                        double boxAspect = (double)cxEmu / cyEmu;
+                        var fr = new Drawing.FillRectangle();
+                        if (fillMode == "contain")
+                        {
+                            if (imgAspect > boxAspect)
+                            {
+                                // Image wider than box — pad top/bottom
+                                var pad = (int)Math.Round(((1.0 - boxAspect / imgAspect) / 2.0) * 100000);
+                                fr.Top = pad; fr.Bottom = pad;
+                            }
+                            else
+                            {
+                                var pad = (int)Math.Round(((1.0 - imgAspect / boxAspect) / 2.0) * 100000);
+                                fr.Left = pad; fr.Right = pad;
+                            }
+                        }
+                        else // cover
+                        {
+                            if (imgAspect > boxAspect)
+                            {
+                                // Image wider than box — crop left/right (negative inset)
+                                var crop = (int)Math.Round(((imgAspect / boxAspect - 1.0) / 2.0) * 100000);
+                                fr.Left = -crop; fr.Right = -crop;
+                            }
+                            else
+                            {
+                                var crop = (int)Math.Round(((boxAspect / imgAspect - 1.0) / 2.0) * 100000);
+                                fr.Top = -crop; fr.Bottom = -crop;
+                            }
+                        }
+                        picture.BlipFill.AppendChild(new Drawing.Stretch(fr));
+                    }
+                    else
+                    {
+                        picture.BlipFill.AppendChild(new Drawing.Stretch(new Drawing.FillRectangle()));
+                    }
+                }
+                else
+                {
+                    picture.BlipFill.AppendChild(new Drawing.Stretch(new Drawing.FillRectangle()));
+                }
 
                 picture.ShapeProperties = new ShapeProperties();
                 picture.ShapeProperties.Transform2D = new Drawing.Transform2D();
