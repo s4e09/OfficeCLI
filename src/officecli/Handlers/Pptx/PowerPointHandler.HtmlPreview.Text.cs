@@ -184,7 +184,7 @@ public partial class PowerPointHandler
             {
                 foreach (var run in runs)
                 {
-                    RenderRun(sb, run, themeColors, defaultFontSizeHundredths);
+                    RenderRun(sb, run, themeColors, defaultFontSizeHundredths, placeholderPart);
                 }
             }
 
@@ -197,13 +197,30 @@ public partial class PowerPointHandler
     }
 
     private static void RenderRun(StringBuilder sb, Drawing.Run run, Dictionary<string, string> themeColors,
-        int? defaultFontSizeHundredths = null)
+        int? defaultFontSizeHundredths = null, OpenXmlPart? part = null)
     {
         var text = run.Text?.Text ?? "";
         if (string.IsNullOrEmpty(text)) return;
 
         var styles = new List<string>();
         var rp = run.RunProperties;
+
+        // Hyperlink resolution (RUN-level only; shape-level deferred).
+        // Read <a:hlinkClick> from run.RunProperties, resolve relationship ID
+        // via containing part's HyperlinkRelationships to an external URI.
+        string? hyperlinkUrl = null;
+        bool hasExplicitColor = rp?.GetFirstChild<Drawing.SolidFill>() != null;
+        bool hasExplicitUnderline = rp?.Underline?.HasValue == true;
+        var hlinkClick = rp?.GetFirstChild<Drawing.HyperlinkOnClick>();
+        if (hlinkClick?.Id?.Value is string relId && part != null)
+        {
+            try
+            {
+                var rel = part.HyperlinkRelationships.FirstOrDefault(r => r.Id == relId);
+                if (rel?.Uri != null) hyperlinkUrl = rel.Uri.ToString();
+            }
+            catch { }
+        }
 
         if (rp != null)
         {
@@ -351,19 +368,27 @@ public partial class PowerPointHandler
             }
         }
 
-        // Hyperlink
-        var hlinkClick = run.Parent?.Elements<Drawing.Run>()
-            .Where(r => r == run)
-            .Select(_ => run.Parent)
-            .FirstOrDefault()
-            ?.GetFirstChild<Drawing.HyperlinkOnClick>();
-        // Actually check run's parent paragraph for hyperlinks on this run
-        // Not critical for preview, skip for simplicity
+        // Auto-style hyperlink runs that lack explicit color/underline. Uses
+        // theme-less fallback #0563C1 (PowerPoint default hyperlink color).
+        // Shape-level hyperlinks are deferred (R14-supplemental).
+        if (hlinkClick != null)
+        {
+            if (!hasExplicitColor) styles.Add("color:#0563C1");
+            if (!hasExplicitUnderline) styles.Add("text-decoration:underline");
+        }
 
-        if (styles.Count > 0)
-            sb.Append($"<span style=\"{string.Join(";", styles)}\">{HtmlEncode(text)}</span>");
+        string inner = styles.Count > 0
+            ? $"<span style=\"{string.Join(";", styles)}\">{HtmlEncode(text)}</span>"
+            : HtmlEncode(text);
+
+        if (!string.IsNullOrEmpty(hyperlinkUrl))
+        {
+            sb.Append($"<a href=\"{HtmlEncode(hyperlinkUrl)}\" rel=\"noopener\">{inner}</a>");
+        }
         else
-            sb.Append(HtmlEncode(text));
+        {
+            sb.Append(inner);
+        }
     }
 
     // Format an auto-numbered bullet glyph (e.g. "1.", "(a)", "iv)") for a given
