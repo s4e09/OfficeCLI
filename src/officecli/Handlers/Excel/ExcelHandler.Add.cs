@@ -394,11 +394,9 @@ public partial class ExcelHandler
                         if (cellType.Equals("date", StringComparison.OrdinalIgnoreCase))
                         {
                             var dateText = cell.CellValue?.Text?.Trim();
+                            // R13-2: accept ISO date-with-time (T separator) as well.
                             if (!string.IsNullOrEmpty(dateText)
-                                && DateTime.TryParseExact(dateText,
-                                    new[] { "yyyy-MM-dd", "yyyy/MM/dd", "yyyy-MM-dd HH:mm:ss" },
-                                    System.Globalization.CultureInfo.InvariantCulture,
-                                    System.Globalization.DateTimeStyles.None, out var dt))
+                                && TryParseIsoDateFlexible(dateText, out var dt))
                             {
                                 cell.CellValue = new CellValue(
                                     dt.ToOADate().ToString(System.Globalization.CultureInfo.InvariantCulture));

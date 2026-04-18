@@ -1412,10 +1412,8 @@ public partial class ExcelHandler
                             .Any(v => v is "number" or "num");
 
                         // Auto-detect ISO date (only if user did NOT explicitly set type=string)
-                        if (!explicitTypeIsString && DateTime.TryParseExact(cellValue,
-                            new[] { "yyyy-MM-dd", "yyyy/MM/dd", "yyyy-MM-dd HH:mm:ss" },
-                            System.Globalization.CultureInfo.InvariantCulture,
-                            System.Globalization.DateTimeStyles.None, out var dt))
+                        // R13-2: accept date-with-time variants (T and space separators).
+                        if (!explicitTypeIsString && TryParseIsoDateFlexible(cellValue, out var dt))
                         {
                             cell.CellValue = new CellValue(dt.ToOADate().ToString(System.Globalization.CultureInfo.InvariantCulture));
                             cell.DataType = null;

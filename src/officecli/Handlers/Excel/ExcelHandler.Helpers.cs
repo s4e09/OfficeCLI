@@ -3399,4 +3399,29 @@ public partial class ExcelHandler
                 $"Cell value{where} exceeds Excel's {MaxCellTextLength}-character limit (got {value.Length})");
         }
     }
+
+    // R13-2: central ISO date parser accepting date-only, date+time, and the
+    // common `T`-separator variants. Used by Add/Set cell value paths so
+    // `2024-03-15T10:30:00` is converted to an OADate serial instead of being
+    // written as a literal string (which Excel renders as text, not a date).
+    internal static readonly string[] IsoDateFormats =
+    {
+        "yyyy-MM-dd",
+        "yyyy/MM/dd",
+        "yyyy-MM-dd HH:mm",
+        "yyyy-MM-dd HH:mm:ss",
+        "yyyy-MM-ddTHH:mm",
+        "yyyy-MM-ddTHH:mm:ss",
+        "yyyy-MM-ddTHH:mm:ssZ",
+        "yyyy-MM-ddTHH:mm:ss.fff",
+        "yyyy-MM-ddTHH:mm:ss.fffZ",
+    };
+
+    internal static bool TryParseIsoDateFlexible(string value, out System.DateTime result)
+        => System.DateTime.TryParseExact(
+            value,
+            IsoDateFormats,
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.None,
+            out result);
 }
