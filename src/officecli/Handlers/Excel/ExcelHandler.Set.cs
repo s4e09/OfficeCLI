@@ -1328,6 +1328,10 @@ public partial class ExcelHandler
         // rows with no remaining cells are pruned from XML. This keeps maxRow correct
         // and produces "remove" watch patches instead of "replace" for cleared rows.
         PruneEmptyCell(cell);
+        // CONSISTENCY(xlsx/table-autoexpand): eager post-write auto-grow —
+        // only fires when the cell still carries a value/formula after prune.
+        if (cell.Parent != null && (cell.CellValue != null || cell.CellFormula != null || cell.InlineString != null))
+            MaybeExpandTablesForCell(worksheet, cellRef);
         // Any mutation to a cell (value, formula, clear) can invalidate the calc chain
         DeleteCalcChainIfPresent();
         SaveWorksheet(worksheet);

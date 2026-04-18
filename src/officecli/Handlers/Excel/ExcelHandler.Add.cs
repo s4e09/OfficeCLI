@@ -468,6 +468,11 @@ public partial class ExcelHandler
                     _dirtyStylesheet = true;
                 }
 
+                // CONSISTENCY(xlsx/table-autoexpand): eager post-write auto-grow
+                // for tables flagged with autoExpand=true. Matches Excel's
+                // "type below a table → table grows" UX.
+                MaybeExpandTablesForCell(cellWorksheet, cellRef);
+
                 DeleteCalcChainIfPresent();
                 SaveWorksheet(cellWorksheet);
                 return $"/{cellSheetName}/{cellRef}";
@@ -2196,6 +2201,12 @@ public partial class ExcelHandler
                         existingCell.DataType = null;
                     }
                 }
+
+                // CONSISTENCY(xlsx/table-autoexpand): persist the opt-in flag as
+                // a custom-namespace attribute on <x:table> so eager auto-grow
+                // survives reopen. Real Excel ignores unknown-namespace attrs.
+                if (properties.TryGetValue("autoExpand", out var aeRaw) && IsTruthy(aeRaw))
+                    SetTableAutoExpandMarker(table, true);
 
                 tableDefPart.Table = table;
                 tableDefPart.Table.Save();

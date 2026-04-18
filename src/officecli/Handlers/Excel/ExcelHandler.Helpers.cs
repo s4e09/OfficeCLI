@@ -3008,4 +3008,114 @@ public partial class ExcelHandler
 
         return nodes;
     }
+
+    // CONSISTENCY(xlsx/table-autoexpand): custom namespace marker stored on
+    // the <x:table> root so `autoExpand=true` survives open/close cycles.
+    // Real Excel ignores unknown-namespace attributes, so the file is still
+    // opened cleanly on Windows — the flag only affects officecli's own
+    // cell-write auto-grow behavior.
+    private const string AutoExpandNamespaceUri = "https://officecli.ai/2025/autoexpand";
+    private const string AutoExpandNamespacePrefix = "ae";
+    private const string AutoExpandAttrName = "autoExpand";
+
+    private static void SetTableAutoExpandMarker(Table table, bool enabled)
+    {
+        if (enabled)
+        {
+            table.AddNamespaceDeclaration(AutoExpandNamespacePrefix, AutoExpandNamespaceUri);
+            table.SetAttribute(new OpenXmlAttribute(
+                AutoExpandNamespacePrefix, AutoExpandAttrName, AutoExpandNamespaceUri, "1"));
+        }
+    }
+
+    private static bool TableHasAutoExpand(Table? table)
+    {
+        if (table == null) return false;
+        foreach (var attr in table.GetAttributes())
+        {
+            if (attr.NamespaceUri == AutoExpandNamespaceUri
+                && attr.LocalName == AutoExpandAttrName
+                && (attr.Value == "1" || string.Equals(attr.Value, "true", StringComparison.OrdinalIgnoreCase)))
+                return true;
+        }
+        return false;
+    }
+
+    // Eager auto-grow on cell Add/Set. Called after writing `cellRef` on
+    // `worksheet`. For each table on the sheet flagged with autoExpand:
+    //   - if cell is in the row immediately below the table AND its column
+    //     is within the table's column span → grow endRow by 1.
+    //   - else if cell is in the column immediately right of the table AND
+    //     its row is within the table's row span → grow endCol by 1 and
+    //     append a blank tableColumn.
+    // Both extensions are never applied at once (conservative).
+    private void MaybeExpandTablesForCell(WorksheetPart worksheet, string cellRef)
+    {
+        var (cellCol, cellRow) = ParseCellReference(cellRef.ToUpperInvariant());
+        var cellColIdx = ColumnNameToIndex(cellCol);
+
+        foreach (var tdp in worksheet.TableDefinitionParts.ToList())
+        {
+            var table = tdp.Table;
+            if (table == null) continue;
+            if (!TableHasAutoExpand(table)) continue;
+            if (table.Reference?.Value is not string rangeRef) continue;
+            if (!rangeRef.Contains(':')) continue;
+
+            var parts = rangeRef.Split(':');
+            var (startColName, startRow) = ParseCellReference(parts[0]);
+            var (endColName, endRow) = ParseCellReference(parts[1]);
+            var startColIdx = ColumnNameToIndex(startColName);
+            var endColIdx = ColumnNameToIndex(endColName);
+
+            // Row below? (cell row == endRow + 1, within column span).
+            if (cellRow == endRow + 1 && cellColIdx >= startColIdx && cellColIdx <= endColIdx)
+            {
+                endRow += 1;
+                var newRef = $"{startColName}{startRow}:{endColName}{endRow}";
+                table.Reference = newRef;
+                var af = table.GetFirstChild<AutoFilter>();
+                if (af != null) af.Reference = newRef;
+                table.Save();
+                continue;
+            }
+
+            // Column right? (cell col == endCol + 1, within row span).
+            if (cellColIdx == endColIdx + 1 && cellRow >= startRow && cellRow <= endRow)
+            {
+                endColIdx += 1;
+                var newEndColName = IndexToColumnName(endColIdx);
+                var newRef = $"{startColName}{startRow}:{newEndColName}{endRow}";
+                table.Reference = newRef;
+                var af = table.GetFirstChild<AutoFilter>();
+                if (af != null) af.Reference = newRef;
+
+                var tableColumns = table.GetFirstChild<TableColumns>();
+                if (tableColumns != null)
+                {
+                    var existing = tableColumns.Elements<TableColumn>().ToList();
+                    var nextId = existing.Count == 0
+                        ? 1u
+                        : existing.Max(tc => tc.Id?.Value ?? 0u) + 1u;
+                    var used = new HashSet<string>(
+                        existing.Select(tc => tc.Name?.Value ?? "")
+                                .Where(n => !string.IsNullOrEmpty(n)),
+                        StringComparer.OrdinalIgnoreCase);
+                    var baseName = $"Column{existing.Count + 1}";
+                    var colName = baseName;
+                    int dedupeIdx = 2;
+                    while (!used.Add(colName))
+                        colName = $"{baseName}{dedupeIdx++}";
+                    tableColumns.AppendChild(new TableColumn
+                    {
+                        Id = nextId,
+                        Name = colName
+                    });
+                    tableColumns.Count = (uint)tableColumns.Elements<TableColumn>().Count();
+                }
+
+                table.Save();
+            }
+        }
+    }
 }
