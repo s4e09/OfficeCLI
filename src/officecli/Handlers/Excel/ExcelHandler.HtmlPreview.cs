@@ -154,6 +154,13 @@ public partial class ExcelHandler
             var dirAttr = isRtl ? " dir=\"rtl\"" : "";
             sb.AppendLine($"<div class=\"sheet-content{activeClass}\" data-sheet=\"{sheetIdx}\"{dirAttr}>");
             var charts = CollectSheetCharts(worksheetPart, sheetName);
+            // Shapes and textboxes (xdr:sp). Reuses the chart overlay
+            // positioning pipeline — same (fromRow,toRow,fromCol,toCol,html)
+            // tuple is consumed by RenderSheetTable to emit an absolutely-
+            // positioned overlay over the sheet grid.
+            var shapes = CollectSheetShapes(worksheetPart);
+            if (shapes.Count > 0)
+                charts.AddRange(shapes);
             RenderSheetTable(sb, sheetName, renderPart, stylesheet, charts, sheetIdx);
             sb.AppendLine("</div>");
         }
