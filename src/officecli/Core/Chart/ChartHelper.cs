@@ -280,9 +280,42 @@ internal static partial class ChartHelper
 
     internal static string[]? ParseSeriesColors(Dictionary<string, string> properties)
     {
+        // CONSISTENCY(chart-series-color): Add path accepts both the
+        // compact `colors=red,blue,green` form and per-series dotted
+        // `series{N}.color=<hex>` keys (same vocabulary that `set chart`
+        // already supports via ApplySeriesColor). When both are supplied,
+        // dotted keys override positions in the `colors` array.
+        string[]? arr = null;
         if (properties.TryGetValue("colors", out var colorsStr))
-            return colorsStr.Split(',').Select(c => c.Trim()).ToArray();
-        return null;
+            arr = colorsStr.Split(',').Select(c => c.Trim()).ToArray();
+
+        // Collect per-series dotted color keys
+        var dotted = new Dictionary<int, string>();
+        foreach (var kv in properties)
+        {
+            var k = kv.Key;
+            if (!k.StartsWith("series", StringComparison.OrdinalIgnoreCase)) continue;
+            if (!k.EndsWith(".color", StringComparison.OrdinalIgnoreCase)) continue;
+            var mid = k.Substring(6, k.Length - 6 - ".color".Length);
+            if (!int.TryParse(mid, out var idx) || idx < 1) continue;
+            if (!string.IsNullOrWhiteSpace(kv.Value))
+                dotted[idx] = kv.Value.Trim();
+        }
+        if (dotted.Count == 0) return arr;
+
+        var maxIdx = dotted.Keys.Max();
+        var size = Math.Max(maxIdx, arr?.Length ?? 0);
+        var merged = new string[size];
+        for (int i = 0; i < size; i++)
+        {
+            if (dotted.TryGetValue(i + 1, out var c))
+                merged[i] = c;
+            else if (arr != null && i < arr.Length && !string.IsNullOrEmpty(arr[i]))
+                merged[i] = arr[i];
+            else
+                merged[i] = DefaultSeriesColors[i % DefaultSeriesColors.Length];
+        }
+        return merged;
     }
 
     // ==================== ManualLayout Helpers ====================
