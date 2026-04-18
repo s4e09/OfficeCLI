@@ -120,14 +120,29 @@ public partial class ExcelHandler
                 var cellSheetData = GetSheet(cellWorksheet).GetFirstChild<SheetData>()
                     ?? GetSheet(cellWorksheet).AppendChild(new SheetData());
 
+                // R7-1: if path tail is a cell-ref (e.g. /Sheet1/Z99), treat it
+                // as the target address — equivalent to --prop ref=Z99. Parity
+                // with the `comment` case below which already does this.
+                string? cellRefFromPath = null;
+                if (cellSegments.Length > 1 && Regex.IsMatch(cellSegments[1], @"^[A-Z]+\d+$", RegexOptions.IgnoreCase))
+                    cellRefFromPath = cellSegments[1].ToUpperInvariant();
+
                 string cellRef;
                 if (properties.ContainsKey("ref"))
                 {
                     cellRef = properties["ref"];
+                    if (cellRefFromPath != null && !cellRefFromPath.Equals(cellRef, StringComparison.OrdinalIgnoreCase))
+                        Console.Error.WriteLine($"warning: path tail '{cellRefFromPath}' does not match --prop ref='{cellRef}'; using ref='{cellRef}'.");
                 }
                 else if (properties.ContainsKey("address"))
                 {
                     cellRef = properties["address"];
+                    if (cellRefFromPath != null && !cellRefFromPath.Equals(cellRef, StringComparison.OrdinalIgnoreCase))
+                        Console.Error.WriteLine($"warning: path tail '{cellRefFromPath}' does not match --prop address='{cellRef}'; using address='{cellRef}'.");
+                }
+                else if (cellRefFromPath != null)
+                {
+                    cellRef = cellRefFromPath;
                 }
                 else
                 {
