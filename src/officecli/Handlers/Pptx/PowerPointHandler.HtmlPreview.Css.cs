@@ -1,7 +1,6 @@
 // Copyright 2025 OfficeCli (officecli.ai)
 // SPDX-License-Identifier: Apache-2.0
 
-using System.Text;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Presentation;
@@ -454,9 +453,93 @@ public partial class PowerPointHandler
     private static string PresetGeometryToCss(string preset) =>
         PresetGeometryToCss(preset, 0, 0, null);
 
+    /// <summary>
+    /// Read an adjustment value from PresetGeometry's AdjustValueList (OOXML "val NNNNN" formula).
+    /// </summary>
+    private static long ReadAdjValueCss(Drawing.PresetGeometry? presetGeom, int index, long defaultValue)
+    {
+        var avList = presetGeom?.GetFirstChild<Drawing.AdjustValueList>();
+        if (avList == null) return defaultValue;
+        var guides = avList.Elements<Drawing.ShapeGuide>().ToList();
+        if (index >= guides.Count) return defaultValue;
+        var formula = guides[index].Formula?.Value;
+        if (formula != null && formula.StartsWith("val "))
+        {
+            if (long.TryParse(formula.AsSpan(4), out var parsed))
+                return parsed;
+        }
+        return defaultValue;
+    }
+
+    /// <summary>
+    /// Build a clip-path polygon for rightArrow honoring OOXML avLst.
+    /// adj1 = tail height relative to shape height (0..100000, default 50000 = 50%)
+    /// adj2 = head width relative to min(w,h) (0..100000, default 50000)
+    /// </summary>
+    private static string RightArrowPolygon(long widthEmu, long heightEmu, Drawing.PresetGeometry? presetGeom)
+    {
+        var adj1 = ReadAdjValueCss(presetGeom, 0, 50000);
+        var adj2 = ReadAdjValueCss(presetGeom, 1, 50000);
+        // Clamp avLst values to sane range
+        if (adj1 < 0) adj1 = 0; if (adj1 > 100000) adj1 = 100000;
+        if (adj2 < 0) adj2 = 0; if (adj2 > 100000) adj2 = 100000;
+
+        // Tail vertical extent (centered on midline): adj1 fraction of height
+        var tailTop = (100000.0 - adj1) / 2000.0;   // e.g. 25%
+        var tailBot = 100.0 - tailTop;              // e.g. 75%
+
+        // Head width measured from the right edge. Fallback to square assumption if dims missing.
+        double headStartX;
+        if (widthEmu > 0 && heightEmu > 0)
+        {
+            var minSide = Math.Min(widthEmu, heightEmu);
+            var headWidthEmu = minSide * adj2 / 100000.0;
+            if (headWidthEmu > widthEmu) headWidthEmu = widthEmu;
+            headStartX = (widthEmu - headWidthEmu) / (double)widthEmu * 100.0;
+        }
+        else
+        {
+            headStartX = 100.0 - adj2 / 1000.0; // fallback: treat adj2 as % of width
+        }
+
+        return $"clip-path:polygon(0 {tailTop:0.##}%,{headStartX:0.##}% {tailTop:0.##}%,{headStartX:0.##}% 0,100% 50%,{headStartX:0.##}% 100%,{headStartX:0.##}% {tailBot:0.##}%,0 {tailBot:0.##}%)";
+    }
+
+    /// <summary>
+    /// Build a clip-path polygon for a 5-point star honoring OOXML adj value.
+    /// adj = inner radius fraction * 50000 (default 19098, giving inner ratio ~0.382).
+    /// Star is stretched to fill bounding box (outer radius = min(w,h)/2 scaled independently to w,h).
+    /// </summary>
+    private static string Star5Polygon(Drawing.PresetGeometry? presetGeom)
+    {
+        var adj = ReadAdjValueCss(presetGeom, 0, 19098);
+        if (adj < 0) adj = 0; if (adj > 50000) adj = 50000;
+        var innerRatio = adj / 50000.0;
+
+        var pts = new List<string>();
+        // 10 points around the center, alternating outer (radius=0.5) and inner (radius=0.5*innerRatio).
+        // Start at top (angle = -90°), step = 36° = PI/5. Scale x,y to 0..100%.
+        for (int i = 0; i < 10; i++)
+        {
+            var angle = -Math.PI / 2 + Math.PI * i / 5;
+            var r = (i % 2 == 0) ? 0.5 : 0.5 * innerRatio;
+            var x = 50.0 + r * Math.Cos(angle) * 100.0;
+            var y = 50.0 + r * Math.Sin(angle) * 100.0;
+            pts.Add($"{x:0.##}% {y:0.##}%");
+        }
+        return $"clip-path:polygon({string.Join(",", pts)})";
+    }
+
     private static string PresetGeometryToCss(string preset, long widthEmu, long heightEmu,
         Drawing.PresetGeometry? presetGeom)
     {
+        // Parametric rightArrow honoring avLst
+        if (preset == "rightArrow")
+            return RightArrowPolygon(widthEmu, heightEmu, presetGeom);
+        // Parametric star5 honoring avLst
+        if (preset == "star5")
+            return Star5Polygon(presetGeom);
+
         // Calculate roundRect corner radius from avLst or default (16.667% of shorter side)
         if (preset is "roundRect" or "round1Rect" or "round2SameRect" or "round2DiagRect")
         {
