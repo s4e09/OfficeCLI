@@ -1780,18 +1780,25 @@ public partial class ExcelHandler
                 }
                 case "merge":
                 {
-                    // Sheet-level merge: value is the range to merge (e.g., "A1:A3")
-                    var rangeRef = value.ToUpperInvariant();
+                    // Sheet-level merge: value is the range(s) to merge (e.g., "A1:A3" or
+                    // "A1:D1,B3:B5" for multiple ranges).
+                    // R2-1: Split comma-separated ranges into separate <mergeCell> elements;
+                    // Excel rejects a single <mergeCell ref="A1:D1,B3:B5"/>.
                     var mergeCells = ws.GetFirstChild<MergeCells>();
                     if (mergeCells == null)
                     {
                         mergeCells = new MergeCells();
                         ws.AppendChild(mergeCells);
                     }
-                    var existing = mergeCells.Elements<MergeCell>()
-                        .FirstOrDefault(m => m.Reference?.Value?.Equals(rangeRef, StringComparison.OrdinalIgnoreCase) == true);
-                    if (existing == null)
-                        mergeCells.AppendChild(new MergeCell { Reference = rangeRef });
+                    foreach (var part in value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                    {
+                        var rangeRef = part.ToUpperInvariant();
+                        var existing = mergeCells.Elements<MergeCell>()
+                            .FirstOrDefault(m => m.Reference?.Value?.Equals(rangeRef, StringComparison.OrdinalIgnoreCase) == true);
+                        if (existing == null)
+                            mergeCells.AppendChild(new MergeCell { Reference = rangeRef });
+                    }
+                    mergeCells.Count = (uint)mergeCells.Elements<MergeCell>().Count();
                     break;
                 }
                 case "autofilter":
@@ -2188,6 +2195,7 @@ public partial class ExcelHandler
                         {
                             mergeCells.AppendChild(new MergeCell { Reference = rangeRef });
                         }
+                        mergeCells.Count = (uint)mergeCells.Elements<MergeCell>().Count();
                     }
                     else
                     {
@@ -2202,6 +2210,8 @@ public partial class ExcelHandler
                             // Remove empty MergeCells element
                             if (!mergeCells.HasChildren)
                                 mergeCells.Remove();
+                            else
+                                mergeCells.Count = (uint)mergeCells.Elements<MergeCell>().Count();
                         }
                     }
                     break;
