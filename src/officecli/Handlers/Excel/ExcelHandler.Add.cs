@@ -1997,7 +1997,16 @@ public partial class ExcelHandler
                 {
                     var refTrim = shpRefProp.Trim();
                     if (!refTrim.Contains(':'))
-                        refTrim = $"{refTrim}:{refTrim}";
+                    {
+                        // Single-cell ref (e.g. "B2"): expand to a 1x1 cell
+                        // rectangle (B2:C3) so the shape has a visible extent.
+                        // Using identical from/to markers produces a
+                        // zero-width/height invisible shape in Excel.
+                        if (TryParseCellRangeAnchor(refTrim, out var rc, out var rr, out _, out _))
+                            refTrim = $"{refTrim}:{IndexToColumnName(rc + 2)}{rr + 2}";
+                        else
+                            refTrim = $"{refTrim}:{refTrim}";
+                    }
                     properties["anchor"] = refTrim;
                 }
                 int sx, sy, sw, sh;
