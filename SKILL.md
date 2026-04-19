@@ -100,7 +100,7 @@ officecli view <file> <mode>          # outline | stats | issues | text | annota
 officecli get <file> <path> --depth N # Get a node and its children [--json]
 officecli query <file> <selector>     # CSS-like query
 officecli validate <file>             # Validate against OpenXML schema
-officecli check <file>                # Scan .pptx/.xlsx for text-overflow layout issues
+officecli view <file> issues          # Enumerate issues (text overflow, missing alt, formula errors, ...)
 ```
 
 ### view modes
