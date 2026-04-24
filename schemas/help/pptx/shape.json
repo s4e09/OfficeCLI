@@ -51,6 +51,7 @@
     "size": {
       "type": "font-size",
       "description": "font size",
+      "aliases": ["fontSize", "fontsize"],
       "add": true,
       "set": true,
       "get": true,
@@ -90,6 +91,7 @@
     "x": {
       "type": "length",
       "description": "horizontal position of shape",
+      "aliases": ["left"],
       "add": true,
       "set": true,
       "get": true,
@@ -100,6 +102,7 @@
     "y": {
       "type": "length",
       "description": "vertical position of shape",
+      "aliases": ["top"],
       "add": true,
       "set": true,
       "get": true,
@@ -109,6 +112,7 @@
     },
     "width": {
       "type": "length",
+      "aliases": ["w"],
       "add": true,
       "set": true,
       "get": true,
@@ -118,6 +122,7 @@
     },
     "height": {
       "type": "length",
+      "aliases": ["h"],
       "add": true,
       "set": true,
       "get": true,
@@ -128,6 +133,7 @@
     "rotation": {
       "type": "number",
       "description": "rotation in degrees",
+      "aliases": ["rotate"],
       "add": true,
       "set": true,
       "get": true,
@@ -159,7 +165,7 @@
     "geometry": {
       "type": "string",
       "description": "Preset shape geometry (default: rect).",
-      "aliases": ["preset"],
+      "aliases": ["preset", "shape"],
       "values": ["rect", "roundRect", "ellipse", "triangle", "diamond", "parallelogram", "rightArrow", "star5"],
       "add": true,
       "set": true,
@@ -167,6 +173,151 @@
       "examples": ["--prop geometry=ellipse", "--prop preset=roundRect"],
       "readback": "preset name (e.g. \"ellipse\", \"roundRect\")",
       "enforcement": "strict"
+    },
+    "font": {
+      "type": "string",
+      "description": "default font family for shape text.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop font=Arial"],
+      "readback": "font name",
+      "enforcement": "report"
+    },
+    "underline": {
+      "type": "enum",
+      "description": "underline style for shape text.",
+      "values": ["single", "double", "dotted", "dash", "wave", "none"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop underline=single"],
+      "readback": "underline style",
+      "enforcement": "report"
+    },
+    "strike": {
+      "type": "bool",
+      "description": "strikethrough on shape text.",
+      "aliases": ["strikethrough"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop strike=true"],
+      "readback": "true | false",
+      "enforcement": "report"
+    },
+    "valign": {
+      "type": "enum",
+      "description": "vertical alignment of text within shape.",
+      "values": ["top", "middle", "bottom", "ctr"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop valign=middle"],
+      "readback": "vertical alignment",
+      "enforcement": "report"
+    },
+    "margin": {
+      "type": "length",
+      "description": "uniform internal padding (text inset) for shape body.",
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop margin=0.1in"],
+      "readback": "n/a",
+      "enforcement": "report"
+    },
+    "autofit": {
+      "type": "enum",
+      "description": "auto-fit mode for shape text body.",
+      "values": ["none", "normal", "shape", "noAutofit", "spAutoFit"],
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop autofit=shape"],
+      "readback": "n/a",
+      "enforcement": "report"
+    },
+    "lineSpacing": {
+      "type": "string",
+      "description": "line spacing for shape paragraphs (multiplier or pt).",
+      "aliases": ["linespacing"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop lineSpacing=1.5x"],
+      "readback": "1.5x or 18pt",
+      "enforcement": "report"
+    },
+    "spaceBefore": {
+      "type": "length",
+      "aliases": ["spacebefore"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop spaceBefore=6pt"],
+      "readback": "unit-qualified pt",
+      "enforcement": "report"
+    },
+    "spaceAfter": {
+      "type": "length",
+      "aliases": ["spaceafter"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop spaceAfter=6pt"],
+      "readback": "unit-qualified pt",
+      "enforcement": "report"
+    },
+    "gradient": {
+      "type": "string",
+      "description": "gradient fill spec (e.g. 'FF0000;0000FF' linear or 'FF0000:0,0000FF:100').",
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop gradient=\"FF0000;0000FF\""],
+      "readback": "n/a",
+      "enforcement": "report"
+    },
+    "pattern": {
+      "type": "string",
+      "description": "pattern fill (preset;fg;bg).",
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop pattern=\"diagBrick;FF0000;FFFFFF\""],
+      "readback": "n/a",
+      "enforcement": "report"
+    },
+    "line": {
+      "type": "color",
+      "description": "outline (border) color.",
+      "aliases": ["linecolor", "lineColor", "border"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop line=000000"],
+      "readback": "#RRGGBB",
+      "enforcement": "report"
+    },
+    "linewidth": {
+      "type": "length",
+      "description": "outline width.",
+      "aliases": ["lineWidth"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop linewidth=1pt"],
+      "readback": "unit-qualified",
+      "enforcement": "report"
+    },
+    "list": {
+      "type": "string",
+      "description": "list style for shape paragraphs (bullet|ordered|none).",
+      "aliases": ["liststyle"],
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop list=bullet"],
+      "readback": "n/a",
+      "enforcement": "report"
+    },
+    "link": {
+      "type": "string",
+      "description": "hyperlink URL or anchor for shape click action.",
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop link=https://example.com"],
+      "readback": "n/a",
+      "enforcement": "report"
+    },
+    "tooltip": {
+      "type": "string",
+      "description": "tooltip / screen-tip text for hyperlink.",
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop tooltip=\"click here\""],
+      "readback": "n/a",
+      "enforcement": "report"
+    },
+    "animation": {
+      "type": "string",
+      "description": "animation effect spec.",
+      "aliases": ["animate"],
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop animation=fade"],
+      "readback": "n/a",
+      "enforcement": "report"
     }
   }
 }

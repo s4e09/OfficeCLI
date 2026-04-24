@@ -39,7 +39,9 @@ public partial class PowerPointHandler
 
                 var newShape = CreateTextShape(shapeId, shapeName, text, false);
 
-                if (properties.TryGetValue("size", out var sizeStr))
+                if (properties.TryGetValue("size", out var sizeStr)
+                    || properties.TryGetValue("fontSize", out sizeStr)
+                    || properties.TryGetValue("fontsize", out sizeStr))
                 {
                     var sizeVal = (int)Math.Round(ParseFontSize(sizeStr) * 100);
                     foreach (var run in newShape.Descendants<Drawing.Run>())

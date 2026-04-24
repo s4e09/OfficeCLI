@@ -84,6 +84,8 @@ public partial class PowerPointHandler
                     break;
 
                 case "size":
+                case "fontSize":
+                case "fontsize":
                     var sizeVal = (int)Math.Round(ParseFontSize(value) * 100);
                     foreach (var run in runs)
                     {
