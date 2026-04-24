@@ -181,8 +181,7 @@ public partial class PowerPointHandler
         BackgroundProperties bgPr, OpenXmlPart part, string imagePath,
         BackgroundImageOptions? opts = null)
     {
-        // Reject scale with non-tile mode up-front so the image part isn't created just
-        // to be orphaned by a later throw.
+        // Validate up-front so the image part isn't created just to be orphaned by a later throw.
         if (opts?.Scale != null)
         {
             var m = (opts.Mode ?? "stretch").ToLowerInvariant();
@@ -191,6 +190,8 @@ public partial class PowerPointHandler
                     $"background.scale is only valid with background.mode=tile (got mode={m}); " +
                     "set background.mode=tile together with background.scale");
         }
+        if (opts?.Alpha is int preAlpha && (preAlpha < 0 || preAlpha > 100))
+            throw new ArgumentException($"background.alpha must be 0..100, got {preAlpha}");
 
         var (stream, partType) = OfficeCli.Core.ImageSource.Resolve(imagePath);
         using var streamDispose = stream;
@@ -201,10 +202,9 @@ public partial class PowerPointHandler
 
         var blip = new Drawing.Blip { Embed = relId };
         // Alpha: a:alphaModFix inside a:blip. amt is 0..100000 (100000 = opaque).
-        if (opts?.Alpha is int alpha)
+        // Skip emitting when alpha=100 so apply/mutate both converge to the same XML.
+        if (opts?.Alpha is int alpha && alpha < 100)
         {
-            if (alpha < 0 || alpha > 100)
-                throw new ArgumentException($"background.alpha must be 0..100, got {alpha}");
             blip.Append(new Drawing.AlphaModulationFixed { Amount = alpha * 1000 });
         }
 
@@ -283,7 +283,7 @@ public partial class PowerPointHandler
 
     private static OpenXmlElement BuildBlipFillMode(BackgroundImageOptions? opts)
     {
-        var mode = (opts?.Mode ?? "stretch").ToLowerInvariant();
+        var mode = (opts?.Mode ?? "stretch").Trim().ToLowerInvariant();
         var scale = opts?.Scale ?? 100;
         if (scale < 1 || scale > 500)
             throw new ArgumentException($"background.scale must be 1..500, got {scale}");
@@ -455,12 +455,15 @@ public partial class PowerPointHandler
         }
 
         var parts = v.Split('-');
-        return parts.Length >= 2 && IsHexColorString(parts[0].TrimStart('#'));
+        return parts.Length >= 2 && IsHexColorString(parts[0]);
     }
 
     private static bool IsHexColorString(string s)
     {
         s = s.TrimStart('#');
+        // Strip @position suffix used for gradient stops (e.g. "FF0000@50").
+        var at = s.IndexOf('@');
+        if (at >= 0) s = s[..at];
         return (s.Length == 6 || s.Length == 8) &&
                s.All(c => char.IsAsciiHexDigit(c));
     }
