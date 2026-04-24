@@ -90,51 +90,79 @@ public partial class PowerPointHandler
         var cSld = GetCommonSlideData(part)
             ?? throw new InvalidOperationException($"{part.GetType().Name} has no CommonSlideData");
 
-        // Delete any image parts referenced by the existing background, then remove the XML.
-        // Without this step, repeated bg changes leave orphan ImageParts in ppt/media/.
+        // Build the new background element (or pre-buffered image bytes) BEFORE mutating
+        // the existing bg. A validation failure (bad color, missing image, bad options)
+        // must not destroy the prior bg — matches the atomicity contract of ApplyShapeFill
+        // and the build-first-then-swap pattern used in MutateBackgroundImageFill.
+        Background? newBg = null;
+        (byte[] Bytes, PartTypeInfo PartType, Background Bg)? prepared = null;
+
+        if (isClear)
+        {
+            // sentinel: leave newBg null; handled below as "remove-only".
+        }
+        else if (value.StartsWith("image:", StringComparison.OrdinalIgnoreCase))
+        {
+            var imagePath = value[6..].Trim();
+            prepared = PrepareBackgroundImage(imagePath, imgOpts);
+        }
+        else
+        {
+            var bgPr = new BackgroundProperties();
+            if (value.StartsWith("radial:", StringComparison.OrdinalIgnoreCase) ||
+                value.StartsWith("path:", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!IsGradientColorString(value))
+                    throw new ArgumentException(
+                        $"Invalid gradient specification: '{value}'. " +
+                        "Radial/path gradients require at least 2 hex colors, e.g. 'radial:FF0000-0000FF'");
+                bgPr.Append(BuildGradientFill(value));
+            }
+            else if (IsGradientColorString(value))
+            {
+                bgPr.Append(BuildGradientFill(value));
+            }
+            else
+            {
+                bgPr.Append(BuildSolidFill(value));
+            }
+            newBg = new Background();
+            newBg.Append(bgPr);
+        }
+
+        // All validation passed — now safe to tear down the old bg.
         DeleteBackgroundImageParts(cSld, part);
         cSld.Background?.Remove();
 
-        if (value.Equals("none", StringComparison.OrdinalIgnoreCase) ||
-            value.Equals("transparent", StringComparison.OrdinalIgnoreCase) ||
-            value.Equals("clear", StringComparison.OrdinalIgnoreCase))
-            return;
+        if (isClear) return;
 
-        var bg = new Background();
-        var bgPr = new BackgroundProperties();
-
-        if (value.StartsWith("image:", StringComparison.OrdinalIgnoreCase))
+        if (prepared is (byte[] bytes, PartTypeInfo pt, Background imgBg))
         {
-            var imagePath = value[6..].Trim();
-            ApplyBackgroundImageFill(bgPr, part, imagePath, imgOpts);
-        }
-        else if (value.StartsWith("radial:", StringComparison.OrdinalIgnoreCase) ||
-                 value.StartsWith("path:", StringComparison.OrdinalIgnoreCase))
-        {
-            // Validate that radial:/path: prefix has valid color data
-            if (!IsGradientColorString(value))
-                throw new ArgumentException(
-                    $"Invalid gradient specification: '{value}'. " +
-                    "Radial/path gradients require at least 2 hex colors, e.g. 'radial:FF0000-0000FF'");
-            bgPr.Append(BuildGradientFill(value));
-        }
-        else if (IsGradientColorString(value))
-        {
-            bgPr.Append(BuildGradientFill(value));
-        }
-        else
-        {
-            bgPr.Append(BuildSolidFill(value));
+            var imagePart = AddBackgroundImagePart(part, pt);
+            using (var ms = new MemoryStream(bytes))
+                imagePart.FeedData(ms);
+            var relId = GetBackgroundImageRelId(part, imagePart);
+            // Set the rel id on the prepared Blip (placeholder at build time).
+            var blip = imgBg.Descendants<Drawing.Blip>().First();
+            blip.Embed = relId;
+            newBg = imgBg;
         }
 
-        bg.Append(bgPr);
-
-        // Insert before ShapeTree — schema order: p:bg → p:spTree
+        // Insert before ShapeTree — schema order: p:bg → p:spTree. If spTree is missing
+        // (externally corrupted), create a minimal one so the resulting p:cSld is still
+        // schema-valid (spTree is mandatory; PrependChild without it writes invalid XML).
         var shapeTree = cSld.ShapeTree;
-        if (shapeTree != null)
-            cSld.InsertBefore(bg, shapeTree);
-        else
-            cSld.PrependChild(bg);
+        if (shapeTree == null)
+        {
+            shapeTree = new ShapeTree(
+                new NonVisualGroupShapeProperties(
+                    new NonVisualDrawingProperties { Id = 1, Name = "" },
+                    new NonVisualGroupShapeDrawingProperties(),
+                    new ApplicationNonVisualDrawingProperties()),
+                new GroupShapeProperties(new Drawing.TransformGroup()));
+            cSld.AppendChild(shapeTree);
+        }
+        cSld.InsertBefore(newBg!, shapeTree);
     }
 
     // CONSISTENCY(slide-background-part): SlidePart/SlideLayoutPart/SlideMasterPart all
@@ -194,10 +222,57 @@ public partial class PowerPointHandler
         _ => throw new NotSupportedException($"{part.GetType().Name} does not support image parts")
     };
 
+    /// <summary>
+    /// Resolve an image source and build a Background element with a placeholder Blip
+    /// (Embed to be filled in once an ImagePart actually exists). Does not mutate the
+    /// document — if anything throws here, the caller's prior bg is still intact.
+    /// </summary>
+    private static (byte[] Bytes, PartTypeInfo PartType, Background Bg) PrepareBackgroundImage(
+        string imagePath, BackgroundImageOptions? opts)
+    {
+        // Validate options up-front.
+        if (opts?.Scale != null)
+        {
+            var m = (opts.Mode ?? "stretch").ToLowerInvariant();
+            if (m != "tile")
+                throw new ArgumentException(
+                    $"background.scale is only valid with background.mode=tile (got mode={m}); " +
+                    "set background.mode=tile together with background.scale");
+        }
+        if (opts?.Alpha is int preAlpha && (preAlpha < 0 || preAlpha > 100))
+            throw new ArgumentException($"background.alpha must be 0..100, got {preAlpha}");
+        // Mode + scale validation via BuildBlipFillMode (throws on bad mode / scale range).
+        var modeChild = BuildBlipFillMode(opts);
+
+        var (stream, partType) = OfficeCli.Core.ImageSource.Resolve(imagePath);
+        byte[] bytes;
+        using (stream)
+        using (var buf = new MemoryStream())
+        {
+            stream.CopyTo(buf);
+            bytes = buf.ToArray();
+        }
+
+        var blip = new Drawing.Blip(); // Embed set later, once an ImagePart exists
+        if (opts?.Alpha is int alpha && alpha < 100)
+            blip.Append(new Drawing.AlphaModulationFixed { Amount = alpha * 1000 });
+
+        var blipFill = new Drawing.BlipFill();
+        blipFill.Append(blip);
+        blipFill.Append(modeChild);
+
+        var bgPr = new BackgroundProperties();
+        bgPr.Append(blipFill);
+        var bg = new Background();
+        bg.Append(bgPr);
+        return (bytes, partType, bg);
+    }
+
     private static void ApplyBackgroundImageFill(
         BackgroundProperties bgPr, OpenXmlPart part, string imagePath,
         BackgroundImageOptions? opts = null)
     {
+        // Kept for legacy call sites that invoke ApplyBackgroundImageFill directly.
         // Validate up-front so the image part isn't created just to be orphaned by a later throw.
         if (opts?.Scale != null)
         {
@@ -251,6 +326,10 @@ public partial class PowerPointHandler
                 "background is solid/gradient; set background=image:<path> first");
         var blip = blipFill.GetFirstChild<Drawing.Blip>()
             ?? throw new InvalidOperationException("BlipFill has no Blip child");
+        if (string.IsNullOrEmpty(blip.Embed?.Value))
+            throw new ArgumentException(
+                "Cannot mutate background image: the existing blip has no r:embed rel. " +
+                "Re-set background=image:<path> to rebind.");
 
         // Alpha: remove any existing alphaModFix, then re-add if specified.
         // Null alpha means "leave existing alpha alone" — matches the partial-update semantic.
