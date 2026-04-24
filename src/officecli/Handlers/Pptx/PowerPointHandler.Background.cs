@@ -452,6 +452,19 @@ public partial class PowerPointHandler
                 }
             }
             // Stretch is the default; only emit background.mode when non-default.
+
+            // Surface srcRect crop bounds (1000ths of a percent) so third-party cropped
+            // image backgrounds show up on get. Any side with a non-zero inset qualifies.
+            var srcRect = blipFill.GetFirstChild<Drawing.SourceRectangle>();
+            if (srcRect != null)
+            {
+                var l = srcRect.Left?.Value ?? 0;
+                var t = srcRect.Top?.Value ?? 0;
+                var r = srcRect.Right?.Value ?? 0;
+                var b = srcRect.Bottom?.Value ?? 0;
+                if ((l | t | r | b) != 0)
+                    node.Format["background.crop"] = $"{l},{t},{r},{b}";
+            }
         }
     }
 
