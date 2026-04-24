@@ -877,6 +877,17 @@ internal static partial class PivotTableHelper
         // like '源'/'行名') BEFORE normalization so the warning echoes the
         // original spelling. Previously these keys were silently dropped
         // and users saw an empty pivot with no diagnostic.
+        //
+        // CONSISTENCY(no-double-unsupported): direct handler callers
+        // (tests, SDK users) reach us via this path and rely on this
+        // stderr warning. The CLI pipeline (CommandBuilder.Add /
+        // ResidentServer.ExecuteAdd) now also runs schema-driven
+        // validation via SchemaHelpLoader — to avoid two UNSUPPORTED
+        // lines with slightly different wording, the CLI strips keys
+        // flagged by the schema validator before calling handler.Add,
+        // so this helper then sees an empty unknown-list and stays
+        // silent on CLI-initiated pivots while still warning direct
+        // callers.
         WarnUnknownPivotProperties(CollectUnknownPivotKeys(properties));
 
         // R12-2 / R12-3: normalize alias keys (row→rows, rowFields→rows,

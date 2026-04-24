@@ -985,6 +985,15 @@ public class ResidentServer : IDisposable
                 ? SchemaHelpLoader.ValidateProperties(fmt, type, "add", properties)
                 : Array.Empty<string>();
 
+            // CONSISTENCY(no-double-unsupported): see CommandBuilder.Add.cs —
+            // strip schema-flagged keys before handler.Add so pivot / other
+            // helpers don't re-warn with different phrasing.
+            if (schemaUnsupported.Count > 0)
+            {
+                foreach (var u in schemaUnsupported)
+                    properties.Remove(u);
+            }
+
             var resultPath = _handler.Add(parentPath, type, position, properties);
             Console.WriteLine($"Added {type} at {resultPath}");
             var overflow = CommandBuilder.CheckTextOverflow(_handler, resultPath);

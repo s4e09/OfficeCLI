@@ -171,6 +171,19 @@ static partial class CommandBuilder
                     ? SchemaHelpLoader.ValidateProperties(fmt, type!, "add", properties)
                     : Array.Empty<string>();
 
+                // CONSISTENCY(no-double-unsupported): drop schema-flagged keys
+                // before handing off to handler.Add so downstream helpers
+                // (e.g. PivotTableHelper.WarnUnknownPivotProperties) don't
+                // emit a second UNSUPPORTED line with slightly different
+                // phrasing. The CLI layer is now the single reporter for
+                // CLI-initiated Adds; direct handler callers still see the
+                // helper's warning since they don't go through this path.
+                if (schemaUnsupported.Count > 0)
+                {
+                    foreach (var u in schemaUnsupported)
+                        properties.Remove(u);
+                }
+
                 using var handler = DocumentHandlerFactory.Open(file.FullName, editable: true);
                 var oldCount = (handler as OfficeCli.Handlers.PowerPointHandler)?.GetSlideCount() ?? 0;
                 var resultPath = handler.Add(parentPath, type!, position, properties);
