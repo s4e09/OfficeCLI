@@ -484,7 +484,8 @@ public partial class PowerPointHandler
                             _ => "center"
                         };
                     }
-                    node.Format["background"] = $"radial:{string.Join("-", stops)}-{focus}";
+                    var prefix = pathGrad.Path?.Value == Drawing.PathShadeValues.Shape ? "path" : "radial";
+                    node.Format["background"] = $"{prefix}:{string.Join("-", stops)}-{focus}";
                 }
                 else
                 {
@@ -709,7 +710,13 @@ public partial class PowerPointHandler
                 _ => (50000, 50000, 50000, 50000)       // center
             };
 
-            var pathFill = new Drawing.PathGradientFill { Path = Drawing.PathShadeValues.Circle };
+            // radial: → circular PathShade, path: → shape-following PathShade. Without
+            // this split the two prefixes produce byte-identical XML, so path: used to
+            // read back as radial:.
+            var shadeKind = gradientType == "path"
+                ? Drawing.PathShadeValues.Shape
+                : Drawing.PathShadeValues.Circle;
+            var pathFill = new Drawing.PathGradientFill { Path = shadeKind };
             pathFill.AppendChild(new Drawing.FillToRectangle
             {
                 Left = l, Top = t, Right = r, Bottom = b
