@@ -497,102 +497,7 @@ public partial class PowerPointHandler
 
         // Try video/audio path: /slide[N]/video[M] or /slide[N]/audio[M]
         var mediaSetMatch = Regex.Match(path, @"^/slide\[(\d+)\]/(video|audio)\[(\d+)\]$");
-        if (mediaSetMatch.Success)
-        {
-            var slideIdx = int.Parse(mediaSetMatch.Groups[1].Value);
-            var mediaType = mediaSetMatch.Groups[2].Value;
-            var mediaIdx = int.Parse(mediaSetMatch.Groups[3].Value);
-
-            var slideParts4 = GetSlideParts().ToList();
-            if (slideIdx < 1 || slideIdx > slideParts4.Count)
-                throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts4.Count})");
-
-            var slidePart = slideParts4[slideIdx - 1];
-            var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
-                ?? throw new ArgumentException("Slide has no shape tree");
-
-            var mediaPics = shapeTree.Elements<Picture>()
-                .Where(p =>
-                {
-                    var nvPr = p.NonVisualPictureProperties?.ApplicationNonVisualDrawingProperties;
-                    return mediaType == "video"
-                        ? nvPr?.GetFirstChild<Drawing.VideoFromFile>() != null
-                        : nvPr?.GetFirstChild<Drawing.AudioFromFile>() != null;
-                }).ToList();
-            if (mediaIdx < 1 || mediaIdx > mediaPics.Count)
-                throw new ArgumentException($"{mediaType} {mediaIdx} not found (total: {mediaPics.Count})");
-
-            var pic = mediaPics[mediaIdx - 1];
-            var shapeId = pic.NonVisualPictureProperties?.NonVisualDrawingProperties?.Id?.Value;
-            var unsupported = new List<string>();
-
-            foreach (var (key, value) in properties)
-            {
-                switch (key.ToLowerInvariant())
-                {
-                    case "volume":
-                    {
-                        if (shapeId == null) { unsupported.Add(key); break; }
-                        if (!double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var volVal)
-                            || double.IsNaN(volVal) || double.IsInfinity(volVal))
-                            throw new ArgumentException($"Invalid volume value: '{value}'. Expected a finite number (0-100).");
-                        var vol = (int)(volVal * 1000); // 0-100 → 0-100000
-                        var mediaNode = FindMediaTimingNode(slidePart, shapeId.Value);
-                        if (mediaNode != null) mediaNode.Volume = vol;
-                        break;
-                    }
-                    case "autoplay":
-                    {
-                        if (shapeId == null) { unsupported.Add(key); break; }
-                        var mediaNode = FindMediaTimingNode(slidePart, shapeId.Value);
-                        var cTn = mediaNode?.CommonTimeNode;
-                        var startCond = cTn?.StartConditionList?.GetFirstChild<Condition>();
-                        if (startCond != null)
-                            startCond.Delay = IsTruthy(value) ? "0" : "indefinite";
-                        break;
-                    }
-                    case "trimstart":
-                    {
-                        var nvPr = pic.NonVisualPictureProperties?.ApplicationNonVisualDrawingProperties;
-                        var p14Media = nvPr?.Descendants<DocumentFormat.OpenXml.Office2010.PowerPoint.Media>().FirstOrDefault();
-                        if (p14Media != null)
-                        {
-                            var trim = p14Media.MediaTrim ?? (p14Media.MediaTrim = new DocumentFormat.OpenXml.Office2010.PowerPoint.MediaTrim());
-                            trim.Start = value;
-                        }
-                        break;
-                    }
-                    case "trimend":
-                    {
-                        var nvPr = pic.NonVisualPictureProperties?.ApplicationNonVisualDrawingProperties;
-                        var p14Media = nvPr?.Descendants<DocumentFormat.OpenXml.Office2010.PowerPoint.Media>().FirstOrDefault();
-                        if (p14Media != null)
-                        {
-                            var trim = p14Media.MediaTrim ?? (p14Media.MediaTrim = new DocumentFormat.OpenXml.Office2010.PowerPoint.MediaTrim());
-                            trim.End = value;
-                        }
-                        break;
-                    }
-                    case "x" or "y" or "width" or "height":
-                    {
-                        var spPr = pic.ShapeProperties ?? (pic.ShapeProperties = new ShapeProperties());
-                        var xfrm = spPr.Transform2D ?? (spPr.Transform2D = new Drawing.Transform2D());
-                        TryApplyPositionSize(key.ToLowerInvariant(), value,
-                            xfrm.Offset ?? (xfrm.Offset = new Drawing.Offset()),
-                            xfrm.Extents ?? (xfrm.Extents = new Drawing.Extents()));
-                        break;
-                    }
-                    default:
-                        if (unsupported.Count == 0)
-                            unsupported.Add($"{key} (valid media props: volume, autoplay, trimstart, trimend, x, y, width, height)");
-                        else
-                            unsupported.Add(key);
-                        break;
-                }
-            }
-            GetSlide(slidePart).Save();
-            return unsupported;
-        }
+        if (mediaSetMatch.Success) return SetMediaByPath(mediaSetMatch, properties);
 
         // Try picture path: /slide[N]/picture[M] or /slide[N]/pic[M]
         // OLE set path: /slide[N]/ole[M]
@@ -2089,6 +1994,103 @@ public partial class PowerPointHandler
 
         var allRuns = shape.Descendants<Drawing.Run>().ToList();
         var unsupported = SetRunOrShapeProperties(properties, allRuns, shape, slidePart);
+        GetSlide(slidePart).Save();
+        return unsupported;
+    }
+
+    private List<string> SetMediaByPath(Match mediaSetMatch, Dictionary<string, string> properties)
+    {
+        var slideIdx = int.Parse(mediaSetMatch.Groups[1].Value);
+        var mediaType = mediaSetMatch.Groups[2].Value;
+        var mediaIdx = int.Parse(mediaSetMatch.Groups[3].Value);
+
+        var slideParts4 = GetSlideParts().ToList();
+        if (slideIdx < 1 || slideIdx > slideParts4.Count)
+            throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts4.Count})");
+
+        var slidePart = slideParts4[slideIdx - 1];
+        var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
+            ?? throw new ArgumentException("Slide has no shape tree");
+
+        var mediaPics = shapeTree.Elements<Picture>()
+            .Where(p =>
+            {
+                var nvPr = p.NonVisualPictureProperties?.ApplicationNonVisualDrawingProperties;
+                return mediaType == "video"
+                    ? nvPr?.GetFirstChild<Drawing.VideoFromFile>() != null
+                    : nvPr?.GetFirstChild<Drawing.AudioFromFile>() != null;
+            }).ToList();
+        if (mediaIdx < 1 || mediaIdx > mediaPics.Count)
+            throw new ArgumentException($"{mediaType} {mediaIdx} not found (total: {mediaPics.Count})");
+
+        var pic = mediaPics[mediaIdx - 1];
+        var shapeId = pic.NonVisualPictureProperties?.NonVisualDrawingProperties?.Id?.Value;
+        var unsupported = new List<string>();
+
+        foreach (var (key, value) in properties)
+        {
+            switch (key.ToLowerInvariant())
+            {
+                case "volume":
+                {
+                    if (shapeId == null) { unsupported.Add(key); break; }
+                    if (!double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var volVal)
+                        || double.IsNaN(volVal) || double.IsInfinity(volVal))
+                        throw new ArgumentException($"Invalid volume value: '{value}'. Expected a finite number (0-100).");
+                    var vol = (int)(volVal * 1000); // 0-100 → 0-100000
+                    var mediaNode = FindMediaTimingNode(slidePart, shapeId.Value);
+                    if (mediaNode != null) mediaNode.Volume = vol;
+                    break;
+                }
+                case "autoplay":
+                {
+                    if (shapeId == null) { unsupported.Add(key); break; }
+                    var mediaNode = FindMediaTimingNode(slidePart, shapeId.Value);
+                    var cTn = mediaNode?.CommonTimeNode;
+                    var startCond = cTn?.StartConditionList?.GetFirstChild<Condition>();
+                    if (startCond != null)
+                        startCond.Delay = IsTruthy(value) ? "0" : "indefinite";
+                    break;
+                }
+                case "trimstart":
+                {
+                    var nvPr = pic.NonVisualPictureProperties?.ApplicationNonVisualDrawingProperties;
+                    var p14Media = nvPr?.Descendants<DocumentFormat.OpenXml.Office2010.PowerPoint.Media>().FirstOrDefault();
+                    if (p14Media != null)
+                    {
+                        var trim = p14Media.MediaTrim ?? (p14Media.MediaTrim = new DocumentFormat.OpenXml.Office2010.PowerPoint.MediaTrim());
+                        trim.Start = value;
+                    }
+                    break;
+                }
+                case "trimend":
+                {
+                    var nvPr = pic.NonVisualPictureProperties?.ApplicationNonVisualDrawingProperties;
+                    var p14Media = nvPr?.Descendants<DocumentFormat.OpenXml.Office2010.PowerPoint.Media>().FirstOrDefault();
+                    if (p14Media != null)
+                    {
+                        var trim = p14Media.MediaTrim ?? (p14Media.MediaTrim = new DocumentFormat.OpenXml.Office2010.PowerPoint.MediaTrim());
+                        trim.End = value;
+                    }
+                    break;
+                }
+                case "x" or "y" or "width" or "height":
+                {
+                    var spPr = pic.ShapeProperties ?? (pic.ShapeProperties = new ShapeProperties());
+                    var xfrm = spPr.Transform2D ?? (spPr.Transform2D = new Drawing.Transform2D());
+                    TryApplyPositionSize(key.ToLowerInvariant(), value,
+                        xfrm.Offset ?? (xfrm.Offset = new Drawing.Offset()),
+                        xfrm.Extents ?? (xfrm.Extents = new Drawing.Extents()));
+                    break;
+                }
+                default:
+                    if (unsupported.Count == 0)
+                        unsupported.Add($"{key} (valid media props: volume, autoplay, trimstart, trimend, x, y, width, height)");
+                    else
+                        unsupported.Add(key);
+                    break;
+            }
+        }
         GetSlide(slidePart).Save();
         return unsupported;
     }
