@@ -872,7 +872,10 @@ public partial class ExcelHandler
                         sheetView = new SheetView { WorkbookViewId = 0 };
                         sheetViews.AppendChild(sheetView);
                     }
-                    sheetView.ZoomScale = ParseHelpers.SafeParseUint(value, "zoom");
+                    var zoomVal = ParseHelpers.SafeParseUint(value, "zoom");
+                    if (zoomVal < 10 || zoomVal > 400)
+                        throw new ArgumentException($"zoom must be between 10 and 400 (got {zoomVal})");
+                    sheetView.ZoomScale = zoomVal;
                     sheetView.ZoomScaleNormal = sheetView.ZoomScale;
                     break;
                 }
