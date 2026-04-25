@@ -41,10 +41,26 @@ internal static class UpdateChecker
         }
         catch { return; }
 
-        // Apply pending update from previous background check (.update file)
+        // Apply pending update from previous background check (.update file).
+        // After this returns, the current process image is still the OLD binary;
+        // the NEW binary is on disk and will run on the *next* invocation.
         ApplyPendingUpdate();
 
         var config = LoadConfig();
+
+        // Skill auto-refresh: if the running binary's version differs from the
+        // last version that performed a refresh, push embedded skills from THIS
+        // binary's resources into already-installed agent dirs. Runs once per
+        // version transition (after upgrade, or on first install). Doing this
+        // here — not in ApplyPendingUpdate — ensures we always copy the
+        // resources of the binary actually executing, not the previous one.
+        var currentVersion = GetCurrentVersion();
+        if (currentVersion != null && config.LastSkillRefreshVersion != currentVersion)
+        {
+            try { SkillInstaller.RefreshInstalled(); } catch { /* best effort */ }
+            config.LastSkillRefreshVersion = currentVersion;
+            try { SaveConfig(config); } catch { /* best effort */ }
+        }
 
         // Respect autoUpdate setting
         if (!config.AutoUpdate) return;
@@ -214,16 +230,12 @@ internal static class UpdateChecker
     {
         var exePath = Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule?.FileName;
         if (exePath == null) return;
-
-        // After the binary is swapped in, refresh any already-installed skill
-        // files in detected agent dirs so they stay in sync with the new
-        // binary's embedded copies. Conservative: only touches skills that
-        // were previously installed (no new agents/skills added). Silent
-        // unless something actually changed.
-        if (TryApplyPendingUpdate(exePath))
-        {
-            try { SkillInstaller.RefreshInstalled(); } catch { /* best effort */ }
-        }
+        // Skill refresh used to live here, but ApplyPendingUpdate runs in the
+        // OLD process image, so embedded resources read here are stale. The
+        // refresh now happens later in CheckInBackground via a version-mismatch
+        // check, which ensures the *new* binary writes its own resources on
+        // its first run.
+        TryApplyPendingUpdate(exePath);
     }
 
     /// <summary>
@@ -237,6 +249,21 @@ internal static class UpdateChecker
         {
             var updatePath = exePath + ".update";
             if (!File.Exists(updatePath)) return false;
+
+            // Defensive: refuse to swap in obviously-corrupt update files
+            // (empty, truncated, or hand-placed text). RunRefresh's download
+            // path already verifies via --version before promoting .partial→
+            // .update, but external processes could drop a bad .update file
+            // out of band. Below the threshold there's no realistic way for
+            // a self-contained .NET single-file binary to be valid — even
+            // trimmed AOT builds run multiple MB.
+            const long MinValidBinarySize = 1_000_000; // 1 MB
+            var info = new FileInfo(updatePath);
+            if (info.Length < MinValidBinarySize)
+            {
+                try { File.Delete(updatePath); } catch { }
+                return false;
+            }
 
             var oldPath = exePath + ".old";
             try { File.Delete(oldPath); } catch { }
@@ -431,6 +458,13 @@ internal class AppConfig
     public bool AutoUpdate { get; set; } = true;
     public bool Log { get; set; }
     public string? InstalledBinaryVersion { get; set; }
+    /// <summary>Version that last successfully refreshed installed skill files.
+    /// When this differs from the running binary's version, CheckInBackground
+    /// triggers SkillInstaller.RefreshInstalled to push the new binary's
+    /// embedded skills into already-installed agent dirs. This is the correct
+    /// time to run the refresh — ApplyPendingUpdate fires it from the OLD
+    /// process image, which would copy stale resources.</summary>
+    public string? LastSkillRefreshVersion { get; set; }
 }
 
 [JsonSerializable(typeof(AppConfig))]

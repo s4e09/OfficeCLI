@@ -310,39 +310,51 @@ internal static class SkillInstaller
 
         foreach (var tool in Tools)
         {
+            // Per-tool isolation: a permission/IO error in one agent's skill
+            // dir must not abort the refresh for other agents. Each tool's
+            // base SKILL.md and each of its sub-skills are wrapped
+            // individually so partial progress is preserved.
             if (!Directory.Exists(Path.Combine(Home, tool.DetectDir))) continue;
             var skillsDir = Path.Combine(Home, tool.SkillDir);
             if (!Directory.Exists(skillsDir)) continue;
 
             // Base SKILL.md
-            var basePath = Path.Combine(skillsDir, "officecli", "SKILL.md");
-            if (File.Exists(basePath))
+            try
             {
-                var content = LoadEmbeddedResource("OfficeCli.Resources.skill-officecli.md");
-                if (content != null && File.ReadAllText(basePath) != content)
+                var basePath = Path.Combine(skillsDir, "officecli", "SKILL.md");
+                if (File.Exists(basePath))
                 {
-                    File.WriteAllText(basePath, content);
-                    changedFiles++;
-                    changedTargets.Add($"{tool.DisplayName}/officecli");
+                    var content = LoadEmbeddedResource("OfficeCli.Resources.skill-officecli.md");
+                    if (content != null && File.ReadAllText(basePath) != content)
+                    {
+                        File.WriteAllText(basePath, content);
+                        changedFiles++;
+                        changedTargets.Add($"{tool.DisplayName}/officecli");
+                    }
                 }
             }
+            catch { /* per-agent failure is non-fatal — keep going */ }
 
             // Sub-skills present in this agent's skill directory
             foreach (var folder in SkillMap.Values)
             {
-                var subSkillFile = Path.Combine(skillsDir, folder, "SKILL.md");
-                if (!File.Exists(subSkillFile)) continue;
-
-                var files = GetEmbeddedSkillFiles(folder);
-                if (files.Count == 0) continue;
-
-                var targetDir = Path.Combine(skillsDir, folder);
-                var n = RewriteSkillFilesQuiet(targetDir, files);
-                if (n > 0)
+                try
                 {
-                    changedFiles += n;
-                    changedTargets.Add($"{tool.DisplayName}/{folder}");
+                    var subSkillFile = Path.Combine(skillsDir, folder, "SKILL.md");
+                    if (!File.Exists(subSkillFile)) continue;
+
+                    var files = GetEmbeddedSkillFiles(folder);
+                    if (files.Count == 0) continue;
+
+                    var targetDir = Path.Combine(skillsDir, folder);
+                    var n = RewriteSkillFilesQuiet(targetDir, files);
+                    if (n > 0)
+                    {
+                        changedFiles += n;
+                        changedTargets.Add($"{tool.DisplayName}/{folder}");
+                    }
                 }
+                catch { /* per-skill failure is non-fatal */ }
             }
         }
 

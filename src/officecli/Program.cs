@@ -19,12 +19,17 @@ if (args.Length == 1 && args[0] == "__update-check__")
 // for mcp/skills/install, and forwards to the SCL `<cmd> --help` for everything
 // else — making `help` the single source of truth, with `--help` as a compatibility
 // alias. Done before any other dispatch so it overrides early-dispatch + SCL.
-if (args.Length > 0 && args.Any(a => a is "--help" or "-h" or "-?"))
+//
+// Restricted to args[0] and args[1] only — a blanket scan over all args would
+// also rewrite cases where `--help` appears as an option *value* (e.g.
+// `officecli set foo.docx /body --prop --help`), silently corrupting the
+// command into a help dump.
+if (args.Length > 0)
 {
-    var firstNonHelp = args.FirstOrDefault(a => a is not "--help" and not "-h" and not "-?");
-    args = firstNonHelp == null
-        ? new[] { "help" }
-        : new[] { "help", firstNonHelp };
+    if (args[0] is "--help" or "-h" or "-?")
+        args = new[] { "help" };
+    else if (args.Length >= 2 && args[1] is "--help" or "-h" or "-?")
+        args = new[] { "help", args[0] };
 }
 
 // MCP commands: officecli mcp [target]
