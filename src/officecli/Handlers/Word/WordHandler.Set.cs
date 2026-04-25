@@ -1534,43 +1534,16 @@ public partial class WordHandler
                     case "underline":
                     case "strike":
                         // Apply to all runs in all paragraphs in the cell
+                        // CONSISTENCY(run-prop-helper): per-prop OOXML write
+                        // logic lives in ApplyRunLevelProperty; this branch
+                        // just fans out across the cell's runs.
                         bool hasRuns = false;
                         foreach (var cellPara in cell.Elements<Paragraph>())
                         {
                             foreach (var cellRun in cellPara.Elements<Run>())
                             {
                                 hasRuns = true;
-                                var rPr = EnsureRunProperties(cellRun);
-                                switch (key.ToLowerInvariant())
-                                {
-                                    case "font":
-                                        rPr.RunFonts = new RunFonts { Ascii = value, HighAnsi = value, EastAsia = value };
-                                        break;
-                                    case "size":
-                                        rPr.FontSize = new FontSize { Val = ((int)Math.Round(ParseFontSize(value) * 2, MidpointRounding.AwayFromZero)).ToString() };
-                                        break;
-                                    case "bold":
-                                        rPr.Bold = IsTruthy(value) ? new Bold() : null;
-                                        break;
-                                    case "italic":
-                                        rPr.Italic = IsTruthy(value) ? new Italic() : null;
-                                        break;
-                                    case "color":
-                                        rPr.Color = new Color { Val = SanitizeHex(value) };
-                                        break;
-                                    case "highlight":
-                                        rPr.Highlight = new Highlight { Val = ParseHighlightColor(value) };
-                                        break;
-                                    case "underline":
-                                    {
-                                        var ulVal = NormalizeUnderlineValue(value);
-                                        rPr.Underline = new Underline { Val = new UnderlineValues(ulVal) };
-                                        break;
-                                    }
-                                    case "strike":
-                                        rPr.Strike = IsTruthy(value) ? new Strike() : null;
-                                        break;
-                                }
+                                ApplyRunLevelProperty(EnsureRunProperties(cellRun), key, value);
                             }
                         }
                         // If no runs exist, store formatting in ParagraphMarkRunProperties on first paragraph
