@@ -518,6 +518,14 @@ internal class ExcelStyleManager
         if (fontProps.TryGetValue("size", out var szVal))
         {
             size = ParseHelpers.ParseFontSize(szVal);
+            // R39-4: Excel UI caps font size at 409pt (ECMA-376 §17.4.18).
+            // Values above silently render as default 11pt or open broken.
+            // The lower bound (>0) is enforced in ParseFontSize; upper
+            // bound is Excel-specific so it lives here, not in the shared
+            // helper (Word/PPT have far higher limits).
+            if (size > 409)
+                throw new ArgumentException(
+                    $"Invalid font size: '{szVal}'. Excel font size must be <= 409pt.");
         }
         else
         {
