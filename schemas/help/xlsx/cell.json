@@ -123,6 +123,26 @@
       "add": true, "set": false, "get": false,
       "examples": ["--prop ref=B2"],
       "enforcement": "report"
+    },
+    "link": {
+      "type": "string",
+      "description": "hyperlink target attached to the cell. Accepts external URL (https://, http://, mailto:, file://, onenote:, tel:) or internal anchor (#Sheet!Cell, #NamedRange). Use link=none on Set to remove. Parity with Set.",
+      "add": true, "set": true, "get": true,
+      "examples": [
+        "--prop link=https://example.com",
+        "--prop link=mailto:user@example.com",
+        "--prop link=#Sheet2!A1"
+      ],
+      "readback": "URL string or internal anchor as stored",
+      "enforcement": "report"
+    },
+    "tooltip": {
+      "type": "string",
+      "description": "ScreenTip text shown on hover for an existing hyperlink. Pair with link= during Add, or apply to a cell that already has a hyperlink during Set.",
+      "aliases": ["screenTip", "screentip"],
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop link=https://example.com --prop tooltip=\"Open in browser\""],
+      "enforcement": "report"
     }
   }
 }
