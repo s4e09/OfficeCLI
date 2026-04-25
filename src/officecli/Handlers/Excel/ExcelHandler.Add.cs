@@ -551,6 +551,29 @@ public partial class ExcelHandler
                 // "type below a table → table grows" UX.
                 MaybeExpandTablesForCell(cellWorksheet, cellRef);
 
+                // R20-02: accept `merge=A1:C3` on cell Add (parity with `set`).
+                // This is the same merge logic used by Set range action; we
+                // apply it post-creation so users can merge in a single Add
+                // call instead of needing a follow-up set.
+                if (properties.TryGetValue("merge", out var mergeRange) && !string.IsNullOrWhiteSpace(mergeRange))
+                {
+                    var sheetEl = GetSheet(cellWorksheet);
+                    var mergeCellsEl = sheetEl.GetFirstChild<MergeCells>();
+                    if (mergeCellsEl == null)
+                    {
+                        mergeCellsEl = new MergeCells();
+                        sheetEl.AppendChild(mergeCellsEl);
+                    }
+                    foreach (var rangeRef in mergeRange.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                    {
+                        var existing = mergeCellsEl.Elements<MergeCell>()
+                            .Any(mc => string.Equals(mc.Reference?.Value, rangeRef, StringComparison.OrdinalIgnoreCase));
+                        if (!existing)
+                            mergeCellsEl.AppendChild(new MergeCell { Reference = rangeRef });
+                    }
+                    mergeCellsEl.Count = (uint)mergeCellsEl.Elements<MergeCell>().Count();
+                }
+
                 DeleteCalcChainIfPresent();
                 SaveWorksheet(cellWorksheet);
                 return $"/{cellSheetName}/{cellRef}";
