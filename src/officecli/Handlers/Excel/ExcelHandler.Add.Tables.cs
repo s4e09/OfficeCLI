@@ -258,7 +258,20 @@ public partial class ExcelHandler
 
         if (properties.TryGetValue("formula1", out var dvFormula1))
         {
+            // R28-A1 — reject empty formula1 for type=list. Excel renders an empty
+            // dropdown (or rejects the file outright depending on form), and the
+            // user almost certainly meant to provide options like "1,2,3".
+            if (dv.Type?.Value == DataValidationValues.List
+                && string.IsNullOrWhiteSpace(dvFormula1.Trim('"')))
+                throw new ArgumentException(
+                    "Property 'formula1' is empty for validation type=list; supply options like formula1=\"1,2,3\" or a range reference.");
             dv.Formula1 = new Formula1(NormalizeValidationFormula(dvFormula1, dv.Type?.Value));
+        }
+        else if (dv.Type?.Value == DataValidationValues.List)
+        {
+            // R28-A1 — type=list with no formula1 at all is also nonsense.
+            throw new ArgumentException(
+                "Property 'formula1' is required for validation type=list; supply options like formula1=\"1,2,3\" or a range reference.");
         }
 
         if (properties.TryGetValue("formula2", out var dvFormula2))

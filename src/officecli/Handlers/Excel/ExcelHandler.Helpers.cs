@@ -1227,15 +1227,16 @@ public partial class ExcelHandler
                                 var themeName = ParseHelpers.ExcelThemeIndexToName(font.Color.Theme.Value);
                                 if (themeName != null) node.Format["font.color"] = themeName;
                             }
-                            // vertAlign (superscript/subscript) readback — dual keys like bold/italic
+                            // vertAlign (superscript/subscript) readback — R28-A3:
+                            // use font.subscript/font.superscript to match font.bold/font.italic.
                             var vertAlign = font.GetFirstChild<VerticalTextAlignment>();
                             if (vertAlign?.Val?.Value == VerticalAlignmentRunValues.Superscript)
                             {
-                                node.Format["superscript"] = true;
+                                node.Format["font.superscript"] = true;
                             }
                             else if (vertAlign?.Val?.Value == VerticalAlignmentRunValues.Subscript)
                             {
-                                node.Format["subscript"] = true;
+                                node.Format["font.subscript"] = true;
                             }
                             if (font.FontSize?.Val?.Value != null)
                                 node.Format["font.size"] = $"{font.FontSize.Val.Value:0.##}pt";
