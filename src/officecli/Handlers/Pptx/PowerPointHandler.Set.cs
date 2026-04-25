@@ -315,213 +315,7 @@ public partial class PowerPointHandler
 
         // Try connector path: /slide[N]/connector[M] or /slide[N]/connection[M]
         var cxnMatch = Regex.Match(path, @"^/slide\[(\d+)\]/(?:connector|connection)\[(\d+)\]$");
-        if (cxnMatch.Success)
-        {
-            var slideIdx = int.Parse(cxnMatch.Groups[1].Value);
-            var cxnIdx = int.Parse(cxnMatch.Groups[2].Value);
-
-            var slideParts5 = GetSlideParts().ToList();
-            if (slideIdx < 1 || slideIdx > slideParts5.Count)
-                throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts5.Count})");
-
-            var slidePart = slideParts5[slideIdx - 1];
-            var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
-                ?? throw new ArgumentException("Slide has no shape tree");
-            var connectors = shapeTree.Elements<ConnectionShape>().ToList();
-            if (cxnIdx < 1 || cxnIdx > connectors.Count)
-                throw new ArgumentException($"Connector {cxnIdx} not found (total: {connectors.Count})");
-
-            var cxn = connectors[cxnIdx - 1];
-            var unsupported = new List<string>();
-            foreach (var (key, value) in properties)
-            {
-                switch (key.ToLowerInvariant())
-                {
-                    case "name":
-                        var nvCxnPr = cxn.NonVisualConnectionShapeProperties?.NonVisualDrawingProperties;
-                        if (nvCxnPr != null) nvCxnPr.Name = value;
-                        break;
-                    case "x" or "y" or "width" or "height":
-                    {
-                        var spPr = cxn.ShapeProperties ?? (cxn.ShapeProperties = new ShapeProperties());
-                        var xfrm = spPr.Transform2D ?? (spPr.Transform2D = new Drawing.Transform2D());
-                        TryApplyPositionSize(key.ToLowerInvariant(), value,
-                            xfrm.Offset ?? (xfrm.Offset = new Drawing.Offset()),
-                            xfrm.Extents ?? (xfrm.Extents = new Drawing.Extents()));
-                        break;
-                    }
-                    case "linewidth" or "line.width":
-                    {
-                        var spPr = cxn.ShapeProperties ?? (cxn.ShapeProperties = new ShapeProperties());
-                        var outline = spPr.GetFirstChild<Drawing.Outline>()
-                            ?? spPr.AppendChild(new Drawing.Outline());
-                        outline.Width = Core.EmuConverter.ParseLineWidth(value);
-                        break;
-                    }
-                    case "linecolor" or "line.color" or "line" or "color":
-                    {
-                        var spPr = cxn.ShapeProperties ?? (cxn.ShapeProperties = new ShapeProperties());
-                        var outline = spPr.GetFirstChild<Drawing.Outline>()
-                            ?? spPr.AppendChild(new Drawing.Outline());
-                        var (rgb, _) = ParseHelpers.SanitizeColorForOoxml(value);
-                        outline.RemoveAllChildren<Drawing.SolidFill>();
-                        var newFill = new Drawing.SolidFill(
-                            new Drawing.RgbColorModelHex { Val = rgb });
-                        // CT_LineProperties schema: fill → prstDash → ... → headEnd → tailEnd
-                        var prstDash = outline.GetFirstChild<Drawing.PresetDash>();
-                        if (prstDash != null)
-                            outline.InsertBefore(newFill, prstDash);
-                        else
-                        {
-                            var headEnd = outline.GetFirstChild<Drawing.HeadEnd>();
-                            if (headEnd != null)
-                                outline.InsertBefore(newFill, headEnd);
-                            else
-                            {
-                                var tailEnd = outline.GetFirstChild<Drawing.TailEnd>();
-                                if (tailEnd != null)
-                                    outline.InsertBefore(newFill, tailEnd);
-                                else
-                                    outline.AppendChild(newFill);
-                            }
-                        }
-                        break;
-                    }
-                    case "fill":
-                    {
-                        var spPr = cxn.ShapeProperties ?? (cxn.ShapeProperties = new ShapeProperties());
-                        ApplyShapeFill(spPr, value);
-                        break;
-                    }
-                    case "linedash" or "line.dash":
-                    {
-                        var spPr = cxn.ShapeProperties ?? (cxn.ShapeProperties = new ShapeProperties());
-                        var outline = spPr.GetFirstChild<Drawing.Outline>()
-                            ?? spPr.AppendChild(new Drawing.Outline());
-                        outline.RemoveAllChildren<Drawing.PresetDash>();
-                        var newDash = new Drawing.PresetDash { Val = value.ToLowerInvariant() switch
-                        {
-                            "solid" => Drawing.PresetLineDashValues.Solid,
-                            "dot" => Drawing.PresetLineDashValues.Dot,
-                            "dash" => Drawing.PresetLineDashValues.Dash,
-                            "dashdot" or "dash_dot" => Drawing.PresetLineDashValues.DashDot,
-                            "longdash" or "lgdash" or "lg_dash" => Drawing.PresetLineDashValues.LargeDash,
-                            "longdashdot" or "lgdashdot" or "lg_dash_dot" => Drawing.PresetLineDashValues.LargeDashDot,
-                            _ => throw new ArgumentException($"Invalid 'lineDash' value: '{value}'. Valid values: solid, dot, dash, dashdot, longdash, longdashdot.")
-                        }};
-                        // CT_LineProperties schema: fill → prstDash → ... → headEnd → tailEnd
-                        var headEnd = outline.GetFirstChild<Drawing.HeadEnd>();
-                        if (headEnd != null)
-                            outline.InsertBefore(newDash, headEnd);
-                        else
-                        {
-                            var tailEnd = outline.GetFirstChild<Drawing.TailEnd>();
-                            if (tailEnd != null)
-                                outline.InsertBefore(newDash, tailEnd);
-                            else
-                                outline.AppendChild(newDash);
-                        }
-                        break;
-                    }
-                    case "lineopacity" or "line.opacity":
-                    {
-                        var spPr = cxn.ShapeProperties ?? (cxn.ShapeProperties = new ShapeProperties());
-                        if (!double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var lnOpacity)
-                            || double.IsNaN(lnOpacity) || double.IsInfinity(lnOpacity))
-                            throw new ArgumentException($"Invalid 'lineOpacity' value: '{value}'. Expected a finite decimal 0.0-1.0.");
-                        var outline = spPr.GetFirstChild<Drawing.Outline>()
-                            ?? spPr.AppendChild(new Drawing.Outline());
-                        var solidFill = outline.GetFirstChild<Drawing.SolidFill>();
-                        if (solidFill == null)
-                        {
-                            // Auto-create a black line fill (matching Apache POI behavior)
-                            // CT_LineProperties schema: fill → prstDash → ... → headEnd → tailEnd
-                            solidFill = new Drawing.SolidFill(new Drawing.RgbColorModelHex { Val = "000000" });
-                            var prstDashEl = outline.GetFirstChild<Drawing.PresetDash>();
-                            if (prstDashEl != null)
-                                outline.InsertBefore(solidFill, prstDashEl);
-                            else
-                            {
-                                var headEndEl = outline.GetFirstChild<Drawing.HeadEnd>();
-                                if (headEndEl != null)
-                                    outline.InsertBefore(solidFill, headEndEl);
-                                else
-                                {
-                                    var tailEndEl = outline.GetFirstChild<Drawing.TailEnd>();
-                                    if (tailEndEl != null)
-                                        outline.InsertBefore(solidFill, tailEndEl);
-                                    else
-                                        outline.AppendChild(solidFill);
-                                }
-                            }
-                        }
-                        {
-                            var colorEl = solidFill.GetFirstChild<Drawing.RgbColorModelHex>() as OpenXmlElement
-                                ?? solidFill.GetFirstChild<Drawing.SchemeColor>();
-                            if (colorEl != null)
-                            {
-                                colorEl.RemoveAllChildren<Drawing.Alpha>();
-                                colorEl.AppendChild(new Drawing.Alpha { Val = (int)(lnOpacity * 100000) });
-                            }
-                        }
-                        break;
-                    }
-                    case "rotation" or "rotate":
-                    {
-                        var spPr = cxn.ShapeProperties ?? (cxn.ShapeProperties = new ShapeProperties());
-                        var xfrm = spPr.Transform2D ?? (spPr.Transform2D = new Drawing.Transform2D());
-                        xfrm.Rotation = (int)(ParseHelpers.SafeParseDouble(value, "rotation") * 60000);
-                        break;
-                    }
-                    case "preset" or "prstgeom" or "shape":
-                    {
-                        // CONSISTENCY(canonical-key): schema canonical is 'shape';
-                        // 'preset'/'prstgeom' retained as legacy aliases.
-                        var spPr = cxn.ShapeProperties ?? (cxn.ShapeProperties = new ShapeProperties());
-                        var prstGeom = spPr.GetFirstChild<Drawing.PresetGeometry>()
-                            ?? spPr.AppendChild(new Drawing.PresetGeometry());
-                        prstGeom.Preset = new Drawing.ShapeTypeValues(value);
-                        break;
-                    }
-                    case "headend" or "headEnd":
-                    {
-                        var spPr = cxn.ShapeProperties ?? (cxn.ShapeProperties = new ShapeProperties());
-                        var outline = spPr.GetFirstChild<Drawing.Outline>()
-                            ?? spPr.AppendChild(new Drawing.Outline());
-                        outline.RemoveAllChildren<Drawing.HeadEnd>();
-                        var newHeadEnd = new Drawing.HeadEnd { Type = ParseLineEndType(value) };
-                        // CT_LineProperties: ... → headEnd → tailEnd (headEnd before tailEnd)
-                        var existingTailEnd = outline.GetFirstChild<Drawing.TailEnd>();
-                        if (existingTailEnd != null)
-                            outline.InsertBefore(newHeadEnd, existingTailEnd);
-                        else
-                            outline.AppendChild(newHeadEnd);
-                        break;
-                    }
-                    case "tailend" or "tailEnd":
-                    {
-                        var spPr = cxn.ShapeProperties ?? (cxn.ShapeProperties = new ShapeProperties());
-                        var outline = spPr.GetFirstChild<Drawing.Outline>()
-                            ?? spPr.AppendChild(new Drawing.Outline());
-                        outline.RemoveAllChildren<Drawing.TailEnd>();
-                        // CT_LineProperties: tailEnd is last — always append
-                        outline.AppendChild(new Drawing.TailEnd { Type = ParseLineEndType(value) });
-                        break;
-                    }
-                    default:
-                        if (!GenericXmlQuery.SetGenericAttribute(cxn, key, value))
-                        {
-                            if (unsupported.Count == 0)
-                                unsupported.Add($"{key} (valid connector props: line, color, fill, x, y, width, height, rotation, name, headEnd, tailEnd, geometry)");
-                            else
-                                unsupported.Add(key);
-                        }
-                        break;
-                }
-            }
-            GetSlide(slidePart).Save();
-            return unsupported;
-        }
+        if (cxnMatch.Success) return SetConnectorByPath(cxnMatch, properties);
 
         // Try group path: /slide[N]/group[M]
         var grpMatch = Regex.Match(path, @"^/slide\[(\d+)\]/group\[(\d+)\]$");
@@ -1095,6 +889,214 @@ public partial class PowerPointHandler
 
         var allRuns = shape.Descendants<Drawing.Run>().ToList();
         var unsupported = SetRunOrShapeProperties(properties, allRuns, shape, slidePart);
+        GetSlide(slidePart).Save();
+        return unsupported;
+    }
+
+    private List<string> SetConnectorByPath(Match cxnMatch, Dictionary<string, string> properties)
+    {
+        var slideIdx = int.Parse(cxnMatch.Groups[1].Value);
+        var cxnIdx = int.Parse(cxnMatch.Groups[2].Value);
+
+        var slideParts5 = GetSlideParts().ToList();
+        if (slideIdx < 1 || slideIdx > slideParts5.Count)
+            throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts5.Count})");
+
+        var slidePart = slideParts5[slideIdx - 1];
+        var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
+            ?? throw new ArgumentException("Slide has no shape tree");
+        var connectors = shapeTree.Elements<ConnectionShape>().ToList();
+        if (cxnIdx < 1 || cxnIdx > connectors.Count)
+            throw new ArgumentException($"Connector {cxnIdx} not found (total: {connectors.Count})");
+
+        var cxn = connectors[cxnIdx - 1];
+        var unsupported = new List<string>();
+        foreach (var (key, value) in properties)
+        {
+            switch (key.ToLowerInvariant())
+            {
+                case "name":
+                    var nvCxnPr = cxn.NonVisualConnectionShapeProperties?.NonVisualDrawingProperties;
+                    if (nvCxnPr != null) nvCxnPr.Name = value;
+                    break;
+                case "x" or "y" or "width" or "height":
+                {
+                    var spPr = cxn.ShapeProperties ?? (cxn.ShapeProperties = new ShapeProperties());
+                    var xfrm = spPr.Transform2D ?? (spPr.Transform2D = new Drawing.Transform2D());
+                    TryApplyPositionSize(key.ToLowerInvariant(), value,
+                        xfrm.Offset ?? (xfrm.Offset = new Drawing.Offset()),
+                        xfrm.Extents ?? (xfrm.Extents = new Drawing.Extents()));
+                    break;
+                }
+                case "linewidth" or "line.width":
+                {
+                    var spPr = cxn.ShapeProperties ?? (cxn.ShapeProperties = new ShapeProperties());
+                    var outline = spPr.GetFirstChild<Drawing.Outline>()
+                        ?? spPr.AppendChild(new Drawing.Outline());
+                    outline.Width = Core.EmuConverter.ParseLineWidth(value);
+                    break;
+                }
+                case "linecolor" or "line.color" or "line" or "color":
+                {
+                    var spPr = cxn.ShapeProperties ?? (cxn.ShapeProperties = new ShapeProperties());
+                    var outline = spPr.GetFirstChild<Drawing.Outline>()
+                        ?? spPr.AppendChild(new Drawing.Outline());
+                    var (rgb, _) = ParseHelpers.SanitizeColorForOoxml(value);
+                    outline.RemoveAllChildren<Drawing.SolidFill>();
+                    var newFill = new Drawing.SolidFill(
+                        new Drawing.RgbColorModelHex { Val = rgb });
+                    // CT_LineProperties schema: fill → prstDash → ... → headEnd → tailEnd
+                    var prstDash = outline.GetFirstChild<Drawing.PresetDash>();
+                    if (prstDash != null)
+                        outline.InsertBefore(newFill, prstDash);
+                    else
+                    {
+                        var headEnd = outline.GetFirstChild<Drawing.HeadEnd>();
+                        if (headEnd != null)
+                            outline.InsertBefore(newFill, headEnd);
+                        else
+                        {
+                            var tailEnd = outline.GetFirstChild<Drawing.TailEnd>();
+                            if (tailEnd != null)
+                                outline.InsertBefore(newFill, tailEnd);
+                            else
+                                outline.AppendChild(newFill);
+                        }
+                    }
+                    break;
+                }
+                case "fill":
+                {
+                    var spPr = cxn.ShapeProperties ?? (cxn.ShapeProperties = new ShapeProperties());
+                    ApplyShapeFill(spPr, value);
+                    break;
+                }
+                case "linedash" or "line.dash":
+                {
+                    var spPr = cxn.ShapeProperties ?? (cxn.ShapeProperties = new ShapeProperties());
+                    var outline = spPr.GetFirstChild<Drawing.Outline>()
+                        ?? spPr.AppendChild(new Drawing.Outline());
+                    outline.RemoveAllChildren<Drawing.PresetDash>();
+                    var newDash = new Drawing.PresetDash { Val = value.ToLowerInvariant() switch
+                    {
+                        "solid" => Drawing.PresetLineDashValues.Solid,
+                        "dot" => Drawing.PresetLineDashValues.Dot,
+                        "dash" => Drawing.PresetLineDashValues.Dash,
+                        "dashdot" or "dash_dot" => Drawing.PresetLineDashValues.DashDot,
+                        "longdash" or "lgdash" or "lg_dash" => Drawing.PresetLineDashValues.LargeDash,
+                        "longdashdot" or "lgdashdot" or "lg_dash_dot" => Drawing.PresetLineDashValues.LargeDashDot,
+                        _ => throw new ArgumentException($"Invalid 'lineDash' value: '{value}'. Valid values: solid, dot, dash, dashdot, longdash, longdashdot.")
+                    }};
+                    // CT_LineProperties schema: fill → prstDash → ... → headEnd → tailEnd
+                    var headEnd = outline.GetFirstChild<Drawing.HeadEnd>();
+                    if (headEnd != null)
+                        outline.InsertBefore(newDash, headEnd);
+                    else
+                    {
+                        var tailEnd = outline.GetFirstChild<Drawing.TailEnd>();
+                        if (tailEnd != null)
+                            outline.InsertBefore(newDash, tailEnd);
+                        else
+                            outline.AppendChild(newDash);
+                    }
+                    break;
+                }
+                case "lineopacity" or "line.opacity":
+                {
+                    var spPr = cxn.ShapeProperties ?? (cxn.ShapeProperties = new ShapeProperties());
+                    if (!double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var lnOpacity)
+                        || double.IsNaN(lnOpacity) || double.IsInfinity(lnOpacity))
+                        throw new ArgumentException($"Invalid 'lineOpacity' value: '{value}'. Expected a finite decimal 0.0-1.0.");
+                    var outline = spPr.GetFirstChild<Drawing.Outline>()
+                        ?? spPr.AppendChild(new Drawing.Outline());
+                    var solidFill = outline.GetFirstChild<Drawing.SolidFill>();
+                    if (solidFill == null)
+                    {
+                        // Auto-create a black line fill (matching Apache POI behavior)
+                        // CT_LineProperties schema: fill → prstDash → ... → headEnd → tailEnd
+                        solidFill = new Drawing.SolidFill(new Drawing.RgbColorModelHex { Val = "000000" });
+                        var prstDashEl = outline.GetFirstChild<Drawing.PresetDash>();
+                        if (prstDashEl != null)
+                            outline.InsertBefore(solidFill, prstDashEl);
+                        else
+                        {
+                            var headEndEl = outline.GetFirstChild<Drawing.HeadEnd>();
+                            if (headEndEl != null)
+                                outline.InsertBefore(solidFill, headEndEl);
+                            else
+                            {
+                                var tailEndEl = outline.GetFirstChild<Drawing.TailEnd>();
+                                if (tailEndEl != null)
+                                    outline.InsertBefore(solidFill, tailEndEl);
+                                else
+                                    outline.AppendChild(solidFill);
+                            }
+                        }
+                    }
+                    {
+                        var colorEl = solidFill.GetFirstChild<Drawing.RgbColorModelHex>() as OpenXmlElement
+                            ?? solidFill.GetFirstChild<Drawing.SchemeColor>();
+                        if (colorEl != null)
+                        {
+                            colorEl.RemoveAllChildren<Drawing.Alpha>();
+                            colorEl.AppendChild(new Drawing.Alpha { Val = (int)(lnOpacity * 100000) });
+                        }
+                    }
+                    break;
+                }
+                case "rotation" or "rotate":
+                {
+                    var spPr = cxn.ShapeProperties ?? (cxn.ShapeProperties = new ShapeProperties());
+                    var xfrm = spPr.Transform2D ?? (spPr.Transform2D = new Drawing.Transform2D());
+                    xfrm.Rotation = (int)(ParseHelpers.SafeParseDouble(value, "rotation") * 60000);
+                    break;
+                }
+                case "preset" or "prstgeom" or "shape":
+                {
+                    // CONSISTENCY(canonical-key): schema canonical is 'shape';
+                    // 'preset'/'prstgeom' retained as legacy aliases.
+                    var spPr = cxn.ShapeProperties ?? (cxn.ShapeProperties = new ShapeProperties());
+                    var prstGeom = spPr.GetFirstChild<Drawing.PresetGeometry>()
+                        ?? spPr.AppendChild(new Drawing.PresetGeometry());
+                    prstGeom.Preset = new Drawing.ShapeTypeValues(value);
+                    break;
+                }
+                case "headend" or "headEnd":
+                {
+                    var spPr = cxn.ShapeProperties ?? (cxn.ShapeProperties = new ShapeProperties());
+                    var outline = spPr.GetFirstChild<Drawing.Outline>()
+                        ?? spPr.AppendChild(new Drawing.Outline());
+                    outline.RemoveAllChildren<Drawing.HeadEnd>();
+                    var newHeadEnd = new Drawing.HeadEnd { Type = ParseLineEndType(value) };
+                    // CT_LineProperties: ... → headEnd → tailEnd (headEnd before tailEnd)
+                    var existingTailEnd = outline.GetFirstChild<Drawing.TailEnd>();
+                    if (existingTailEnd != null)
+                        outline.InsertBefore(newHeadEnd, existingTailEnd);
+                    else
+                        outline.AppendChild(newHeadEnd);
+                    break;
+                }
+                case "tailend" or "tailEnd":
+                {
+                    var spPr = cxn.ShapeProperties ?? (cxn.ShapeProperties = new ShapeProperties());
+                    var outline = spPr.GetFirstChild<Drawing.Outline>()
+                        ?? spPr.AppendChild(new Drawing.Outline());
+                    outline.RemoveAllChildren<Drawing.TailEnd>();
+                    // CT_LineProperties: tailEnd is last — always append
+                    outline.AppendChild(new Drawing.TailEnd { Type = ParseLineEndType(value) });
+                    break;
+                }
+                default:
+                    if (!GenericXmlQuery.SetGenericAttribute(cxn, key, value))
+                    {
+                        if (unsupported.Count == 0)
+                            unsupported.Add($"{key} (valid connector props: line, color, fill, x, y, width, height, rotation, name, headEnd, tailEnd, geometry)");
+                        else
+                            unsupported.Add(key);
+                    }
+                    break;
+            }
+        }
         GetSlide(slidePart).Save();
         return unsupported;
     }
