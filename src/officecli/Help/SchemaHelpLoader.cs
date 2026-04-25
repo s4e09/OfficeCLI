@@ -257,9 +257,17 @@ internal static class SchemaHelpLoader
         "font.", "alignment.", "border.", "fill.", "shadow.", "glow.",
         "plotArea.", "chartArea.", "legend.", "title.", "datalabels.",
         // Chart sub-property namespaces — handled by ChartHelper.Setter /
-        // SetterHelpers (axis/series/trendline/errbar/point/dataLabel{N}/
+        // SetterHelpers (series/trendline/errbar/point/dataLabel{N}/
         // dataTable/displayUnitsLabel/trendlineLabel/combo/area).
-        "axis.", "cataxis.", "valaxis.", "xaxis.", "yaxis.",
+        // NOTE: axis./cataxis./valaxis./xaxis./yaxis. are deliberately NOT
+        // listed here. The handler only supports a small fixed subset
+        // (axis.font, axis.line, axis.visible, cataxis.{visible,line},
+        // valaxis.{visible,line,labelrotation}, xaxis.labelrotation,
+        // yaxis.labelrotation) — these are wired in as explicit aliases on
+        // axisfont/axisline/axisvisible/cataxisline/valaxisline/
+        // cataxisvisible/valaxisvisible/labelrotation in chart.json. A
+        // blanket "axis." prefix would silently swallow typos like
+        // axis.color and let Add succeed while the value is dropped.
         "series.", "trendline.", "errbars.", "errbar.",
         "datatable.", "displayunitslabel.", "trendlinelabel.",
         "combo.", "area.", "style.",
