@@ -865,8 +865,8 @@ public partial class WordHandler
         const double p = 1.0 / 20.0;    // twips → pt (exact)
         // OOXML schema types (UInt32Value) throw on .Value access when the
         // raw attribute is malformed (negative, non-numeric). Tolerate it.
-        double wTwips = SafeUIntTwips(() => pgSz?.Width?.Value, 11906);
-        double hTwips = SafeUIntTwips(() => pgSz?.Height?.Value, 16838);
+        double wTwips = SafeUIntTwips(() => pgSz?.Width?.Value, WordPageDefaults.A4WidthTwips);
+        double hTwips = SafeUIntTwips(() => pgSz?.Height?.Value, WordPageDefaults.A4HeightTwips);
         // Landscape: OOXML orient=landscape flips the width/height semantics.
         // w:w/w:h already reflect the orientation in most real-world docs,
         // but guard against the rare case where w:w < w:h but orient=landscape.

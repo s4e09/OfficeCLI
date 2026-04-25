@@ -6,6 +6,7 @@ using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
 using DocumentFormat.OpenXml.Wordprocessing;
 using DocumentFormat.OpenXml.Presentation;
+using OfficeCli.Core;
 
 namespace OfficeCli;
 
@@ -53,7 +54,7 @@ public static class BlankDocCreator
 
         // Section with A4 page size, standard margins, and no docGrid snap
         var sectPr = new SectionProperties(
-            new PageSize { Width = 11906, Height = 16838 },
+            new PageSize { Width = WordPageDefaults.A4WidthTwips, Height = WordPageDefaults.A4HeightTwips },
             new PageMargin { Top = 1440, Right = 1800U, Bottom = 1440, Left = 1800U },
             new DocGrid { Type = DocGridValues.Default }
         );

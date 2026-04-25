@@ -44,7 +44,7 @@ public partial class WordHandler
         var bodySectPr = body.GetFirstChild<SectionProperties>();
         if (bodySectPr != null && bodySectPr.GetFirstChild<PageSize>() == null)
         {
-            bodySectPr.InsertBefore(new PageSize { Width = 11906, Height = 16838 },
+            bodySectPr.InsertBefore(new PageSize { Width = WordPageDefaults.A4WidthTwips, Height = WordPageDefaults.A4HeightTwips },
                 bodySectPr.GetFirstChild<DocGrid>());
         }
         if (bodySectPr != null && bodySectPr.GetFirstChild<PageMargin>() == null)
@@ -57,8 +57,8 @@ public partial class WordHandler
         var srcPageSize = bodySectPr?.GetFirstChild<PageSize>();
         sectPr.AppendChild(new PageSize
         {
-            Width = srcPageSize?.Width ?? 11906,   // A4 width
-            Height = srcPageSize?.Height ?? 16838,  // A4 height
+            Width = srcPageSize?.Width ?? WordPageDefaults.A4WidthTwips,
+            Height = srcPageSize?.Height ?? WordPageDefaults.A4HeightTwips,
             Orient = srcPageSize?.Orient
         });
         var srcMargin = bodySectPr?.GetFirstChild<PageMargin>();

@@ -578,7 +578,7 @@ public partial class WordHandler
         }
         if (sectPr.GetFirstChild<PageSize>() == null)
         {
-            var pgSz = new PageSize { Width = 11906, Height = 16838 }; // A4 default
+            var pgSz = new PageSize { Width = WordPageDefaults.A4WidthTwips, Height = WordPageDefaults.A4HeightTwips };
             // Schema order: pgSz must come before pgMar, cols, and docGrid
             var firstNonRef = sectPr.ChildElements.FirstOrDefault(c =>
                 c is not HeaderReference && c is not FooterReference && c is not SectionType);

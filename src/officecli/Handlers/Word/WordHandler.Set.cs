@@ -534,8 +534,8 @@ public partial class WordHandler
                         ps.Orient = isLandscape
                             ? PageOrientationValues.Landscape : PageOrientationValues.Portrait;
                         // Default to A4 if no dimensions set
-                        var w = ps.Width?.Value ?? 11906u;
-                        var h = ps.Height?.Value ?? 16838u;
+                        var w = ps.Width?.Value ?? WordPageDefaults.A4WidthTwips;
+                        var h = ps.Height?.Value ?? WordPageDefaults.A4HeightTwips;
                         // Swap width/height if orientation changes and dimensions are misaligned
                         if ((isLandscape && w < h) || (!isLandscape && w > h))
                         {
