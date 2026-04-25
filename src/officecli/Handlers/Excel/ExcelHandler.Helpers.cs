@@ -2396,9 +2396,22 @@ public partial class ExcelHandler
             return Drawing.ShapeTypeValues.Rectangle;
         if (_shapePresetMap.TryGetValue(key, out var val))
             return val;
-        // Unknown preset: fall back to rectangle (legacy behavior — no throw,
-        // keeps Add lenient). Callers that care can compare with the returned
-        // value.
+        // R20-01: Unknown preset falls back to rectangle, but emit a stderr
+        // warning so users notice (silent rect was found by audit). 'custom'
+        // is the common case — it would require a custGeom path which
+        // officecli doesn't expose, so suggest raw-set explicitly.
+        if (key == "custom")
+        {
+            Console.Error.WriteLine(
+                "Warning: preset='custom' requires a custGeom path which officecli does not expose; " +
+                "falling back to preset='rect'. Use a 'rawset' / direct OOXML edit if you need a custom path.");
+        }
+        else
+        {
+            Console.Error.WriteLine(
+                $"Warning: unknown shape preset '{name}'; falling back to preset='rect'. " +
+                "Valid presets include rect, ellipse, roundRect, triangle, rightArrow, etc.");
+        }
         return Drawing.ShapeTypeValues.Rectangle;
     }
 
