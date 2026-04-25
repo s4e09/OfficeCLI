@@ -2773,11 +2773,48 @@ public partial class ExcelHandler
         Dictionary<string, string> properties, string defX, string defY, string defW, string defH)
     {
         return (
-            ParseHelpers.SafeParseInt(properties.GetValueOrDefault("x", defX) ?? defX, "x"),
-            ParseHelpers.SafeParseInt(properties.GetValueOrDefault("y", defY) ?? defY, "y"),
+            ParseAnchorOriginCell(properties.GetValueOrDefault("x", defX) ?? defX, "x"),
+            ParseAnchorOriginCell(properties.GetValueOrDefault("y", defY) ?? defY, "y"),
             ParseAnchorDimensionEmu(properties.GetValueOrDefault("width", defW) ?? defW, "width"),
             ParseAnchorDimensionEmu(properties.GetValueOrDefault("height", defH) ?? defH, "height")
         );
+    }
+
+    /// <summary>
+    /// Parse anchor x/y origin into a cell index. Plain integers are normally
+    /// cell counts, but values that exceed the sheet's column/row max can only
+    /// be EMU offsets — fall back to dividing by the per-cell EMU constant so
+    /// users passing inch-EMU values (e.g. x=914400) land on a sensible cell
+    /// instead of overflowing the FromMarker. CONSISTENCY(ole-width-units):
+    /// mirrors ParseAnchorDimensionEmu's "large bare int = EMU" heuristic for
+    /// width/height.
+    /// </summary>
+    private static int ParseAnchorOriginCell(string value, string name)
+    {
+        if (long.TryParse(value, out var plainInt))
+        {
+            const int MaxCols = 16384;
+            const int MaxRows = 1048576;
+            long boundary = (name == "y") ? MaxRows : MaxCols;
+            if (plainInt >= boundary)
+            {
+                long perCell = (name == "y") ? EmuPerRowApprox : EmuPerColApprox;
+                return (int)Math.Max(0, plainInt / perCell);
+            }
+            return (int)Math.Max(0, plainInt);
+        }
+
+        // Unit-qualified ("1in", "2cm") → EMU → cell count via the same per-cell constants.
+        try
+        {
+            var emu = OfficeCli.Core.EmuConverter.ParseEmu(value);
+            long perCell = (name == "y") ? EmuPerRowApprox : EmuPerColApprox;
+            return (int)Math.Max(0, emu / perCell);
+        }
+        catch
+        {
+            throw new ArgumentException($"Expected an integer cell index or a unit-qualified offset (e.g. '1in', '2cm') for {name}, got '{value}'.");
+        }
     }
 
     /// <summary>
