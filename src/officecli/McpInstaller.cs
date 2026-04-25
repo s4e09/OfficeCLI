@@ -35,8 +35,12 @@ public static class McpInstaller
                 ListStatus();
                 return true;
             case "uninstall":
-                Console.WriteLine("Usage: officecli mcp uninstall <target>");
-                Console.WriteLine("Targets: lms, claude, cursor, vscode");
+                // Usage hint accompanies a non-zero exit (return false) — keep
+                // it on stderr, matching the default branch below and
+                // WriteEarlyDispatchUsage. Otherwise scripts that capture stdout
+                // see the error text mixed into normal output.
+                Console.Error.WriteLine("Usage: officecli mcp uninstall <target>");
+                Console.Error.WriteLine("Targets: lms, claude, cursor, vscode");
                 return false;
             default:
                 Console.Error.WriteLine($"Unknown target: {target}");
