@@ -670,6 +670,39 @@ public partial class ExcelHandler
             return TableToNode(sheetNameFromPath, worksheet, tableIdx, depth);
         }
 
+        // Table column path: /Sheet1/table[N]/columns[M] or /column[M]
+        var tableColMatch = Regex.Match(cellRef,
+            @"^table\[(\d+)\]/(?:columns|column)\[(\d+)\]$", RegexOptions.IgnoreCase);
+        if (tableColMatch.Success)
+        {
+            var tIdx = int.Parse(tableColMatch.Groups[1].Value);
+            var cIdx = int.Parse(tableColMatch.Groups[2].Value);
+            var tParts = worksheet.TableDefinitionParts.ToList();
+            if (tIdx < 1 || tIdx > tParts.Count)
+                throw new ArgumentException($"Table index {tIdx} out of range (1..{tParts.Count})");
+            var tbl = tParts[tIdx - 1].Table
+                ?? throw new ArgumentException($"Table {tIdx} has no definition");
+            var tCols = tbl.GetFirstChild<TableColumns>()?.Elements<TableColumn>().ToList();
+            if (tCols == null || cIdx < 1 || cIdx > tCols.Count)
+                throw new ArgumentException($"Column index {cIdx} out of range (1..{tCols?.Count ?? 0})");
+            var tCol = tCols[cIdx - 1];
+            var tcNode = new DocumentNode
+            {
+                Path = $"/{sheetNameFromPath}/table[{tIdx}]/columns[{cIdx}]",
+                Type = "tableColumn",
+                Text = tCol.Name?.Value ?? ""
+            };
+            tcNode.Format["name"] = tCol.Name?.Value ?? "";
+            if (tCol.Id?.Value != null) tcNode.Format["id"] = tCol.Id.Value;
+            if (tCol.TotalsRowFunction?.Value != null)
+                tcNode.Format["totalFunction"] = tCol.TotalsRowFunction.Value.ToString().ToLowerInvariant();
+            if (tCol.TotalsRowLabel?.Value != null)
+                tcNode.Format["totalLabel"] = tCol.TotalsRowLabel.Value;
+            var ccf = tCol.CalculatedColumnFormula?.Text;
+            if (!string.IsNullOrEmpty(ccf)) tcNode.Format["formula"] = ccf;
+            return tcNode;
+        }
+
         // Cell reference: A1 or range A1:D10
         // Check if it's a cell reference or a generic XML path
         var firstPart = cellRef.Split('/')[0].Split('[')[0];

@@ -846,6 +846,90 @@ public partial class ExcelHandler
             return slUnsupported;
         }
 
+        // Handle /SheetName/table[N]/columns[M] or /SheetName/table[N]/column[M]
+        // CONSISTENCY(table-column-path): mirror the col[M].prop= dotted form already
+        // accepted on /Sheet/table[N] by exposing the column as a sub-path so users can
+        // address it as a node and call Set with a flat property bag.
+        var tableColPathMatch = Regex.Match(cellRef,
+            @"^table\[(\d+)\]/(?:columns|column)\[(\d+)\]$", RegexOptions.IgnoreCase);
+        if (tableColPathMatch.Success)
+        {
+            var tIdx = int.Parse(tableColPathMatch.Groups[1].Value);
+            var cIdx = int.Parse(tableColPathMatch.Groups[2].Value);
+            var tParts = worksheet.TableDefinitionParts.ToList();
+            if (tIdx < 1 || tIdx > tParts.Count)
+                throw new ArgumentException($"Table index {tIdx} out of range (1..{tParts.Count})");
+            var tbl = tParts[tIdx - 1].Table
+                ?? throw new ArgumentException($"Table {tIdx} has no definition");
+            var tCols = tbl.GetFirstChild<TableColumns>()?.Elements<TableColumn>().ToList();
+            if (tCols == null || cIdx < 1 || cIdx > tCols.Count)
+                throw new ArgumentException($"Column index {cIdx} out of range (1..{tCols?.Count ?? 0})");
+            var tCol = tCols[cIdx - 1];
+            var tcUnsupported = new List<string>();
+            string? oldName = tCol.Name?.Value;
+            foreach (var (key, value) in properties)
+            {
+                switch (key.ToLowerInvariant())
+                {
+                    case "name":
+                    {
+                        tCol.Name = value;
+                        // Sync the header-row cell so the worksheet matches the
+                        // tableColumn @name. Excel rejects mismatch otherwise.
+                        var refStr = tbl.Reference?.Value;
+                        if (!string.IsNullOrEmpty(refStr) && (tbl.HeaderRowCount?.Value ?? 1) != 0)
+                        {
+                            var rParts = refStr.Split(':');
+                            if (rParts.Length >= 1)
+                            {
+                                var (startCol, startRow) = ParseCellReference(rParts[0]);
+                                var headerColIdx = ColumnNameToIndex(startCol) + (cIdx - 1);
+                                var headerColLetter = IndexToColumnName(headerColIdx);
+                                var headerCellRef = $"{headerColLetter}{startRow}";
+                                var hdrWs = GetSheet(worksheet);
+                                var hdrSheetData = hdrWs.GetFirstChild<SheetData>()
+                                    ?? hdrWs.AppendChild(new SheetData());
+                                var hdrCell = FindOrCreateCell(hdrSheetData, headerCellRef);
+                                hdrCell.CellValue = new CellValue(value);
+                                hdrCell.DataType = CellValues.String;
+                                // Drop shared-string ref; using inline string is safe here
+                                // since header cells are short and rarely deduplicated.
+                            }
+                        }
+                        break;
+                    }
+                    case "totalfunction" or "total":
+                        tCol.TotalsRowFunction = value.ToLowerInvariant() switch
+                        {
+                            "sum" => TotalsRowFunctionValues.Sum,
+                            "count" => TotalsRowFunctionValues.Count,
+                            "average" or "avg" => TotalsRowFunctionValues.Average,
+                            "max" => TotalsRowFunctionValues.Maximum,
+                            "min" => TotalsRowFunctionValues.Minimum,
+                            "stddev" => TotalsRowFunctionValues.StandardDeviation,
+                            "var" => TotalsRowFunctionValues.Variance,
+                            "countnums" => TotalsRowFunctionValues.CountNumbers,
+                            "none" => TotalsRowFunctionValues.None,
+                            "custom" => TotalsRowFunctionValues.Custom,
+                            _ => throw new ArgumentException($"Invalid totalFunction: '{value}'.")
+                        };
+                        break;
+                    case "totallabel" or "label":
+                        tCol.TotalsRowLabel = value;
+                        break;
+                    case "formula":
+                        tCol.CalculatedColumnFormula = new CalculatedColumnFormula(value);
+                        break;
+                    default:
+                        tcUnsupported.Add(key);
+                        break;
+                }
+            }
+            tParts[tIdx - 1].Table!.Save();
+            SaveWorksheet(worksheet);
+            return tcUnsupported;
+        }
+
         // Handle /SheetName/table[N]
         var tableSetMatch = Regex.Match(cellRef, @"^table\[(\d+)\]$", RegexOptions.IgnoreCase);
         if (tableSetMatch.Success)
