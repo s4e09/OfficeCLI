@@ -123,9 +123,20 @@ static partial class CommandBuilder
             {
                 if (third != null)
                 {
-                    // 3 args: format, verb, element — second MUST be a verb.
-                    verb = second;
-                    element = third;
+                    // 3 args: format, verb, element — second is a verb only if it
+                    // actually looks like one. If format is itself a HelpVerb (from
+                    // the `<cmd> --help <format> <element>` rewrite) then second is
+                    // a document format token, not a verb; leave verb=null so Case 1b
+                    // handles it by showing SCL help for the command.
+                    // CONSISTENCY(args-rewrite): mirrors the 2-arg guard below.
+                    if (HelpVerbs.Contains(second, StringComparer.OrdinalIgnoreCase))
+                    {
+                        verb = second;
+                        element = third;
+                    }
+                    // else: format is a HelpVerb, second is a format/unknown, third
+                    // is an element — fall through with verb=null, element=null so
+                    // Case 1b shows SCL command help (ignores the trailing tokens).
                 }
                 else if (HelpVerbs.Contains(second, StringComparer.OrdinalIgnoreCase))
                 {
