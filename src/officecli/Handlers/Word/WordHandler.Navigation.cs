@@ -652,6 +652,14 @@ public partial class WordHandler
                     "tc" => current.Elements<TableCell>().Cast<OpenXmlElement>(),
                     "sdt" => current.ChildElements
                         .Where(e => e is SdtBlock || e is SdtRun).Cast<OpenXmlElement>(),
+                    // /<para>/tabs descends transparently through pPr so the
+                    // user-facing path stays flat (/body/p[N]/tabs/tab[M])
+                    // instead of leaking the OOXML container (.../pPr/tabs/tab).
+                    // Symmetric with how AddTab returns the flat form.
+                    "tabs" when current is Paragraph navParaT
+                        => navParaT.ParagraphProperties?.GetFirstChild<Tabs>() is { } t
+                            ? new[] { (OpenXmlElement)t }
+                            : Enumerable.Empty<OpenXmlElement>(),
                     _ => current.ChildElements.Where(e => e.LocalName == seg.Name).Cast<OpenXmlElement>()
                 };
             }

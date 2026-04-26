@@ -770,6 +770,42 @@ public partial class WordHandler
         return unsupported;
     }
 
+    // Modify a single TabStop (paragraph tab stop). Supports pos (twips or any
+    // SpacingConverter unit), val (TabStopValues enum), leader (TabStopLeader-
+    // CharValues enum). Symmetric with AddTab's writer in Add.Text.cs.
+    private List<string> SetElementTabStop(TabStop tab, Dictionary<string, string> properties)
+    {
+        var unsupported = new List<string>();
+        foreach (var (key, value) in properties)
+        {
+            switch (key.ToLowerInvariant())
+            {
+                case "pos":
+                case "position":
+                    tab.Position = (int)SpacingConverter.ParseWordSpacing(value);
+                    break;
+                case "val":
+                case "type":
+                    tab.Val = string.IsNullOrEmpty(value)
+                        ? null
+                        : new EnumValue<TabStopValues>(new TabStopValues(value.ToLowerInvariant()));
+                    break;
+                case "leader":
+                    tab.Leader = string.IsNullOrEmpty(value)
+                        ? null
+                        : new EnumValue<TabStopLeaderCharValues>(new TabStopLeaderCharValues(value.ToLowerInvariant()));
+                    break;
+                default:
+                    unsupported.Add(unsupported.Count == 0
+                        ? $"{key} (valid tab props: pos, val, leader)"
+                        : key);
+                    break;
+            }
+        }
+        _doc.MainDocumentPart?.Document?.Save();
+        return unsupported;
+    }
+
     private List<string> SetElementTableCell(TableCell cell, Dictionary<string, string> properties)
     {
         var unsupported = new List<string>();

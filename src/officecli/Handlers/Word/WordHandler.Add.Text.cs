@@ -616,4 +616,51 @@ public partial class WordHandler
         else if (start == 0)
             run.AppendChild(new Text("") { Space = SpaceProcessingModeValues.Preserve });
     }
+
+    // Add a paragraph tab stop. Parent must be a Paragraph; the helper finds
+    // or creates pPr/Tabs and appends a TabStop. `pos` is required (twips,
+    // or any unit accepted by SpacingConverter.ParseWordSpacing). `val`
+    // defaults to "left"; `leader` is optional. Returns the new tab's
+    // path under the conventional /<para>/tabs/tab[N] form (Navigation
+    // descends through pPr transparently for this segment shape).
+    private string AddTab(OpenXmlElement parent, string parentPath, int? index, Dictionary<string, string> properties)
+    {
+        if (parent is not Paragraph para)
+            throw new ArgumentException("Tab stops can only be added to paragraphs");
+
+        if (!properties.TryGetValue("pos", out var posStr) || string.IsNullOrWhiteSpace(posStr))
+            throw new ArgumentException("tab requires 'pos' property (e.g. --prop pos=9360 or --prop pos=6cm)");
+
+        var posTwips = (int)SpacingConverter.ParseWordSpacing(posStr);
+
+        var tabStop = new TabStop { Position = posTwips };
+        if (properties.TryGetValue("val", out var valStr) && !string.IsNullOrEmpty(valStr))
+            tabStop.Val = new EnumValue<TabStopValues>(new TabStopValues(valStr.ToLowerInvariant()));
+        else
+            tabStop.Val = TabStopValues.Left;
+        if (properties.TryGetValue("leader", out var leaderStr) && !string.IsNullOrEmpty(leaderStr))
+            tabStop.Leader = new EnumValue<TabStopLeaderCharValues>(new TabStopLeaderCharValues(leaderStr.ToLowerInvariant()));
+
+        // pPr must come first inside <w:p> per CT_P schema
+        var pProps = para.ParagraphProperties ?? para.PrependChild(new ParagraphProperties());
+        var tabs = pProps.GetFirstChild<Tabs>();
+        if (tabs == null)
+        {
+            tabs = new Tabs();
+            // pPr children have schema order; Tabs sits early. PrependChild
+            // is conservative — Word accepts Tabs at the start of pPr and
+            // we don't want to interleave with later siblings (numPr, ind, ...)
+            // that have stricter ordering constraints.
+            pProps.PrependChild(tabs);
+        }
+
+        var existing = tabs.Elements<TabStop>().ToList();
+        if (index.HasValue && index.Value >= 0 && index.Value < existing.Count)
+            tabs.InsertBefore(tabStop, existing[index.Value]);
+        else
+            tabs.AppendChild(tabStop);
+
+        var newIdx = tabs.Elements<TabStop>().ToList().IndexOf(tabStop) + 1;
+        return $"{parentPath}/tabs/tab[{newIdx}]";
+    }
 }
