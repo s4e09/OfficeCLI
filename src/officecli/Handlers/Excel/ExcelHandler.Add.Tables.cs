@@ -72,7 +72,11 @@ public partial class ExcelHandler
         // Without one, Excel opens the file but formulas referencing the
         // name show #REF!. Reject up-front rather than write a silently
         // broken defined name.
-        if (System.Text.RegularExpressions.Regex.IsMatch(refVal, @"^\s*\["))
+        // CONSISTENCY(xref-detect): bt-5/fuzz-NR01 — also catch the
+        // single-quoted form `'[Book.xlsx]Sheet'!A1` (Excel's standard
+        // quoting for sheet names with spaces) which previously slipped
+        // through and produced a silently broken defined name.
+        if (System.Text.RegularExpressions.Regex.IsMatch(refVal, @"^\s*'?\["))
             throw new ArgumentException(
                 $"Cross-workbook references like '{refVal}' require an externalLinks part which officecli doesn't expose; use raw-set for this case");
 
