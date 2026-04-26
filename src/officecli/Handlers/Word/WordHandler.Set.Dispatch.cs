@@ -661,21 +661,43 @@ public partial class WordHandler
             else
             {
                 // abstractNum-scope props (top level)
+                // CONSISTENCY(schema-order): CT_AbstractNum sequence is
+                // nsid? multiLevelType? tmpl? name? styleLink? numStyleLink? lvl[0..8].
+                // When inserting a header element that was absent at Add time, use
+                // InsertBefore(firstLevel) rather than AppendChild so the element
+                // lands before the level children instead of after them.
+                // CONSISTENCY(set-no-create): these only insert; Set never creates levels.
+                var firstLvl = abstractNum.GetFirstChild<Level>();
                 switch (key.ToLowerInvariant())
                 {
                     case "name":
                         var nm = abstractNum.GetFirstChild<AbstractNumDefinitionName>();
-                        if (nm == null) abstractNum.AppendChild(new AbstractNumDefinitionName { Val = value });
+                        if (nm == null)
+                        {
+                            var newNm = new AbstractNumDefinitionName { Val = value };
+                            if (firstLvl != null) abstractNum.InsertBefore(newNm, firstLvl);
+                            else abstractNum.AppendChild(newNm);
+                        }
                         else nm.Val = value;
                         break;
                     case "stylelink":
                         var sl = abstractNum.GetFirstChild<StyleLink>();
-                        if (sl == null) abstractNum.AppendChild(new StyleLink { Val = value });
+                        if (sl == null)
+                        {
+                            var newSl = new StyleLink { Val = value };
+                            if (firstLvl != null) abstractNum.InsertBefore(newSl, firstLvl);
+                            else abstractNum.AppendChild(newSl);
+                        }
                         else sl.Val = value;
                         break;
                     case "numstylelink":
                         var nsl = abstractNum.GetFirstChild<NumberingStyleLink>();
-                        if (nsl == null) abstractNum.AppendChild(new NumberingStyleLink { Val = value });
+                        if (nsl == null)
+                        {
+                            var newNsl = new NumberingStyleLink { Val = value };
+                            if (firstLvl != null) abstractNum.InsertBefore(newNsl, firstLvl);
+                            else abstractNum.AppendChild(newNsl);
+                        }
                         else nsl.Val = value;
                         break;
                     case "type" or "multileveltype":
@@ -687,7 +709,12 @@ public partial class WordHandler
                             _ => throw new ArgumentException($"Unknown multiLevelType '{value}'. Valid: hybridMultilevel, multilevel, singleLevel.")
                         };
                         var mlt = abstractNum.GetFirstChild<MultiLevelType>();
-                        if (mlt == null) abstractNum.AppendChild(new MultiLevelType { Val = mltV });
+                        if (mlt == null)
+                        {
+                            var newMlt = new MultiLevelType { Val = mltV };
+                            if (firstLvl != null) abstractNum.InsertBefore(newMlt, firstLvl);
+                            else abstractNum.AppendChild(newMlt);
+                        }
                         else mlt.Val = mltV;
                         break;
                     default:
