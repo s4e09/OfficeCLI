@@ -838,14 +838,24 @@ public partial class WordHandler
                             pProps.SpacingBetweenLines.LineRule?.InnerText);
                     }
                 }
-                if (pProps.Indentation?.FirstLine?.Value != null)
-                    node.Format["firstLineIndent"] = pProps.Indentation.FirstLine.Value;
-                if (pProps.Indentation?.Left?.Value != null)
-                    node.Format["leftIndent"] = pProps.Indentation.Left.Value;
-                if (pProps.Indentation?.Right?.Value != null)
-                    node.Format["rightIndent"] = pProps.Indentation.Right.Value;
-                if (pProps.Indentation?.Hanging?.Value != null)
-                    node.Format["hangingIndent"] = pProps.Indentation.Hanging.Value;
+                if (pProps.Indentation != null)
+                {
+                    var ind = pProps.Indentation;
+                    if (ind.FirstLine?.Value != null) node.Format["firstLineIndent"] = ind.FirstLine.Value;
+                    if (ind.Hanging?.Value != null) node.Format["hangingIndent"] = ind.Hanging.Value;
+                    // CONSISTENCY(ind-start-end): modern Word writes <w:ind w:start>/<w:end> instead of left/right.
+                    var leftTwips = ind.Left?.Value ?? ind.Start?.Value;
+                    if (leftTwips != null) node.Format["leftIndent"] = leftTwips;
+                    var rightTwips = ind.Right?.Value ?? ind.End?.Value;
+                    if (rightTwips != null) node.Format["rightIndent"] = rightTwips;
+                    // CONSISTENCY(ind-chars): chars-unit indents (Chinese typography) — backfilled from style Get edc8f884.
+                    if (ind.FirstLineChars?.Value != null) node.Format["firstLineChars"] = ind.FirstLineChars.Value;
+                    if (ind.HangingChars?.Value != null) node.Format["hangingChars"] = ind.HangingChars.Value;
+                    var leftChars = ind.LeftChars?.Value ?? ind.StartCharacters?.Value;
+                    if (leftChars != null) node.Format["leftChars"] = leftChars;
+                    var rightChars = ind.RightChars?.Value ?? ind.EndCharacters?.Value;
+                    if (rightChars != null) node.Format["rightChars"] = rightChars;
+                }
                 if (pProps.KeepNext != null)
                 {
                     node.Format["keepNext"] = true;
@@ -911,6 +921,25 @@ public partial class WordHandler
                             node.Format["start"] = start.Value;
                     }
                 }
+
+                // CONSISTENCY(outline-lvl): backfilled from style Get edc8f884. Paragraph-level outlineLvl overrides style.
+                if (pProps.OutlineLevel?.Val?.Value != null)
+                    node.Format["outlineLvl"] = (int)pProps.OutlineLevel.Val.Value;
+
+                // CONSISTENCY(tabs): backfilled from style Get edc8f884.
+                if (pProps.Tabs != null)
+                {
+                    var tabList = new List<Dictionary<string, object?>>();
+                    foreach (var tab in pProps.Tabs.Elements<TabStop>())
+                    {
+                        var t = new Dictionary<string, object?>();
+                        if (tab.Position?.Value != null) t["pos"] = tab.Position.Value;
+                        if (tab.Val?.HasValue == true) t["val"] = tab.Val.InnerText;
+                        if (tab.Leader?.HasValue == true) t["leader"] = tab.Leader.InnerText;
+                        if (t.Count > 0) tabList.Add(t);
+                    }
+                    if (tabList.Count > 0) node.Format["tabs"] = tabList;
+                }
             }
 
             // First-run formatting on the paragraph node (like PPTX does for shapes).
@@ -947,6 +976,9 @@ public partial class WordHandler
                 var ulEl = rp?.Underline ?? markRp?.GetFirstChild<Underline>();
                 if (ulEl?.Val != null && !node.Format.ContainsKey("underline"))
                     node.Format["underline"] = ulEl.Val.InnerText;
+                // CONSISTENCY(underline-color): backfilled from style Get edc8f884.
+                if (ulEl?.Color?.Value != null && !node.Format.ContainsKey("underline.color"))
+                    node.Format["underline.color"] = ParseHelpers.FormatHexColor(ulEl.Color.Value);
 
                 var strikeEl = rp?.Strike ?? (OpenXmlLeafElement?)markRp?.GetFirstChild<Strike>();
                 if (strikeEl != null && !node.Format.ContainsKey("strike")) node.Format["strike"] = true;
@@ -982,6 +1014,9 @@ public partial class WordHandler
             if (run.RunProperties?.Color?.Val?.Value != null) node.Format["color"] = ParseHelpers.FormatHexColor(run.RunProperties.Color.Val.Value);
             else if (run.RunProperties?.Color?.ThemeColor?.HasValue == true) node.Format["color"] = run.RunProperties.Color.ThemeColor.InnerText;
             if (run.RunProperties?.Underline?.Val != null) node.Format["underline"] = run.RunProperties.Underline.Val.InnerText;
+            // CONSISTENCY(underline-color): backfilled from style Get edc8f884.
+            if (run.RunProperties?.Underline?.Color?.Value != null)
+                node.Format["underline.color"] = ParseHelpers.FormatHexColor(run.RunProperties.Underline.Color.Value);
             if (run.RunProperties?.Strike != null) node.Format["strike"] = true;
             if (run.RunProperties?.Highlight?.Val != null) node.Format["highlight"] = run.RunProperties.Highlight.Val.InnerText;
             if (run.RunProperties?.Caps != null) node.Format["caps"] = true;
@@ -1108,6 +1143,9 @@ public partial class WordHandler
                 if (rp.Color?.Val?.Value != null) node.Format["color"] = ParseHelpers.FormatHexColor(rp.Color.Val.Value);
                 else if (rp.Color?.ThemeColor?.HasValue == true) node.Format["color"] = rp.Color.ThemeColor.InnerText;
                 if (rp.Underline?.Val != null) node.Format["underline"] = rp.Underline.Val.InnerText;
+                // CONSISTENCY(underline-color): backfilled from style Get edc8f884.
+                if (rp.Underline?.Color?.Value != null)
+                    node.Format["underline.color"] = ParseHelpers.FormatHexColor(rp.Underline.Color.Value);
                 if (rp.Strike != null) node.Format["strike"] = true;
                 if (rp.Highlight?.Val != null) node.Format["highlight"] = rp.Highlight.Val.InnerText;
             }
@@ -1640,6 +1678,9 @@ public partial class WordHandler
             if (rPr.Color?.Val?.Value != null) node.Format["color"] = ParseHelpers.FormatHexColor(rPr.Color.Val.Value);
             else if (rPr.Color?.ThemeColor?.HasValue == true) node.Format["color"] = rPr.Color.ThemeColor.InnerText;
             if (rPr.Underline?.Val != null) node.Format["underline"] = rPr.Underline.Val.InnerText;
+            // CONSISTENCY(underline-color): backfilled from style Get edc8f884.
+            if (rPr.Underline?.Color?.Value != null)
+                node.Format["underline.color"] = ParseHelpers.FormatHexColor(rPr.Underline.Color.Value);
             if (rPr.Strike != null) node.Format["strike"] = true;
             if (rPr.Highlight?.Val != null) node.Format["highlight"] = rPr.Highlight.Val.InnerText;
         }
