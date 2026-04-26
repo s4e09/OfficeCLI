@@ -648,9 +648,13 @@ public partial class PowerPointHandler
         }
 
         var parts = colorSpec.Split('-');
-        if (parts.Length < 2)
+        // R10: Tolerate single-color gradient at the parser front-end too.
+        // aaae88bf added duplicate-on-empty fallback after angle/focus stripping,
+        // but this earlier guard rejected `gradient=FF0000` outright before that
+        // code could run. Treating empty input as a hard error is still correct.
+        if (parts.Length == 0 || (parts.Length == 1 && string.IsNullOrWhiteSpace(parts[0])))
             throw new ArgumentException(
-                "Gradient requires at least 2 colors separated by '-', e.g. FF0000-0000FF");
+                "Gradient requires at least one color, e.g. FF0000 or FF0000-0000FF");
 
         var colorParts = parts.ToList();
         string? focusPoint = null;
