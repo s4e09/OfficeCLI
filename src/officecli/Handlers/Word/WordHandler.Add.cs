@@ -121,6 +121,7 @@ public partial class WordHandler
             "table" or "tbl" => AddTable(parent, parentPath, index, properties),
             "row" or "tr" => AddRow(parent, parentPath, index, properties),
             "cell" or "tc" => AddCell(parent, parentPath, index, properties),
+            "tab" or "tabstop" => AddTab(parent, parentPath, index, properties),
             "chart" => AddChart(parent, parentPath, index, properties),
             "picture" or "image" or "img" => AddPicture(parent, parentPath, index, properties),
             "ole" or "oleobject" or "object" or "embed" => AddOle(parent, parentPath, index, properties),
@@ -345,6 +346,15 @@ public partial class WordHandler
         {
             throw new ArgumentException(
                 $"Cannot add 'style' under {parentPath}: styles belong under /styles.");
+        }
+
+        // 'tab' (paragraph tab stop) only lives in a paragraph's pPr/tabs container.
+        // Reject anywhere else so users get a useful pointer instead of falling
+        // through to AddDefault and writing a stray <w:tab> at the wrong level.
+        if ((t == "tab" || t == "tabstop") && parent is not Paragraph)
+        {
+            throw new ArgumentException(
+                $"Cannot add 'tab' under {parentPath}: tab stops belong inside a paragraph (e.g. /body/p[N]). Add via --type tab on the paragraph path.");
         }
 
 
