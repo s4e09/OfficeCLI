@@ -293,6 +293,37 @@ public partial class WordHandler
             }
         }
 
+        // CONSISTENCY(ref-cleanup): mirror Comment cleanup above — removing a
+        // NumberingInstance must clear dangling numId references from any
+        // paragraph numPr in body/headers/footers/footnotes/endnotes.
+        if (element is NumberingInstance numInst && numInst.NumberID?.Value is int removedNumId)
+        {
+            var mainPart3 = _doc.MainDocumentPart;
+            if (mainPart3 != null)
+            {
+                IEnumerable<OpenXmlElement> roots = new OpenXmlElement?[]
+                {
+                    mainPart3.Document?.Body,
+                    mainPart3.FootnotesPart?.Footnotes,
+                    mainPart3.EndnotesPart?.Endnotes,
+                }
+                .Concat(mainPart3.HeaderParts.Select(h => (OpenXmlElement?)h.Header))
+                .Concat(mainPart3.FooterParts.Select(f => (OpenXmlElement?)f.Footer))
+                .Where(e => e != null)!;
+
+                foreach (var root in roots)
+                {
+                    foreach (var numPr in root.Descendants<NumberingProperties>().ToList())
+                    {
+                        if (numPr.NumberingId?.Val?.Value == removedNumId)
+                        {
+                            numPr.Remove();
+                        }
+                    }
+                }
+            }
+        }
+
         // If removing an oMathPara (M.Paragraph) whose parent w:p has no other
         // meaningful content, remove the wrapper w:p too to avoid zombie paragraphs.
         var wrapperPara = (element is M.Paragraph && element.Parent is Paragraph wp
