@@ -117,7 +117,7 @@ internal static class ParseHelpers
     public static bool IsTruthy(string? value)
     {
         if (value == null) return false;
-        return value.ToLowerInvariant() switch
+        return value.Trim().ToLowerInvariant() switch
         {
             "true" or "1" or "yes" or "on" => true,
             "false" or "0" or "no" or "off" or "" => false,
@@ -134,7 +134,7 @@ internal static class ParseHelpers
     public static bool IsTruthySafe(string? value)
     {
         if (value == null) return false;
-        return value.ToLowerInvariant() is "true" or "1" or "yes" or "on";
+        return value.Trim().ToLowerInvariant() is "true" or "1" or "yes" or "on";
     }
 
     /// <summary>
@@ -142,8 +142,8 @@ internal static class ParseHelpers
     /// Returns false for null, empty, or non-boolean values (no exception thrown).
     /// </summary>
     public static bool IsValidBooleanString(string? value) =>
-        value != null && value.ToLowerInvariant() is "true" or "1" or "yes" or "on"
-                                                  or "false" or "0" or "no" or "off";
+        value != null && value.Trim().ToLowerInvariant() is "true" or "1" or "yes" or "on"
+                                                         or "false" or "0" or "no" or "off";
 
     /// <summary>
     /// Parse a font size string, stripping optional "pt" suffix.
