@@ -786,14 +786,32 @@ public partial class WordHandler
                     break;
                 case "val":
                 case "type":
-                    tab.Val = string.IsNullOrEmpty(value)
-                        ? null
-                        : new EnumValue<TabStopValues>(new TabStopValues(value.ToLowerInvariant()));
+                    if (string.IsNullOrEmpty(value))
+                    {
+                        tab.Val = null;
+                    }
+                    else
+                    {
+                        var tabValNorm = value.ToLowerInvariant();
+                        var knownTabVals = new[] { "left", "center", "right", "decimal", "bar", "clear", "num", "start", "end" };
+                        if (!knownTabVals.Contains(tabValNorm))
+                            throw new ArgumentException($"Invalid tab val '{value}'. Valid: {string.Join(", ", knownTabVals)}.");
+                        tab.Val = new EnumValue<TabStopValues>(new TabStopValues(tabValNorm));
+                    }
                     break;
                 case "leader":
-                    tab.Leader = string.IsNullOrEmpty(value)
-                        ? null
-                        : new EnumValue<TabStopLeaderCharValues>(new TabStopLeaderCharValues(value.ToLowerInvariant()));
+                    if (string.IsNullOrEmpty(value))
+                    {
+                        tab.Leader = null;
+                    }
+                    else
+                    {
+                        var leaderNorm = value.ToLowerInvariant();
+                        var knownLeaders = new[] { "none", "dot", "heavy", "hyphen", "middledot", "underscore" };
+                        if (!knownLeaders.Contains(leaderNorm))
+                            throw new ArgumentException($"Invalid tab leader '{value}'. Valid: {string.Join(", ", knownLeaders)}.");
+                        tab.Leader = new EnumValue<TabStopLeaderCharValues>(new TabStopLeaderCharValues(leaderNorm));
+                    }
                     break;
                 default:
                     unsupported.Add(unsupported.Count == 0

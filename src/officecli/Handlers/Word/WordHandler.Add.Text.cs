@@ -634,11 +634,26 @@ public partial class WordHandler
 
         var tabStop = new TabStop { Position = posTwips };
         if (properties.TryGetValue("val", out var valStr) && !string.IsNullOrEmpty(valStr))
-            tabStop.Val = new EnumValue<TabStopValues>(new TabStopValues(valStr.ToLowerInvariant()));
+        {
+            var tabValNorm = valStr.ToLowerInvariant();
+            // Validate before constructing the enum — an invalid string throws
+            // ArgumentOutOfRangeException which the outer dispatcher catches and
+            // surfaces as a misleading "Invalid index or anchor" error.
+            var knownTabVals = new[] { "left", "center", "right", "decimal", "bar", "clear", "num", "start", "end" };
+            if (!knownTabVals.Contains(tabValNorm))
+                throw new ArgumentException($"Invalid tab val '{valStr}'. Valid: {string.Join(", ", knownTabVals)}.");
+            tabStop.Val = new EnumValue<TabStopValues>(new TabStopValues(tabValNorm));
+        }
         else
             tabStop.Val = TabStopValues.Left;
         if (properties.TryGetValue("leader", out var leaderStr) && !string.IsNullOrEmpty(leaderStr))
-            tabStop.Leader = new EnumValue<TabStopLeaderCharValues>(new TabStopLeaderCharValues(leaderStr.ToLowerInvariant()));
+        {
+            var leaderNorm = leaderStr.ToLowerInvariant();
+            var knownLeaders = new[] { "none", "dot", "heavy", "hyphen", "middledot", "underscore" };
+            if (!knownLeaders.Contains(leaderNorm))
+                throw new ArgumentException($"Invalid tab leader '{leaderStr}'. Valid: {string.Join(", ", knownLeaders)}.");
+            tabStop.Leader = new EnumValue<TabStopLeaderCharValues>(new TabStopLeaderCharValues(leaderNorm));
+        }
 
         // pPr children have schema order; Tabs sits early. PrependChild
         // is conservative — Word accepts Tabs at the start of pPr and
