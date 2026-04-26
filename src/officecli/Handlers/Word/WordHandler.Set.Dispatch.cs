@@ -614,6 +614,40 @@ public partial class WordHandler
                         pPrCs.ContextualSpacing = null;
                     break;
                 }
+                // Mirror paragraph Set's curated toggles (BUG-A2). Without
+                // explicit cases here the generic TryCreateTypedChild fallback
+                // writes the verbose `<w:keepNext w:val="true"/>` form instead
+                // of the bare `<w:keepNext/>`. Functionally equivalent in Word
+                // but diverges from paragraph Set, breaking automation that
+                // diff-compares the two.
+                case "keepnext" or "keepwithnext":
+                {
+                    var pPrKn = style.StyleParagraphProperties ?? EnsureStyleParagraphProperties(style);
+                    if (IsTruthy(value)) pPrKn.KeepNext = new KeepNext();
+                    else pPrKn.KeepNext = null;
+                    break;
+                }
+                case "keeplines" or "keeptogether":
+                {
+                    var pPrKl = style.StyleParagraphProperties ?? EnsureStyleParagraphProperties(style);
+                    if (IsTruthy(value)) pPrKl.KeepLines = new KeepLines();
+                    else pPrKl.KeepLines = null;
+                    break;
+                }
+                case "pagebreakbefore":
+                {
+                    var pPrPbb = style.StyleParagraphProperties ?? EnsureStyleParagraphProperties(style);
+                    if (IsTruthy(value)) pPrPbb.PageBreakBefore = new PageBreakBefore();
+                    else pPrPbb.PageBreakBefore = null;
+                    break;
+                }
+                case "widowcontrol" or "widoworphan":
+                {
+                    var pPrWc = style.StyleParagraphProperties ?? EnsureStyleParagraphProperties(style);
+                    if (IsTruthy(value)) pPrWc.WidowControl = new WidowControl();
+                    else pPrWc.WidowControl = new WidowControl { Val = false };
+                    break;
+                }
                 case "pbdr.top" or "pbdr.bottom" or "pbdr.left" or "pbdr.right" or "pbdr.between" or "pbdr.bar" or "pbdr.all" or "pbdr":
                 case "border.all" or "border" or "border.top" or "border.bottom" or "border.left" or "border.right":
                 {

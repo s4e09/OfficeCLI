@@ -186,6 +186,16 @@ internal class ExcelStyleManager
         }
         if (borderProps.Count > 0)
         {
+            // BUG-C1 guard: GetOrCreateBorder silently ignores subkeys it
+            // doesn't recognize (e.g. border.outline, border.vertical,
+            // border.horizontal). Without this check the user gets an
+            // "Updated" success message but the file is unchanged. Validate
+            // upfront so unrecognized subkeys land in unsupported instead.
+            foreach (var subKey in borderProps.Keys)
+            {
+                if (!RecognizedBorderSubKeys.Contains(subKey))
+                    unsupportedOut?.Add($"border.{subKey} (not implemented; valid: top/bottom/left/right/diagonal/all/color, each with optional .style/.color, plus diagonalUp/diagonalDown)");
+            }
             borderId = GetOrCreateBorder(stylesheet, borderId, borderProps);
             applyBorder = true;
         }
@@ -576,6 +586,19 @@ internal class ExcelStyleManager
         new(StringComparer.Ordinal)
     {
         "b", "i", "strike", "u", "vertAlign", "sz", "color", "name",
+    };
+
+    // border.* sub-keys actually consumed by GetOrCreateBorder. Anything
+    // else (border.outline, border.vertical, border.horizontal, ...) is
+    // currently unimplemented; ApplyStyle reports them as unsupported
+    // upfront instead of silently no-op'ing.
+    private static readonly HashSet<string> RecognizedBorderSubKeys =
+        new(StringComparer.Ordinal)
+    {
+        "all", "left", "right", "top", "bottom", "diagonal", "color",
+        "all.style", "left.style", "right.style", "top.style", "bottom.style", "diagonal.style",
+        "all.color", "left.color", "right.color", "top.color", "bottom.color", "diagonal.color",
+        "diagonalup", "diagonaldown",
     };
 
     // CT_CellAlignment long-tail attributes (i.e. those NOT in

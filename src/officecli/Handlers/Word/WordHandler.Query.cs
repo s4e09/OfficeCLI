@@ -482,6 +482,11 @@ public partial class WordHandler
                     var v = pPr.PageBreakBefore.Val;
                     styleNode.Format["pageBreakBefore"] = v == null || v.Value;
                 }
+                if (pPr.WidowControl != null)
+                {
+                    var v = pPr.WidowControl.Val;
+                    styleNode.Format["widowControl"] = v == null || v.Value;
+                }
                 if (pPr.ContextualSpacing != null)
                 {
                     var v = pPr.ContextualSpacing.Val;
