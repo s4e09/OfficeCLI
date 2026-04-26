@@ -653,6 +653,20 @@ public partial class WordHandler
                         }
                         else rpItal.GetFirstChild<Italic>()?.Remove();
                         break;
+                    case "lvlrestart":
+                        var lrV = ParseHelpers.SafeParseInt(value, "lvlRestart");
+                        var lr = level.GetFirstChild<LevelRestart>();
+                        if (lr == null) level.AppendChild(new LevelRestart { Val = lrV });
+                        else lr.Val = lrV;
+                        break;
+                    case "islgl":
+                        var lgl = level.GetFirstChild<IsLegalNumberingStyle>();
+                        if (IsTruthy(value))
+                        {
+                            if (lgl == null) level.AppendChild(new IsLegalNumberingStyle());
+                        }
+                        else lgl?.Remove();
+                        break;
                     default:
                         unsupported.Add(key);
                         break;
