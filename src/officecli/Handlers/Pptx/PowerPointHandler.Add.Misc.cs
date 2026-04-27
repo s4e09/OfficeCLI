@@ -374,7 +374,27 @@ public partial class PowerPointHandler
 
                 // Build animation value string from properties
                 var effect = properties.GetValueOrDefault("effect", "fade");
-                var cls = properties.GetValueOrDefault("class", "entrance");
+                // bt-1 fix: detect class suffix on effect (fly-out, zoom-in,
+                // wipe-entrance, fade-exit). If user did not pass an explicit
+                // class= property, the suffix wins over the default "entrance".
+                // Otherwise the explicit class= wins (suffix stripped).
+                var explicitCls = properties.GetValueOrDefault("class");
+                string? suffixCls = null;
+                var dashIdx = effect.LastIndexOf('-');
+                if (dashIdx > 0)
+                {
+                    var tail = effect[(dashIdx + 1)..].ToLowerInvariant();
+                    suffixCls = tail switch
+                    {
+                        "in" or "entrance" or "entr" => "entrance",
+                        "out" or "exit" => "exit",
+                        "emph" or "emphasis" => "emphasis",
+                        _ => null
+                    };
+                    if (suffixCls != null)
+                        effect = effect[..dashIdx];
+                }
+                var cls = explicitCls ?? suffixCls ?? "entrance";
                 // CONSISTENCY(animation-dur-alias): accept "dur" as alias for
                 // "duration" — mirrors the short name used elsewhere (transition
                 // dur attribute) and matches user intuition.
