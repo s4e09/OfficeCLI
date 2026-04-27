@@ -1445,10 +1445,23 @@ public partial class PowerPointHandler
         bool isRegex,
         string? replace,
         Dictionary<string, string>? formatProps,
-        Shape? shape = null)
+        Shape? shape = null,
+        int? runIndexFilter = null)
     {
         var runTexts = BuildPptRunTexts(para);
         if (runTexts.Count == 0) return 0;
+
+        // BUG-TESTER+FUZZER R32: when scope is /r[K], restrict find to that
+        // run's text range only. Out-of-bound was already rejected upstream.
+        int scanStart = 0;
+        int scanEnd = runTexts[^1].End;
+        if (runIndexFilter.HasValue)
+        {
+            if (runIndexFilter.Value < 1 || runIndexFilter.Value > runTexts.Count)
+                return 0;
+            scanStart = runTexts[runIndexFilter.Value - 1].Start;
+            scanEnd = runTexts[runIndexFilter.Value - 1].End;
+        }
 
         var fullText = string.Concat(runTexts.Select(rt => rt.TextElement.Text));
         // CONSISTENCY(regex-backref-expand): mirror Word ProcessFindInParagraph.
@@ -1486,6 +1499,22 @@ public partial class PowerPointHandler
         {
             matches = FindMatchRanges(fullText, pattern, isRegex);
         }
+
+        // Apply run-scope filter (R32): keep only matches fully contained in the run.
+        if (runIndexFilter.HasValue)
+        {
+            var keepIdx = new HashSet<int>();
+            for (int k = 0; k < matches.Count; k++)
+            {
+                var (s, l) = matches[k];
+                if (s >= scanStart && s + l <= scanEnd)
+                    keepIdx.Add(k);
+            }
+            matches = matches.Where((_, k) => keepIdx.Contains(k)).ToList();
+            if (matchObjs != null)
+                matchObjs = matchObjs.Where((_, k) => keepIdx.Contains(k)).ToList();
+        }
+
         if (matches.Count == 0) return 0;
 
         for (int i = matches.Count - 1; i >= 0; i--)
@@ -1601,12 +1630,12 @@ public partial class PowerPointHandler
         }
         else
         {
-            // Path-scoped: resolve to specific paragraphs
-            var paragraphs = ResolvePptParagraphsForFind(path);
+            // Path-scoped: resolve to specific paragraphs (and optional run filter)
+            var (paragraphs, runIndex) = ResolvePptParagraphsForFindInternal(path);
             Shape? contextShape = null;
-            // Try to resolve shape for color context
-            var shapeMatch = Regex.Match(path, @"^/slide\[(\d+)\]/(\w+)\[(\d+)\]");
-            if (shapeMatch.Success)
+            // Try to resolve shape for color context (anchored shape segment only).
+            var shapeMatch = Regex.Match(path, @"^/slide\[(\d+)\]/(\w+)\[(\d+)\](?:/|$)");
+            if (shapeMatch.Success && shapeMatch.Groups[2].Value is not ("table" or "notes"))
             {
                 try
                 {
@@ -1618,7 +1647,7 @@ public partial class PowerPointHandler
 
             foreach (var para in paragraphs)
                 totalCount += ProcessFindInPptParagraph(para, pattern, isRegex, replace,
-                    formatProps.Count > 0 ? formatProps : null, contextShape);
+                    formatProps.Count > 0 ? formatProps : null, contextShape, runIndex);
 
             // Save affected slides
             foreach (var slidePart in _doc.PresentationPart?.SlideParts ?? Enumerable.Empty<SlidePart>())
@@ -1630,8 +1659,22 @@ public partial class PowerPointHandler
 
     /// <summary>
     /// Resolve paragraphs from a PPT path for find operations.
+    /// BUG-TESTER+FUZZER R32: paths must match exactly (anchored). Out-of-bound
+    /// indices and unrecognized PPT paths throw ArgumentException instead of
+    /// silently falling back to a wider scope (e.g. all slides).
     /// </summary>
     private List<Drawing.Paragraph> ResolvePptParagraphsForFind(string path)
+    {
+        var (paragraphs, _) = ResolvePptParagraphsForFindInternal(path);
+        return paragraphs;
+    }
+
+    /// <summary>
+    /// Resolve paragraphs and an optional 1-based run filter from a PPT path.
+    /// When the path ends with /r[R] or /run[R], only that run within the
+    /// resolved paragraph participates in find/replace.
+    /// </summary>
+    private (List<Drawing.Paragraph> Paragraphs, int? RunIndex) ResolvePptParagraphsForFindInternal(string path)
     {
         var paragraphs = new List<Drawing.Paragraph>();
 
@@ -1641,40 +1684,55 @@ public partial class PowerPointHandler
         {
             var slideIdx = int.Parse(notesMatch.Groups[1].Value);
             var slideParts = GetSlideParts().ToList();
-            if (slideIdx >= 1 && slideIdx <= slideParts.Count)
-            {
-                var notesPart = slideParts[slideIdx - 1].NotesSlidePart;
-                if (notesPart?.NotesSlide != null)
-                    paragraphs.AddRange(notesPart.NotesSlide.Descendants<Drawing.Paragraph>());
-            }
-            return paragraphs;
+            if (slideIdx < 1 || slideIdx > slideParts.Count)
+                throw new ArgumentException($"Slide index out of range: {slideIdx} (have {slideParts.Count} slides)");
+            var notesPart = slideParts[slideIdx - 1].NotesSlidePart;
+            if (notesPart?.NotesSlide != null)
+                paragraphs.AddRange(notesPart.NotesSlide.Descendants<Drawing.Paragraph>());
+            return (paragraphs, null);
         }
 
-        // /slide[N]/table[M]/tr[R]/tc[C] or deeper table paths → paragraphs in table cell
-        var tableCellMatch = Regex.Match(path, @"^/slide\[(\d+)\]/table\[(\d+)\]/tr\[(\d+)\]/tc\[(\d+)\]");
+        // /slide[N]/table[M]/tr[R]/tc[C][/p[P][/r[K]]] → paragraphs in table cell
+        var tableCellMatch = Regex.Match(path, @"^/slide\[(\d+)\]/table\[(\d+)\]/tr\[(\d+)\]/tc\[(\d+)\](?:/p(?:aragraph)?\[(\d+)\](?:/r(?:un)?\[(\d+)\])?)?$");
         if (tableCellMatch.Success)
         {
             var slideIdx = int.Parse(tableCellMatch.Groups[1].Value);
             var tableIdx = int.Parse(tableCellMatch.Groups[2].Value);
             var rowIdx = int.Parse(tableCellMatch.Groups[3].Value);
             var colIdx = int.Parse(tableCellMatch.Groups[4].Value);
+            int? paraIdx = tableCellMatch.Groups[5].Success ? int.Parse(tableCellMatch.Groups[5].Value) : (int?)null;
+            int? runIdx = tableCellMatch.Groups[6].Success ? int.Parse(tableCellMatch.Groups[6].Value) : (int?)null;
             var slideParts = GetSlideParts().ToList();
-            if (slideIdx >= 1 && slideIdx <= slideParts.Count)
+            if (slideIdx < 1 || slideIdx > slideParts.Count)
+                throw new ArgumentException($"Slide index out of range: {slideIdx}");
+            var slide = slideParts[slideIdx - 1].Slide;
+            var tables = slide?.Descendants<Drawing.Table>().ToList() ?? new List<Drawing.Table>();
+            if (tableIdx < 1 || tableIdx > tables.Count)
+                throw new ArgumentException($"Table index out of range: {tableIdx}");
+            var rows = tables[tableIdx - 1].Elements<Drawing.TableRow>().ToList();
+            if (rowIdx < 1 || rowIdx > rows.Count)
+                throw new ArgumentException($"Row index out of range: {rowIdx}");
+            var cells = rows[rowIdx - 1].Elements<Drawing.TableCell>().ToList();
+            if (colIdx < 1 || colIdx > cells.Count)
+                throw new ArgumentException($"Column index out of range: {colIdx}");
+            var cellParas = cells[colIdx - 1].Descendants<Drawing.Paragraph>().ToList();
+            if (paraIdx.HasValue)
             {
-                var slide = slideParts[slideIdx - 1].Slide;
-                var tables = slide?.Descendants<Drawing.Table>().ToList();
-                if (tables != null && tableIdx >= 1 && tableIdx <= tables.Count)
-                {
-                    var rows = tables[tableIdx - 1].Elements<Drawing.TableRow>().ToList();
-                    if (rowIdx >= 1 && rowIdx <= rows.Count)
-                    {
-                        var cells = rows[rowIdx - 1].Elements<Drawing.TableCell>().ToList();
-                        if (colIdx >= 1 && colIdx <= cells.Count)
-                            paragraphs.AddRange(cells[colIdx - 1].Descendants<Drawing.Paragraph>());
-                    }
-                }
+                if (paraIdx.Value < 1 || paraIdx.Value > cellParas.Count)
+                    throw new ArgumentException($"Paragraph index out of range: {paraIdx.Value} (cell has {cellParas.Count})");
+                paragraphs.Add(cellParas[paraIdx.Value - 1]);
             }
-            return paragraphs;
+            else
+            {
+                paragraphs.AddRange(cellParas);
+            }
+            if (runIdx.HasValue)
+            {
+                var runCount = paragraphs[0].Descendants<Drawing.Run>().Count(r => (r.GetFirstChild<Drawing.Text>()?.Text?.Length ?? 0) > 0);
+                if (runIdx.Value < 1 || runIdx.Value > runCount)
+                    throw new ArgumentException($"Run index out of range: {runIdx.Value} (paragraph has {runCount} runs)");
+            }
+            return (paragraphs, runIdx);
         }
 
         // /slide[N]/table[M] → all paragraphs in table
@@ -1684,30 +1742,59 @@ public partial class PowerPointHandler
             var slideIdx = int.Parse(tableMatch.Groups[1].Value);
             var tableIdx = int.Parse(tableMatch.Groups[2].Value);
             var slideParts = GetSlideParts().ToList();
-            if (slideIdx >= 1 && slideIdx <= slideParts.Count)
-            {
-                var slide = slideParts[slideIdx - 1].Slide;
-                var tables = slide?.Descendants<Drawing.Table>().ToList();
-                if (tables != null && tableIdx >= 1 && tableIdx <= tables.Count)
-                    paragraphs.AddRange(tables[tableIdx - 1].Descendants<Drawing.Paragraph>());
-            }
-            return paragraphs;
+            if (slideIdx < 1 || slideIdx > slideParts.Count)
+                throw new ArgumentException($"Slide index out of range: {slideIdx}");
+            var slide = slideParts[slideIdx - 1].Slide;
+            var tables = slide?.Descendants<Drawing.Table>().ToList() ?? new List<Drawing.Table>();
+            if (tableIdx < 1 || tableIdx > tables.Count)
+                throw new ArgumentException($"Table index out of range: {tableIdx}");
+            paragraphs.AddRange(tables[tableIdx - 1].Descendants<Drawing.Paragraph>());
+            return (paragraphs, null);
         }
 
-        // /slide[N]/shape[M] or /slide[N]/placeholder[M] → paragraphs in shape
-        var shapeMatch = Regex.Match(path, @"^/slide\[(\d+)\]/\w+\[(\d+)\]");
+        // /slide[N]/<shape>[M][/p[P][/r[K]]] — shape with optional paragraph/run suffix
+        // BUG-TESTER+FUZZER R32: anchored ($) so /p[P] suffix is not silently
+        // swallowed as a prefix match against the shape selector.
+        var shapeMatch = Regex.Match(path, @"^/slide\[(\d+)\]/(\w+)\[(\d+)\](?:/p(?:aragraph)?\[(\d+)\](?:/r(?:un)?\[(\d+)\])?)?$");
         if (shapeMatch.Success)
         {
             var slideIdx = int.Parse(shapeMatch.Groups[1].Value);
-            var shapeIdx = int.Parse(shapeMatch.Groups[2].Value);
+            var shapeKind = shapeMatch.Groups[2].Value;
+            // Reject path segments that are not shape-like containers handled here.
+            if (shapeKind is "table" or "notes")
+                throw new ArgumentException($"Unsupported find scope path: {path}");
+            var shapeIdx = int.Parse(shapeMatch.Groups[3].Value);
+            int? paraIdx = shapeMatch.Groups[4].Success ? int.Parse(shapeMatch.Groups[4].Value) : (int?)null;
+            int? runIdx = shapeMatch.Groups[5].Success ? int.Parse(shapeMatch.Groups[5].Value) : (int?)null;
+            Shape shape;
             try
             {
-                var (_, shape) = ResolveShape(slideIdx, shapeIdx);
-                if (shape.TextBody != null)
-                    paragraphs.AddRange(shape.TextBody.Elements<Drawing.Paragraph>());
+                (_, shape) = ResolveShape(slideIdx, shapeIdx);
             }
-            catch { }
-            return paragraphs;
+            catch (Exception ex)
+            {
+                throw new ArgumentException($"Cannot resolve shape at {path}: {ex.Message}", ex);
+            }
+            if (shape.TextBody == null)
+                return (paragraphs, null);
+            var shapeParas = shape.TextBody.Elements<Drawing.Paragraph>().ToList();
+            if (paraIdx.HasValue)
+            {
+                if (paraIdx.Value < 1 || paraIdx.Value > shapeParas.Count)
+                    throw new ArgumentException($"Paragraph index out of range: {paraIdx.Value} (shape has {shapeParas.Count})");
+                paragraphs.Add(shapeParas[paraIdx.Value - 1]);
+            }
+            else
+            {
+                paragraphs.AddRange(shapeParas);
+            }
+            if (runIdx.HasValue)
+            {
+                var runCount = paragraphs[0].Descendants<Drawing.Run>().Count(r => (r.GetFirstChild<Drawing.Text>()?.Text?.Length ?? 0) > 0);
+                if (runIdx.Value < 1 || runIdx.Value > runCount)
+                    throw new ArgumentException($"Run index out of range: {runIdx.Value} (paragraph has {runCount} runs)");
+            }
+            return (paragraphs, runIdx);
         }
 
         // /slide[N] → all paragraphs in slide
@@ -1716,22 +1803,17 @@ public partial class PowerPointHandler
         {
             var slideIdx = int.Parse(slideOnlyMatch.Groups[1].Value);
             var slideParts = GetSlideParts().ToList();
-            if (slideIdx >= 1 && slideIdx <= slideParts.Count)
-            {
-                var slide = slideParts[slideIdx - 1].Slide;
-                if (slide != null)
-                    paragraphs.AddRange(slide.Descendants<Drawing.Paragraph>());
-            }
-            return paragraphs;
+            if (slideIdx < 1 || slideIdx > slideParts.Count)
+                throw new ArgumentException($"Slide index out of range: {slideIdx}");
+            var slide = slideParts[slideIdx - 1].Slide;
+            if (slide != null)
+                paragraphs.AddRange(slide.Descendants<Drawing.Paragraph>());
+            return (paragraphs, null);
         }
 
-        // Fallback: all slides
-        foreach (var slidePart in _doc.PresentationPart?.SlideParts ?? Enumerable.Empty<SlidePart>())
-        {
-            if (slidePart.Slide != null)
-                paragraphs.AddRange(slidePart.Slide.Descendants<Drawing.Paragraph>());
-        }
-        return paragraphs;
+        // BUG-FUZZER R32: unrecognized PPT path (e.g. /body) must not silently
+        // fall back to all-slides global scope. Reject it.
+        throw new ArgumentException($"Unrecognized PPT find scope path: '{path}'. Expected /, /slide[N], /slide[N]/<shape>[M][/p[P][/r[K]]], /slide[N]/notes, or /slide[N]/table[M][/tr[R]/tc[C]].");
     }
 
     /// <summary>
