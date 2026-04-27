@@ -179,7 +179,14 @@ public partial class WordHandler
                 startVal = ParseHelpers.SafeParseInt(sv, "start");
             int? levelVal = null;
             if (properties.TryGetValue("listLevel", out var ll) || properties.TryGetValue("listlevel", out ll) || properties.TryGetValue("level", out ll) || properties.TryGetValue("numlevel", out ll))
+            {
                 levelVal = ParseHelpers.SafeParseInt(ll, "listLevel");
+                // OOXML ST_DecimalNumber ilvl is bound to 0..8 (ECMA-376
+                // §17.9.3) — Word silently drops out-of-range values, so
+                // reject up-front to keep round-trip lossless.
+                if (levelVal < 0 || levelVal > 8)
+                    throw new ArgumentException($"listLevel must be in range 0..8 (got {levelVal}).");
+            }
             ApplyListStyle(para, listStyle, startVal, levelVal);
             // pProps already appended, skip the append below
             goto paragraphPropsApplied;
