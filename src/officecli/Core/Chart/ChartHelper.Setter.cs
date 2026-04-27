@@ -256,6 +256,31 @@ internal static partial class ChartHelper
                     var isPie = plotArea2.GetFirstChild<C.PieChart>() != null
                         || plotArea2.GetFirstChild<C.Pie3DChart>() != null;
 
+                    // Stacked bar/column/line/area series: ST_DLblPosBar restricts to
+                    // {ctr, inBase, inEnd}. Mac PowerPoint reports the file as corrupt
+                    // when given outEnd/t/b/l/r/bestFit on a stacked series, even though
+                    // OpenXmlValidator schema check passes (the constraint is a
+                    // simpleType union, not a structural rule).
+                    static bool IsStackedGrouping(EnumValue<C.BarGroupingValues>? g) =>
+                        g != null && (g.Value == C.BarGroupingValues.Stacked
+                                      || g.Value == C.BarGroupingValues.PercentStacked);
+                    static bool IsStackedLineGrouping(EnumValue<C.GroupingValues>? g) =>
+                        g != null && (g.Value == C.GroupingValues.Stacked
+                                      || g.Value == C.GroupingValues.PercentStacked);
+                    var isStacked =
+                        plotArea2.Elements<C.BarChart>().Any(c =>
+                            IsStackedGrouping(c.GetFirstChild<C.BarGrouping>()?.Val))
+                        || plotArea2.Elements<C.Bar3DChart>().Any(c =>
+                            IsStackedGrouping(c.GetFirstChild<C.BarGrouping>()?.Val))
+                        || plotArea2.Elements<C.LineChart>().Any(c =>
+                            IsStackedLineGrouping(c.GetFirstChild<C.Grouping>()?.Val))
+                        || plotArea2.Elements<C.Line3DChart>().Any(c =>
+                            IsStackedLineGrouping(c.GetFirstChild<C.Grouping>()?.Val))
+                        || plotArea2.Elements<C.AreaChart>().Any(c =>
+                            IsStackedLineGrouping(c.GetFirstChild<C.Grouping>()?.Val))
+                        || plotArea2.Elements<C.Area3DChart>().Any(c =>
+                            IsStackedLineGrouping(c.GetFirstChild<C.Grouping>()?.Val));
+
                     var dlblPos = value.ToLowerInvariant() switch
                     {
                         "center" or "ctr" => C.DataLabelPositionValues.Center,
@@ -263,23 +288,37 @@ internal static partial class ChartHelper
                         "insidebase" or "base" => C.DataLabelPositionValues.InsideBase,
                         "outsideend" or "outside" => isPie
                             ? C.DataLabelPositionValues.BestFit
-                            : C.DataLabelPositionValues.OutsideEnd,
-                        "bestfit" or "best" or "auto" => C.DataLabelPositionValues.BestFit,
+                            : isStacked
+                                ? C.DataLabelPositionValues.InsideEnd
+                                : C.DataLabelPositionValues.OutsideEnd,
+                        "bestfit" or "best" or "auto" => isStacked
+                            ? C.DataLabelPositionValues.Center
+                            : C.DataLabelPositionValues.BestFit,
                         "top" or "t" => isPie
                             ? C.DataLabelPositionValues.BestFit
-                            : C.DataLabelPositionValues.Top,
+                            : isStacked
+                                ? C.DataLabelPositionValues.InsideEnd
+                                : C.DataLabelPositionValues.Top,
                         "bottom" or "b" => isPie
                             ? C.DataLabelPositionValues.BestFit
-                            : C.DataLabelPositionValues.Bottom,
+                            : isStacked
+                                ? C.DataLabelPositionValues.InsideBase
+                                : C.DataLabelPositionValues.Bottom,
                         "left" or "l" => isPie
                             ? C.DataLabelPositionValues.BestFit
-                            : C.DataLabelPositionValues.Left,
+                            : isStacked
+                                ? C.DataLabelPositionValues.InsideEnd
+                                : C.DataLabelPositionValues.Left,
                         "right" or "r" => isPie
                             ? C.DataLabelPositionValues.BestFit
-                            : C.DataLabelPositionValues.Right,
+                            : isStacked
+                                ? C.DataLabelPositionValues.InsideEnd
+                                : C.DataLabelPositionValues.Right,
                         _ => isPie
                             ? C.DataLabelPositionValues.BestFit
-                            : C.DataLabelPositionValues.OutsideEnd
+                            : isStacked
+                                ? C.DataLabelPositionValues.InsideEnd
+                                : C.DataLabelPositionValues.OutsideEnd
                     };
                     foreach (var dl in plotArea2.Descendants<C.DataLabels>())
                     {
