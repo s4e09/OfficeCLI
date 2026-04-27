@@ -196,7 +196,7 @@ public partial class WordHandler
             {
                 rProps.AppendChild(new RunFonts { Ascii = font, HighAnsi = font, EastAsia = font });
             }
-            if (properties.TryGetValue("size", out var size) || properties.TryGetValue("font.size", out size))
+            if (properties.TryGetValue("size", out var size) || properties.TryGetValue("font.size", out size) || properties.TryGetValue("fontsize", out size))
             {
                 rProps.AppendChild(new FontSize { Val = ((int)Math.Round(ParseFontSize(size) * 2, MidpointRounding.AwayFromZero)).ToString() });
             }
@@ -492,7 +492,7 @@ public partial class WordHandler
         var newRProps = new RunProperties();
         if (properties.TryGetValue("font", out var rFont) || properties.TryGetValue("font.name", out rFont))
             newRProps.AppendChild(new RunFonts { Ascii = rFont, HighAnsi = rFont, EastAsia = rFont });
-        if (properties.TryGetValue("size", out var rSize) || properties.TryGetValue("font.size", out rSize))
+        if (properties.TryGetValue("size", out var rSize) || properties.TryGetValue("font.size", out rSize) || properties.TryGetValue("fontsize", out rSize))
             newRProps.AppendChild(new FontSize { Val = ((int)Math.Round(ParseFontSize(rSize) * 2, MidpointRounding.AwayFromZero)).ToString() });
         if ((properties.TryGetValue("bold", out var rBold) || properties.TryGetValue("font.bold", out rBold)) && IsTruthy(rBold))
             newRProps.Bold = new Bold();

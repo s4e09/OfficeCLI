@@ -34,6 +34,7 @@
       "type": "length",
       "description": "font size. Lenient input (14, 14pt, 10.5pt).",
       "add": true, "set": true, "get": true,
+      "aliases": ["fontsize", "fontSize", "font.size"],
       "examples": ["--prop size=14"],
       "readback": "unit-qualified pt",
       "enforcement": "report"

@@ -198,7 +198,9 @@ public partial class PowerPointHandler
                 var newRun = new Drawing.Run();
                 var rProps = new Drawing.RunProperties { Language = "en-US" };
 
-                if (properties.TryGetValue("size", out var pSize))
+                if (properties.TryGetValue("size", out var pSize)
+                    || properties.TryGetValue("font.size", out pSize)
+                    || properties.TryGetValue("fontsize", out pSize))
                     rProps.FontSize = (int)Math.Round(ParseFontSize(pSize) * 100);
                 if (properties.TryGetValue("bold", out var pBold))
                     rProps.Bold = IsTruthy(pBold);
@@ -290,7 +292,9 @@ public partial class PowerPointHandler
                 var newRun = new Drawing.Run();
                 var rProps = new Drawing.RunProperties { Language = "en-US" };
 
-                if (properties.TryGetValue("size", out var rSize))
+                if (properties.TryGetValue("size", out var rSize)
+                    || properties.TryGetValue("font.size", out rSize)
+                    || properties.TryGetValue("fontsize", out rSize))
                     rProps.FontSize = (int)Math.Round(ParseFontSize(rSize) * 100);
                 if (properties.TryGetValue("bold", out var rBold))
                     rProps.Bold = IsTruthy(rBold);
