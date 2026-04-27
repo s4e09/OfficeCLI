@@ -1792,6 +1792,11 @@ public partial class WordHandler
         "jc", "ind", "outlineLvl", "widowControl",
         "keepNext", "keepLines", "pageBreakBefore", "contextualSpacing",
         "pBdr", "numPr", "tabs", "pStyle",
+        // Container elements covered by the curated paragraph-mark / run-property
+        // reader (see paraRp block ~line 1004). Without this, an empty <w:rPr/>
+        // left behind by Set bold=false (etc.) would surface as `rPr: true` via
+        // the long-tail fallback. fuzz-1.
+        "rPr",
     };
 
     // Long-tail OOXML fallback: walk a properties container (rPr/pPr/...) and
