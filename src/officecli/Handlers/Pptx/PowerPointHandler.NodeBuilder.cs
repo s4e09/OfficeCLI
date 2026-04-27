@@ -454,6 +454,10 @@ public partial class PowerPointHandler
 
             if (firstRun.RunProperties.Bold?.HasValue == true) node.Format["bold"] = firstRun.RunProperties.Bold.Value;
             if (firstRun.RunProperties.Italic?.HasValue == true) node.Format["italic"] = firstRun.RunProperties.Italic.Value;
+            // CONSISTENCY(rPr-cap): mirror cap attribute readback so shape-level
+            // Get matches Set's allCaps/cap input (Set writes rPr cap="all"/"small").
+            if (firstRun.RunProperties.Capital?.HasValue == true && firstRun.RunProperties.Capital.Value != Drawing.TextCapsValues.None)
+                node.Format["cap"] = firstRun.RunProperties.Capital.InnerText;
             if (firstRun.RunProperties.Underline?.HasValue == true && firstRun.RunProperties.Underline.Value != Drawing.TextUnderlineValues.None)
             {
                 var ulInner = firstRun.RunProperties.Underline.InnerText;
