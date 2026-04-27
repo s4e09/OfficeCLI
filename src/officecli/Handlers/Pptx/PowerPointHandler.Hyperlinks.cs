@@ -130,12 +130,17 @@ public partial class PowerPointHandler
             nvDp.AppendChild(BuildHyperlinkElement(target.Value, tooltip));
         }
 
-        // Also mirror onto every run so in-text clicks work too
+        // Also mirror onto every run so in-text clicks work too. Same
+        // ordering reasoning as ApplyRunHyperlink: hlinkClick is slot 11
+        // in CT_TextCharacterProperties so InsertAt(0) lands it before
+        // pre-existing fill/font children. Append + reorder to land in
+        // the right schema slot.
         foreach (var run in allRuns)
         {
             var rProps = run.RunProperties ?? (run.RunProperties = new Drawing.RunProperties());
             rProps.RemoveAllChildren<Drawing.HyperlinkOnClick>();
-            rProps.InsertAt(BuildHyperlinkElement(target.Value, tooltip), 0);
+            rProps.AppendChild(BuildHyperlinkElement(target.Value, tooltip));
+            ReorderDrawingRunProperties(rProps);
         }
     }
 
@@ -152,7 +157,13 @@ public partial class PowerPointHandler
 
         var target = ResolveHyperlinkTarget(slidePart, url);
         if (target == null) return;
-        rProps.InsertAt(BuildHyperlinkElement(target.Value, tooltip), 0);
+        // CT_TextCharacterProperties places hlinkClick at slot 11 (after
+        // ln/fill/effectLst/highlight/underline/font children). InsertAt(.., 0)
+        // would land it before any pre-existing solidFill/latin/ea, producing
+        // Sch_UnexpectedElementContentExpectingComplex. Append then reorder
+        // so the helper's ordering table is the single source of truth.
+        rProps.AppendChild(BuildHyperlinkElement(target.Value, tooltip));
+        ReorderDrawingRunProperties(rProps);
     }
 
     /// <summary>
