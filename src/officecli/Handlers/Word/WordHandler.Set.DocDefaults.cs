@@ -186,10 +186,10 @@ public partial class WordHandler
     /// </summary>
     private static string ParseFontSizeToHalfPoints(string value)
     {
-        value = value.Trim();
-        if (value.EndsWith("pt", StringComparison.OrdinalIgnoreCase))
-            value = value[..^2].Trim();
-        var pts = ParseHelpers.SafeParseDouble(value, "fontSize");
+        // Route through ParseFontSize so the shared min/max guards
+        // (>= 0.5pt, <= 4000pt) apply uniformly across handlers — previously
+        // size=2147483647 overflowed `pts * 2` to a negative w:sz value.
+        var pts = ParseHelpers.ParseFontSize(value);
         return ((int)Math.Round(pts * 2)).ToString();
     }
 

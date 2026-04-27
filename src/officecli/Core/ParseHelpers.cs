@@ -195,6 +195,14 @@ internal static class ParseHelpers
         // the "<= 0" guard above.
         if (result < 0.5)
             throw new ArgumentException($"Invalid font size: '{value}'. Minimum font size is 0.5pt (one half-point).");
+        // OOXML caps user-entered font size at 1638pt (Word) and Office
+        // renderers stop honoring values past ~4000pt anyway. Anything
+        // larger silently overflows the int32 the writers cast to (PPTX
+        // writes pt × 100, Word writes pt × 2 as half-points), producing
+        // negative w:sz / a:rPr@sz values Word rejects on open. Reject
+        // up front with the same shape as the lower-bound guards.
+        if (result > 4000)
+            throw new ArgumentException($"Invalid font size: '{value}'. Maximum font size is 4000pt (Office cap).");
         return result;
     }
 
