@@ -230,10 +230,18 @@ public partial class PowerPointHandler
                         throw new ArgumentException($"Invalid 'shapes' value: '{trimmed}' is not a valid integer or DOM path. Expected comma-separated shape indices (e.g. shapes=1,2,3) or DOM paths (e.g. shapes=/slide[1]/shape[1],/slide[1]/shape[2]).");
                     }
                 }
-                var allShapes = grpShapeTree.Elements<Shape>().ToList();
+                // CONSISTENCY(group-frame-types): include all frame-like elements
+                // (Shape, GroupShape, Picture, GraphicFrame, ConnectionShape) so
+                // existing groups, pictures, charts, and connectors can also be
+                // grouped together. Index space matches the shape-tree order
+                // PowerPoint uses for sibling lookups (B13).
+                var allShapes = grpShapeTree.ChildElements
+                    .Where(c => c is Shape || c is GroupShape || c is Picture
+                        || c is GraphicFrame || c is ConnectionShape)
+                    .ToList();
 
                 // Collect shapes to group (in reverse order to maintain indices during removal)
-                var toGroup = new List<Shape>();
+                var toGroup = new List<OpenXmlElement>();
                 foreach (var si in shapeIndices.OrderBy(i => i))
                 {
                     if (si < 1 || si > allShapes.Count)
@@ -241,22 +249,46 @@ public partial class PowerPointHandler
                     toGroup.Add(allShapes[si - 1]);
                 }
 
-                // Calculate bounding box
+                // Calculate bounding box across heterogeneous frame elements.
                 long minX = long.MaxValue, minY = long.MaxValue, maxX = long.MinValue, maxY = long.MinValue;
                 bool hasTransform = false;
                 foreach (var s in toGroup)
                 {
-                    var xfrm = s.ShapeProperties?.Transform2D;
-                    if (xfrm?.Offset == null || xfrm.Extents == null) continue;
+                    long? sx = null, sy = null, scx = null, scy = null;
+                    switch (s)
+                    {
+                        case Shape sp:
+                            var xfrmSp = sp.ShapeProperties?.Transform2D;
+                            sx = xfrmSp?.Offset?.X?.Value; sy = xfrmSp?.Offset?.Y?.Value;
+                            scx = xfrmSp?.Extents?.Cx?.Value; scy = xfrmSp?.Extents?.Cy?.Value;
+                            break;
+                        case Picture pic:
+                            var xfrmPic = pic.ShapeProperties?.Transform2D;
+                            sx = xfrmPic?.Offset?.X?.Value; sy = xfrmPic?.Offset?.Y?.Value;
+                            scx = xfrmPic?.Extents?.Cx?.Value; scy = xfrmPic?.Extents?.Cy?.Value;
+                            break;
+                        case ConnectionShape cs:
+                            var xfrmCs = cs.ShapeProperties?.Transform2D;
+                            sx = xfrmCs?.Offset?.X?.Value; sy = xfrmCs?.Offset?.Y?.Value;
+                            scx = xfrmCs?.Extents?.Cx?.Value; scy = xfrmCs?.Extents?.Cy?.Value;
+                            break;
+                        case GroupShape gs:
+                            var xfrmGs = gs.GroupShapeProperties?.TransformGroup;
+                            sx = xfrmGs?.Offset?.X?.Value; sy = xfrmGs?.Offset?.Y?.Value;
+                            scx = xfrmGs?.Extents?.Cx?.Value; scy = xfrmGs?.Extents?.Cy?.Value;
+                            break;
+                        case GraphicFrame gf:
+                            var xfrmGf = gf.Transform;
+                            sx = xfrmGf?.Offset?.X?.Value; sy = xfrmGf?.Offset?.Y?.Value;
+                            scx = xfrmGf?.Extents?.Cx?.Value; scy = xfrmGf?.Extents?.Cy?.Value;
+                            break;
+                    }
+                    if (sx == null || sy == null || scx == null || scy == null) continue;
                     hasTransform = true;
-                    long sx = xfrm.Offset.X ?? 0;
-                    long sy = xfrm.Offset.Y ?? 0;
-                    long scx = xfrm.Extents.Cx ?? 0;
-                    long scy = xfrm.Extents.Cy ?? 0;
-                    if (sx < minX) minX = sx;
-                    if (sy < minY) minY = sy;
-                    if (sx + scx > maxX) maxX = sx + scx;
-                    if (sy + scy > maxY) maxY = sy + scy;
+                    if (sx.Value < minX) minX = sx.Value;
+                    if (sy.Value < minY) minY = sy.Value;
+                    if (sx.Value + scx.Value > maxX) maxX = sx.Value + scx.Value;
+                    if (sy.Value + scy.Value > maxY) maxY = sy.Value + scy.Value;
                 }
                 if (!hasTransform) { minX = 0; minY = 0; maxX = 0; maxY = 0; }
 
