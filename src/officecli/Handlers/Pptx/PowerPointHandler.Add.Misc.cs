@@ -37,6 +37,11 @@ public partial class PowerPointHandler
                 long cxnY = (properties.TryGetValue("y", out var cy1) || properties.TryGetValue("top", out cy1)) ? ParseEmu(cy1) : 3000000;
                 long cxnCx = properties.TryGetValue("width", out var cw) ? ParseEmu(cw) : 4000000;
                 long cxnCy = properties.TryGetValue("height", out var ch) ? ParseEmu(ch) : 0;
+                // CONSISTENCY(positive-size): mirror Add.Shape negative-size guard so picture
+                // / chart / connector / media all reject inverted dimensions instead of silently
+                // emitting negative cx/cy that PowerPoint draws as flipped or 0-sized boxes.
+                if (cxnCx < 0) throw new ArgumentException($"Negative width is not allowed: '{cw}'.");
+                if (cxnCy < 0) throw new ArgumentException($"Negative height is not allowed: '{ch}'.");
 
                 var connector = new ConnectionShape();
                 var cxnNvProps = new NonVisualConnectionShapeProperties(

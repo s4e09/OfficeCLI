@@ -84,6 +84,10 @@ public partial class PowerPointHandler
                 bool hasHeight = properties.TryGetValue("height", out var heightStr);
                 long cxEmu = hasWidth ? ParseEmu(widthStr!) : 5486400;  // 6 inches fallback
                 long cyEmu = hasHeight ? ParseEmu(heightStr!) : 3657600; // 4 inches fallback
+                // CONSISTENCY(positive-size): symmetric with Add.Shape negative-size guard
+                // so picture / chart / connector / media all reject inverted dimensions.
+                if (cxEmu < 0) throw new ArgumentException($"Negative width is not allowed: '{widthStr}'.");
+                if (cyEmu < 0) throw new ArgumentException($"Negative height is not allowed: '{heightStr}'.");
 
                 if (!hasWidth || !hasHeight)
                 {
@@ -356,6 +360,9 @@ public partial class PowerPointHandler
                 long chartY = properties.TryGetValue("y", out var yv) ? ParseEmu(yv) : 1825625;     // ~5cm
                 long chartCx = properties.TryGetValue("width", out var wv) ? ParseEmu(wv) : 8229600; // ~22.9cm
                 long chartCy = properties.TryGetValue("height", out var hv) ? ParseEmu(hv) : 4572000; // ~12.7cm
+                // CONSISTENCY(positive-size): symmetric with Add.Shape negative-size guard.
+                if (chartCx < 0) throw new ArgumentException($"Negative width is not allowed: '{wv}'.");
+                if (chartCy < 0) throw new ArgumentException($"Negative height is not allowed: '{hv}'.");
                 var chartId = GenerateUniqueShapeId(chartShapeTree);
                 var chartName = properties.GetValueOrDefault("name", chartTitle ?? $"Chart {chartShapeTree.Elements<GraphicFrame>().Count(gf => gf.Descendants<DocumentFormat.OpenXml.Drawing.Charts.ChartReference>().Any() || IsExtendedChartFrame(gf)) + 1}");
 
@@ -484,6 +491,9 @@ public partial class PowerPointHandler
                 var (mediaSlideW, mediaSlideH) = GetSlideSize();
                 long mCx = properties.TryGetValue("width", out var mwv) ? ParseEmu(mwv) : (long)(mediaSlideW * 0.75);
                 long mCy = properties.TryGetValue("height", out var mhv) ? ParseEmu(mhv) : (long)(mediaSlideH * 0.75);
+                // CONSISTENCY(positive-size): symmetric with Add.Shape negative-size guard.
+                if (mCx < 0) throw new ArgumentException($"Negative width is not allowed: '{mwv}'.");
+                if (mCy < 0) throw new ArgumentException($"Negative height is not allowed: '{mhv}'.");
                 long mX = properties.TryGetValue("x", out var mxv) ? ParseEmu(mxv) : (mediaSlideW - mCx) / 2;
                 long mY = properties.TryGetValue("y", out var myv) ? ParseEmu(myv) : (mediaSlideH - mCy) / 2;
 
