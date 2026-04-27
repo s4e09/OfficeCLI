@@ -609,6 +609,33 @@ public partial class PowerPointHandler
                 return GenericXmlQuery.ElementToNode(logicalResolved.Value.element, path, depth);
         }
 
+        // Try group inner shape path: /slide[N]/group[M]/shape[K]
+        // CONSISTENCY(group-inner-shape): Set supports this; Get must too.
+        // Previously fell through to the generic XML fallback, which mis-detected
+        // GroupShape (LocalName="grpSp") as a shape and threw "No shape found".
+        var grpInnerGetMatch = Regex.Match(path, @"^/slide\[(\d+)\]/group\[(\d+)\]/shape\[(\d+)\]$");
+        if (grpInnerGetMatch.Success)
+        {
+            var giSlideIdx = int.Parse(grpInnerGetMatch.Groups[1].Value);
+            var giGrpIdx = int.Parse(grpInnerGetMatch.Groups[2].Value);
+            var giShapeIdx = int.Parse(grpInnerGetMatch.Groups[3].Value);
+            var giSlideParts = GetSlideParts().ToList();
+            if (giSlideIdx < 1 || giSlideIdx > giSlideParts.Count)
+                throw new ArgumentException($"Slide {giSlideIdx} not found (total: {giSlideParts.Count})");
+            var giSlidePart = giSlideParts[giSlideIdx - 1];
+            var giShapeTree = GetSlide(giSlidePart).CommonSlideData?.ShapeTree
+                ?? throw new ArgumentException("Slide has no shape tree");
+            var giGroups = giShapeTree.Elements<GroupShape>().ToList();
+            if (giGrpIdx < 1 || giGrpIdx > giGroups.Count)
+                throw new ArgumentException($"Group {giGrpIdx} not found (total: {giGroups.Count})");
+            var giInnerShapes = giGroups[giGrpIdx - 1].Elements<Shape>().ToList();
+            if (giShapeIdx < 1 || giShapeIdx > giInnerShapes.Count)
+                throw new ArgumentException($"Shape {giShapeIdx} not found in group {giGrpIdx} (total: {giInnerShapes.Count})");
+            var giNode = ShapeToNode(giInnerShapes[giShapeIdx - 1], giSlideIdx, giShapeIdx, depth, giSlidePart);
+            giNode.Path = $"/slide[{giSlideIdx}]/group[{giGrpIdx}]/{BuildElementPathSegment("shape", giInnerShapes[giShapeIdx - 1], giShapeIdx)}";
+            return giNode;
+        }
+
         // Parse /slide[N] or /slide[N]/shape[M]
         var match = Regex.Match(path, @"^/slide\[(\d+)\](?:/(\w+)\[(\d+)\])?$");
         if (!match.Success)
