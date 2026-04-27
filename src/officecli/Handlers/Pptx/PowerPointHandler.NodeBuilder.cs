@@ -515,8 +515,11 @@ public partial class PowerPointHandler
             var lineSolidFill = outline.GetFirstChild<Drawing.SolidFill>();
             var lineColor = ReadColorFromFill(lineSolidFill);
             if (lineColor != null) node.Format["line"] = lineColor;
-            if (outline.GetFirstChild<Drawing.NoFill>() != null) node.Format["line"] = "none";
-            if (outline.Width?.HasValue == true) node.Format["lineWidth"] = FormatLineWidth(outline.Width.Value);
+            var lineIsNone = outline.GetFirstChild<Drawing.NoFill>() != null;
+            if (lineIsNone) node.Format["line"] = "none";
+            // When line=none, suppress the residual width readback so users don't
+            // see a stale lineWidth from a prior color-set assignment.
+            if (!lineIsNone && outline.Width?.HasValue == true) node.Format["lineWidth"] = FormatLineWidth(outline.Width.Value);
             var dash = outline.GetFirstChild<Drawing.PresetDash>();
             if (dash?.Val?.HasValue == true)
             {
@@ -1105,7 +1108,8 @@ public partial class PowerPointHandler
             node.Format["shape"] = geom.Preset.InnerText;
 
         var ln = spPr?.GetFirstChild<Drawing.Outline>();
-        if (ln?.Width?.HasValue == true)
+        var lnIsNone = ln?.GetFirstChild<Drawing.NoFill>() != null;
+        if (!lnIsNone && ln?.Width?.HasValue == true)
             node.Format["lineWidth"] = FormatLineWidth(ln.Width.Value);
         var cxnDash = ln?.GetFirstChild<Drawing.PresetDash>();
         if (cxnDash?.Val?.HasValue == true)
