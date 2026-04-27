@@ -76,6 +76,19 @@ public partial class WordHandler
         if (bracketIdx >= 0)
         {
             var attrPart = selector[bracketIdx..];
+            // Verify brackets are balanced. CLI layer rejects unclosed brackets
+            // before reaching here, but direct API callers can pass malformed
+            // selectors — surface a clean error rather than silently returning
+            // empty results.
+            int openCount = 0, closeCount = 0;
+            foreach (var ch in attrPart)
+            {
+                if (ch == '[') openCount++;
+                else if (ch == ']') closeCount++;
+            }
+            if (openCount != closeCount)
+                throw new ArgumentException($"Malformed selector: unclosed bracket in '{selector}'");
+
             foreach (System.Text.RegularExpressions.Match m in
                 System.Text.RegularExpressions.Regex.Matches(attrPart, @"\[(\w+)(\\?!?=)([^\]]+)\]"))
             {
