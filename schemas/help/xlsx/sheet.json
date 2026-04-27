@@ -13,7 +13,7 @@
     "stable":     ["/<sheetName>"],
     "positional": ["/Sheet1", "/Sheet2"]
   },
-  "note": "Add only processes `name` and `position` today; other properties are set-only on an existing sheet. Those are marked enforcement=report until Add gains parity or the schema locks set-only explicitly.",
+  "note": "Add accepts name, position, autoFilter, tabColor, and hidden — these forward to the same code paths Set uses, preserving Add/Set symmetry. `freeze` remains Set-only.",
   "properties": {
     "name": {
       "type": "string",
@@ -24,25 +24,25 @@
     },
     "autoFilter": {
       "type": "string",
-      "description": "range to apply AutoFilter on (e.g. A1:D10). `true` enables on used range. Note: currently Set-only on existing sheets, not consumed by Add.",
+      "description": "range to apply AutoFilter on (e.g. A1:D10). `true` enables on used range.",
       "aliases": ["autofilter"],
-      "add": false, "set": true, "get": true,
+      "add": true, "set": true, "get": true,
       "examples": ["--prop autoFilter=A1:D10"],
       "readback": "range string as stored, or boolean true",
       "enforcement": "report"
     },
     "tabColor": {
       "type": "color",
-      "description": "sheet tab color. Set-only on existing sheets.",
-      "add": false, "set": true, "get": true,
+      "description": "sheet tab color.",
+      "add": true, "set": true, "get": true,
       "examples": ["--prop tabColor=4472C4"],
       "readback": "#RRGGBB uppercase",
       "enforcement": "report"
     },
     "hidden": {
       "type": "bool",
-      "description": "hide the sheet. Set-only on existing sheets.",
-      "add": false, "set": true, "get": true,
+      "description": "hide the sheet at creation or after the fact.",
+      "add": true, "set": true, "get": true,
       "examples": ["--prop hidden=true"],
       "enforcement": "report"
     },
