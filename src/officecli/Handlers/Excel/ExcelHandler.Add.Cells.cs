@@ -167,11 +167,25 @@ public partial class ExcelHandler
             cellRefFromPath = cellSegments[1].ToUpperInvariant();
 
         string cellRef;
+        // BUG-R36-B1: when --prop arrayformula= is supplied with --prop ref=A1:C3,
+        // the range is the spill region, not a single cell address. Detect it and
+        // resolve cellRef to the top-left so FindOrCreateCell doesn't reject the
+        // colon. The full range is still passed through to arrayformula below via
+        // properties["ref"].
+        string? arrayFormulaRefRange = null;
         if (properties.ContainsKey("ref"))
         {
             cellRef = properties["ref"];
+            if (cellRef.Contains(':') && properties.ContainsKey("arrayformula"))
+            {
+                arrayFormulaRefRange = cellRef;
+                var topLeft = cellRef.Split(':', 2)[0];
+                if (!Regex.IsMatch(topLeft, @"^[A-Z]+\d+$", RegexOptions.IgnoreCase))
+                    throw new ArgumentException($"Invalid cell reference: '{cellRef}'");
+                cellRef = topLeft.ToUpperInvariant();
+            }
             if (cellRefFromPath != null && !cellRefFromPath.Equals(cellRef, StringComparison.OrdinalIgnoreCase))
-                Console.Error.WriteLine($"warning: path tail '{cellRefFromPath}' does not match --prop ref='{cellRef}'; using ref='{cellRef}'.");
+                Console.Error.WriteLine($"warning: path tail '{cellRefFromPath}' does not match --prop ref='{properties["ref"]}'; using ref='{properties["ref"]}'.");
         }
         else if (properties.ContainsKey("address"))
         {
@@ -496,7 +510,10 @@ public partial class ExcelHandler
         if (properties.TryGetValue("arrayformula", out var arrFormula))
         {
             RejectCrossWorkbookFormula(arrFormula);
-            var arrRef = properties.GetValueOrDefault("ref", cellRef);
+            // BUG-R36-B1: if ref was a range (A1:C3), use the full range as
+            // arrRef so the array formula spills correctly; otherwise default
+            // to the single cellRef.
+            var arrRef = arrayFormulaRefRange ?? properties.GetValueOrDefault("ref", cellRef);
             cell.CellFormula = new CellFormula(Core.ModernFunctionQualifier.Qualify(Core.ModernFunctionQualifier.AutoQuoteSheetRefs(arrFormula.TrimStart('='))))
             {
                 FormulaType = CellFormulaValues.Array,
