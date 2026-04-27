@@ -1452,17 +1452,40 @@ public partial class PowerPointHandler
 
         var fullText = string.Concat(runTexts.Select(rt => rt.TextElement.Text));
         // CONSISTENCY(regex-backref-expand): mirror Word ProcessFindInParagraph.
-        var matchObjs = isRegex
-            ? System.Text.RegularExpressions.Regex.Matches(
-                    fullText,
-                    pattern,
-                    System.Text.RegularExpressions.RegexOptions.None,
-                    FindRegexMatchTimeout)
-                .Cast<System.Text.RegularExpressions.Match>()
-                .Where(m => m.Length > 0)
-                .ToList()
-            : null;
-        var matches = FindMatchRanges(fullText, pattern, isRegex);
+        // BUG-TESTER+FUZZER R31: wrap with try/catch so RegexMatchTimeoutException is
+        // converted to ArgumentException, and avoid a second Regex.Matches call by
+        // deriving ranges from the same Match list.
+        List<System.Text.RegularExpressions.Match>? matchObjs = null;
+        List<(int Start, int Length)> matches;
+        if (isRegex)
+        {
+            try
+            {
+                matchObjs = System.Text.RegularExpressions.Regex.Matches(
+                        fullText,
+                        pattern,
+                        System.Text.RegularExpressions.RegexOptions.None,
+                        FindRegexMatchTimeout)
+                    .Cast<System.Text.RegularExpressions.Match>()
+                    .Where(m => m.Length > 0)
+                    .ToList();
+            }
+            catch (System.Text.RegularExpressions.RegexParseException ex)
+            {
+                throw new ArgumentException($"Invalid regex pattern '{pattern}': {ex.Message}", ex);
+            }
+            catch (System.Text.RegularExpressions.RegexMatchTimeoutException ex)
+            {
+                throw new ArgumentException(
+                    $"Regex pattern '{pattern}' exceeded {FindRegexMatchTimeout.TotalSeconds}s match timeout (catastrophic backtracking?)",
+                    ex);
+            }
+            matches = matchObjs.Select(m => (m.Index, m.Length)).ToList();
+        }
+        else
+        {
+            matches = FindMatchRanges(fullText, pattern, isRegex);
+        }
         if (matches.Count == 0) return 0;
 
         for (int i = matches.Count - 1; i >= 0; i--)
