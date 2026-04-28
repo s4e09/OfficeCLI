@@ -1305,45 +1305,71 @@ public partial class WordHandler
             // alignment regions and detect field markers without reparsing the
             // raw OOXML themselves. Mirrors the type=picture / type=ole
             // pattern above.
-            var ptabEl = run.GetFirstChild<PositionalTab>();
-            if (ptabEl != null)
+            //
+            // Each block is gated on `node.Type == "run"` so that:
+            //   (a) Drawing/EmbeddedObject (already upgraded above to
+            //       picture/ole) wins over a co-residing <w:br>/<w:tab> —
+            //       picture+break is a real Word emission and the picture
+            //       identity must not be silently overwritten;
+            //   (b) the first matching structural element wins when several
+            //       coexist in one run (rare but possible), keeping node.Type
+            //       single-valued and deterministic. ptab is checked first
+            //       (most semantically distinctive), then fieldChar, then
+            //       instrText, then tab, then break.
+            if (node.Type == "run")
             {
-                node.Type = "ptab";
-                // Open XML SDK v3 enum .ToString() returns "FooValues { }"
-                // — use .InnerText to get the actual XML attribute value
-                // ("center", "right", "begin", etc.). Same trap as the
-                // LineSpacingRuleValues note in WordHandler CLAUDE.md.
-                if (ptabEl.Alignment?.HasValue == true)
-                    node.Format["alignment"] = ptabEl.Alignment.InnerText;
-                if (ptabEl.RelativeTo?.HasValue == true)
-                    node.Format["relativeTo"] = ptabEl.RelativeTo.InnerText;
-                if (ptabEl.Leader?.HasValue == true)
-                    node.Format["leader"] = ptabEl.Leader.InnerText;
+                var ptabEl = run.GetFirstChild<PositionalTab>();
+                if (ptabEl != null)
+                {
+                    node.Type = "ptab";
+                    // Open XML SDK v3 enum .ToString() returns "FooValues { }"
+                    // — use .InnerText to get the actual XML attribute value
+                    // ("center", "right", "begin", etc.). Same trap as the
+                    // LineSpacingRuleValues note in WordHandler CLAUDE.md.
+                    if (ptabEl.Alignment?.HasValue == true)
+                        node.Format["alignment"] = ptabEl.Alignment.InnerText;
+                    if (ptabEl.RelativeTo?.HasValue == true)
+                        node.Format["relativeTo"] = ptabEl.RelativeTo.InnerText;
+                    if (ptabEl.Leader?.HasValue == true)
+                        node.Format["leader"] = ptabEl.Leader.InnerText;
+                }
             }
-            var fldCharEl = run.GetFirstChild<FieldChar>();
-            if (fldCharEl != null)
+            if (node.Type == "run")
             {
-                node.Type = "fieldChar";
-                if (fldCharEl.FieldCharType?.HasValue == true)
-                    node.Format["fieldCharType"] = fldCharEl.FieldCharType.InnerText;
+                var fldCharEl = run.GetFirstChild<FieldChar>();
+                if (fldCharEl != null)
+                {
+                    node.Type = "fieldChar";
+                    if (fldCharEl.FieldCharType?.HasValue == true)
+                        node.Format["fieldCharType"] = fldCharEl.FieldCharType.InnerText;
+                }
             }
-            var instrEl = run.GetFirstChild<FieldCode>();
-            if (instrEl != null)
+            if (node.Type == "run")
             {
-                node.Type = "instrText";
-                node.Format["instr"] = instrEl.Text ?? "";
+                var instrEl = run.GetFirstChild<FieldCode>();
+                if (instrEl != null)
+                {
+                    node.Type = "instrText";
+                    node.Format["instr"] = instrEl.Text ?? "";
+                }
             }
-            var tabEl = run.GetFirstChild<TabChar>();
-            if (tabEl != null && string.IsNullOrEmpty(node.Text))
+            if (node.Type == "run" && string.IsNullOrEmpty(node.Text))
             {
-                node.Type = "tab";
+                var tabEl = run.GetFirstChild<TabChar>();
+                if (tabEl != null)
+                {
+                    node.Type = "tab";
+                }
             }
-            var breakEl = run.GetFirstChild<Break>();
-            if (breakEl != null && string.IsNullOrEmpty(node.Text))
+            if (node.Type == "run" && string.IsNullOrEmpty(node.Text))
             {
-                node.Type = "break";
-                if (breakEl.Type?.HasValue == true)
-                    node.Format["breakType"] = breakEl.Type.InnerText;
+                var breakEl = run.GetFirstChild<Break>();
+                if (breakEl != null)
+                {
+                    node.Type = "break";
+                    if (breakEl.Type?.HasValue == true)
+                        node.Format["breakType"] = breakEl.Type.InnerText;
+                }
             }
 
             if (run.Parent is Hyperlink hlParent && hlParent.Id?.Value != null)

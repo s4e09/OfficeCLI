@@ -809,12 +809,26 @@ public partial class WordHandler
     // inline structure in a Run, insert into paragraph" pattern.
     private string AddPtab(OpenXmlElement parent, string parentPath, int? index, Dictionary<string, string> properties)
     {
+        // Validate parent first (more fundamental than property contents) so
+        // a misrouted call surfaces the real failure ("must be a paragraph")
+        // instead of pushing the user through alignment/leader/relativeTo
+        // diagnostics that wouldn't matter at the right path.
+        if (parent is not Paragraph para)
+            throw new ArgumentException("ptab parent must be a paragraph (got " + parent.GetType().Name + ").");
+
         if (!properties.TryGetValue("alignment", out var alignment) || string.IsNullOrWhiteSpace(alignment))
             throw new ArgumentException("ptab requires 'alignment' property (left, center, or right).");
 
         var ptab = new PositionalTab { Alignment = ParsePtabAlignment(alignment) };
-        if (properties.TryGetValue("relativeTo", out var relTo)
-            || properties.TryGetValue("relativeto", out relTo))
+        // CONSISTENCY(empty-prop-as-default): three optional ptab props use
+        // matching IsNullOrWhiteSpace guards so empty-string is uniformly
+        // treated as "unset / use default" — previously relativeTo passed
+        // "" straight to ParsePtabRelativeTo, raising "Invalid relativeTo
+        // ''" while leader silently defaulted, an asymmetry that bit
+        // scripted callers building param dicts.
+        if ((properties.TryGetValue("relativeTo", out var relTo)
+             || properties.TryGetValue("relativeto", out relTo))
+            && !string.IsNullOrWhiteSpace(relTo))
             ptab.RelativeTo = ParsePtabRelativeTo(relTo);
         else
             ptab.RelativeTo = AbsolutePositionTabPositioningBaseValues.Margin;
@@ -824,19 +838,14 @@ public partial class WordHandler
             ptab.Leader = AbsolutePositionTabLeaderCharValues.None;
 
         var ptabRun = new Run(ptab);
-
-        if (parent is Paragraph para)
-        {
-            InsertIntoParagraph(para, ptabRun, index);
-            var runIdx = para.Elements<Run>().TakeWhile(r => r != ptabRun).Count() + 1;
-            // CONSISTENCY(para-path-canonical): when parent is itself a
-            // paragraph, parentPath already points at it — appending another
-            // /p[N] would yield an illegal /p[1]/p[1]/r[N] path. Replace the
-            // trailing /p[...] segment with paraId-form so the returned
-            // path round-trips through Get unchanged.
-            var canonicalParaPath = ReplaceTrailingParaSegment(parentPath, para);
-            return $"{canonicalParaPath}/r[{runIdx}]";
-        }
-        throw new ArgumentException("ptab parent must be a paragraph (got " + parent.GetType().Name + ").");
+        InsertIntoParagraph(para, ptabRun, index);
+        var runIdx = para.Elements<Run>().TakeWhile(r => r != ptabRun).Count() + 1;
+        // CONSISTENCY(para-path-canonical): when parent is itself a
+        // paragraph, parentPath already points at it — appending another
+        // /p[N] would yield an illegal /p[1]/p[1]/r[N] path. Replace the
+        // trailing /p[...] segment with paraId-form so the returned
+        // path round-trips through Get unchanged.
+        var canonicalParaPath = ReplaceTrailingParaSegment(parentPath, para);
+        return $"{canonicalParaPath}/r[{runIdx}]";
     }
 }
