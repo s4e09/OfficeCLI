@@ -458,8 +458,38 @@ public class ResidentServer : IDisposable
 
     private async Task HandleClientAsync(NamedPipeServerStream server, CancellationToken token)
     {
-        var requestLine = await ReadLineFromPipeAsync(server, token);
-        if (requestLine == null) return;
+        string? requestLine;
+        try
+        {
+            requestLine = await ReadLineFromPipeAsync(server, token);
+        }
+        catch (Exception ex)
+        {
+            // BUG-R41-F1 (exception path): binary input with a UTF-16 BOM (0xFF 0xFE)
+            // causes StreamReader on macOS to switch to UTF-16 mode and then throw
+            // DecoderFallbackException or IOException when the byte stream is malformed
+            // for that encoding. Previously the exception propagated to
+            // HandleClientWithLockAsync's catch block which only logged to stderr —
+            // the client received 0 bytes (unexpected EOF).
+            // Now we surface a clean error JSON so the client always gets a response.
+            try
+            {
+                var errResp = MakeResponse(1, "", $"Error: Request read failed ({ex.GetType().Name}: binary or encoding mismatch)");
+                await WriteLineToPipeAsync(server, errResp, token);
+            }
+            catch { /* best-effort: if we can't write error, just close cleanly */ }
+            return;
+        }
+
+        // BUG-R41-F1 (null path): ReadLineAsync returns null when the client closes
+        // the connection before sending a newline (e.g. sends 0xFF 0xFE without a
+        // valid UTF-16 newline). Send an error response instead of silent close.
+        if (requestLine == null)
+        {
+            var errorResponse = MakeResponse(1, "", "Error: Empty or unreadable request (possible binary data or encoding mismatch)");
+            try { await WriteLineToPipeAsync(server, errorResponse, token); } catch { }
+            return;
+        }
 
         var response = ProcessRequest(requestLine);
         await WriteLineToPipeAsync(server, response, token);
@@ -1302,7 +1332,16 @@ public class ResidentServer : IDisposable
     {
         if (!OperatingSystem.IsWindows())
         {
-            using var reader = new StreamReader(pipe, Encoding.UTF8, leaveOpen: true);
+            // BUG-R41-F1: disable BOM detection so binary garbage with a UTF-16 BOM
+            // (0xFF 0xFE) doesn't cause the StreamReader to switch to UTF-16 mode and
+            // then get stuck or throw when the byte stream doesn't conform to UTF-16.
+            // Without detectEncodingFromByteOrderMarks=false, 0xFF 0xFE + partial data
+            // causes ReadLineAsync to return null (EOF) or throw, and our error-response
+            // write then fails because the client has already disconnected — producing a
+            // silent 0-byte response. With UTF-8 forced, 0xFF 0xFE is treated as
+            // malformed UTF-8 (replaced by the substitution char) and returned as a
+            // garbage string, which then fails JSON parsing with a proper error response.
+            using var reader = new StreamReader(pipe, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, leaveOpen: true);
             return await reader.ReadLineAsync(token);
         }
         var buffer = new byte[1];
