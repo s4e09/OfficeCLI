@@ -81,6 +81,28 @@ public partial class WordHandler
         var body = _doc.MainDocumentPart?.Document?.Body
             ?? throw new InvalidOperationException("Document body not found");
 
+        // BUG-FIX(B2): bookmarks under a table cell are inline content. The cell
+        // schema only accepts block-level children (p/tbl/sdt), so redirect to
+        // the cell's first paragraph (creating one if the cell is empty) and
+        // append the bookmark path segment to the parent path so the returned
+        // path is round-trippable via Get.
+        if (parent is TableCell tc)
+        {
+            var firstPara = tc.Elements<Paragraph>().FirstOrDefault();
+            if (firstPara == null)
+            {
+                firstPara = new Paragraph();
+                AssignParaId(firstPara);
+                tc.AppendChild(firstPara);
+            }
+            var paraIdx = tc.Elements<Paragraph>().ToList().IndexOf(firstPara) + 1;
+            parent = firstPara;
+            parentPath = $"{parentPath}/{BuildParaPathSegment(firstPara, paraIdx)}";
+            // Drop --index — it referred to a position inside the cell, not
+            // inside the paragraph; preserving it would silently mis-anchor.
+            index = null;
+        }
+
         var bkName = properties.GetValueOrDefault("name", "");
         if (string.IsNullOrEmpty(bkName))
             throw new ArgumentException("'name' property is required for bookmark");

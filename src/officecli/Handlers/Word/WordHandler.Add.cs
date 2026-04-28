@@ -341,6 +341,12 @@ public partial class WordHandler
                 case "object":
                 case "embed":
                     break;
+                // BUG-FIX(B2): bookmark is an inline-level construct, but
+                // AddBookmark redirects into the cell's first paragraph
+                // (auto-creating one if needed) so the resulting XML stays
+                // schema-valid (cell only accepts block-level children).
+                case "bookmark":
+                    break;
                 case "cell":
                 case "tc":
                     throw new ArgumentException(
