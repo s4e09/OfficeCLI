@@ -236,6 +236,32 @@ internal static partial class ChartHelper
                     }
                     break;
 
+                case "majortickmark":
+                case "minortickmark":
+                case "majortick":
+                case "minortick":
+                {
+                    // CONSISTENCY(chart/axis-role-write): legacy SetChartProperties
+                    // applies tickmark to every ValueAxis and CategoryAxis. Under a
+                    // role-scoped write we must only touch the resolved axis.
+                    if (targetAxis is OpenXmlCompositeElement axTick)
+                    {
+                        var tickVal = ParseTickMark(value);
+                        if (lower == "majortickmark" || lower == "majortick")
+                        {
+                            axTick.RemoveAllChildren<C.MajorTickMark>();
+                            InsertAxisChildInOrder(axTick, new C.MajorTickMark { Val = tickVal });
+                        }
+                        else
+                        {
+                            axTick.RemoveAllChildren<C.MinorTickMark>();
+                            InsertAxisChildInOrder(axTick, new C.MinorTickMark { Val = tickVal });
+                        }
+                    }
+                    directlyHandled.Add(key);
+                    break;
+                }
+
                 case "majorgridlines":
                 case "minorgridlines":
                 {
