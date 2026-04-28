@@ -118,6 +118,19 @@ static partial class CommandBuilder
                 };
             }
 
+            // BUG(add-from-prop-silently-ignored): --from copies an existing
+            // element verbatim and does not apply --prop overrides. Reject the
+            // combination explicitly so users don't think their --prop took
+            // effect. Workaround: copy first, then `set` the result path.
+            if (!string.IsNullOrEmpty(from) && props != null && props.Length > 0)
+            {
+                throw new OfficeCli.Core.CliException("--prop cannot be combined with --from; use `set` on the copied path to modify properties.")
+                {
+                    Code = "invalid_argument",
+                    Suggestion = "Run `add --from` first, then `set <new-path> --prop k=v` on the result."
+                };
+            }
+
             if (!string.IsNullOrEmpty(from))
             {
                 // Copy from existing element
