@@ -303,6 +303,12 @@ public partial class PowerPointHandler
                             cellNode.Format["align"] = align;
                         }
 
+                        // Cell paragraph direction (mirrors shape/textbox readback).
+                        // Only emit when explicitly set on the first paragraph; ltr
+                        // is the schema default so absence == ltr.
+                        if (cellFirstPara?.ParagraphProperties?.RightToLeft?.HasValue == true)
+                            cellNode.Format["direction"] = cellFirstPara.ParagraphProperties.RightToLeft.Value ? "rtl" : "ltr";
+
                         rowNode.Children.Add(cellNode);
                     }
                 }

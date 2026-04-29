@@ -1393,6 +1393,22 @@ public partial class PowerPointHandler
                     }
                     break;
                 }
+                case "direction" or "dir" or "rtl":
+                {
+                    // Mirror the shape-level direction handler: cascade
+                    // <a:pPr rtl="1"/> to every paragraph in the cell.
+                    // bodyPr/rtlCol is not relevant for table cells (each
+                    // cell has its own txBody but no column-flow attribute).
+                    bool rtl = key.ToLowerInvariant() == "rtl"
+                        ? IsTruthy(value)
+                        : ParsePptDirectionRtl(value);
+                    foreach (var para in cell.TextBody?.Elements<Drawing.Paragraph>() ?? Enumerable.Empty<Drawing.Paragraph>())
+                    {
+                        var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
+                        pProps.RightToLeft = rtl;
+                    }
+                    break;
+                }
                 case "valign":
                 {
                     var tcPrV = cell.TableCellProperties ?? (cell.TableCellProperties = new Drawing.TableCellProperties());

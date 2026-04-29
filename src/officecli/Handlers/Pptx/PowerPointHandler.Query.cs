@@ -454,6 +454,11 @@ public partial class PowerPointHandler
                 cellNode.Format["align"] = align;
             }
 
+            // Direction from first paragraph (mirrors shape/textbox readback).
+            // ltr is the schema default — only emit when explicitly set.
+            if (cellFirstPara?.ParagraphProperties?.RightToLeft?.HasValue == true)
+                cellNode.Format["direction"] = cellFirstPara.ParagraphProperties.RightToLeft.Value ? "rtl" : "ltr";
+
             // Font info from first run
             var firstRun = cell.Descendants<Drawing.Run>().FirstOrDefault();
             if (firstRun?.RunProperties != null)
