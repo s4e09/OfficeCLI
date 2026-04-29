@@ -1807,6 +1807,16 @@ public partial class WordHandler
                     // Remove bottom spacing when reflection follows immediately
                     if (hasReflect)
                         hStyle = string.IsNullOrEmpty(hStyle) ? "margin-bottom:0" : $"{hStyle};margin-bottom:0";
+                    // Browser default `<hN>{font-weight:bold}` forces every heading
+                    // bold, but Word styles like `Title` deliberately render thin —
+                    // their pStyle chain has no <w:b/> and inherits from Normal
+                    // which also isn't bold. Emit `font-weight:normal` whenever
+                    // the resolved chain doesn't EXPLICITLY say bold (true).
+                    // Heading 1 etc. carry <w:b/> in their style → keep h1's
+                    // browser-default bold.
+                    var pStyleId = para.ParagraphProperties?.ParagraphStyleId?.Val?.Value;
+                    if (ResolveStyleBold(pStyleId) != true)
+                        hStyle = string.IsNullOrEmpty(hStyle) ? "font-weight:normal" : $"{hStyle};font-weight:normal";
                     if (!string.IsNullOrEmpty(hStyle))
                         sb.Append($" style=\"{hStyle}\"");
                     sb.Append(">");

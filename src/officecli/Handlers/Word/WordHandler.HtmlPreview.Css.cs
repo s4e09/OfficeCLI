@@ -16,6 +16,55 @@ namespace OfficeCli.Handlers;
 public partial class WordHandler
 {
     private Dictionary<string, string>? _themeColors;
+    private Dictionary<string, string>? _themeFonts;
+
+    // OOXML theme font axes: major{Ascii|HAnsi|EastAsia|Bidi} +
+    // minor{Ascii|HAnsi|EastAsia|Bidi}. The 8 keys map a w:asciiTheme /
+    // w:hAnsiTheme / w:eastAsiaTheme / w:cstheme attribute value (after
+    // normalization to one of these enum strings) to the resolved typeface
+    // declared in theme1.xml's <a:fontScheme>. asciiTheme and hAnsiTheme
+    // both point at the latin face — Word treats them as one slot.
+    // Modeled after LibreOffice ThemeHandler::resolveMajorMinorTypeFace.
+    private Dictionary<string, string> GetThemeFonts()
+    {
+        if (_themeFonts != null) return _themeFonts;
+        _themeFonts = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        DocumentFormat.OpenXml.Drawing.FontScheme? fs = null;
+        try { fs = _doc.MainDocumentPart?.ThemePart?.Theme?.ThemeElements?.FontScheme; }
+        catch (System.Xml.XmlException) { return _themeFonts; }
+        if (fs == null) return _themeFonts;
+
+        void Put(string key, string? typeface)
+        {
+            if (!string.IsNullOrEmpty(typeface)) _themeFonts[key] = typeface;
+        }
+        if (fs.MajorFont is { } maj)
+        {
+            Put("majorAscii", maj.LatinFont?.Typeface?.Value);
+            Put("majorHAnsi", maj.LatinFont?.Typeface?.Value);
+            Put("majorEastAsia", maj.EastAsianFont?.Typeface?.Value);
+            Put("majorBidi", maj.ComplexScriptFont?.Typeface?.Value);
+        }
+        if (fs.MinorFont is { } min)
+        {
+            Put("minorAscii", min.LatinFont?.Typeface?.Value);
+            Put("minorHAnsi", min.LatinFont?.Typeface?.Value);
+            Put("minorEastAsia", min.EastAsianFont?.Typeface?.Value);
+            Put("minorBidi", min.ComplexScriptFont?.Typeface?.Value);
+        }
+        return _themeFonts;
+    }
+
+    // OOXML theme attribute values are an enum of {majorAscii, majorHAnsi,
+    // majorEastAsia, majorBidi, minorAscii, minorHAnsi, minorEastAsia,
+    // minorBidi}. Returns null when the theme part is missing or the
+    // requested axis isn't declared.
+    private string? ResolveThemeFont(string? themeAttr)
+    {
+        if (string.IsNullOrEmpty(themeAttr)) return null;
+        return GetThemeFonts().TryGetValue(themeAttr, out var face) ? face : null;
+    }
 
     // CONSISTENCY(office-default-palette): when the doc has no <a:theme>
     // part, fall back to the canonical Office palette so
@@ -477,8 +526,12 @@ public partial class WordHandler
             if (bgFromStyle != null) parts.Add($"background-color:{bgFromStyle}");
         }
 
-        // Borders
-        var pBdr = pProps.ParagraphBorders;
+        // Borders — pBdr on the paragraph itself wins; otherwise fall through
+        // the pStyle chain (e.g. the `Title` style ships a bottom border that
+        // the para never re-declares, so without this fallback the blue rule
+        // under a title is silently dropped).
+        var pBdr = pProps.ParagraphBorders
+            ?? ResolveStyleParagraphBorders(pProps.ParagraphStyleId?.Val?.Value);
         if (pBdr != null)
         {
             RenderBorderCss(parts, pBdr.TopBorder, "border-top");
@@ -792,15 +845,23 @@ public partial class WordHandler
         // runs continue to read rFonts/@w:eastAsia.
         var isRtlRun = rProps.RightToLeftText != null
             && (rProps.RightToLeftText.Val == null || rProps.RightToLeftText.Val.Value);
+        // Plain rFonts attributes win when present; otherwise resolve the
+        // matching *Theme attribute against theme1.xml. This is what
+        // styles like Title (rFonts asciiTheme="majorHAnsi") rely on —
+        // without it the run silently falls back to the body default.
         var font = isRtlRun
-            ? (fonts?.ComplexScript?.Value ?? fonts?.Ascii?.Value ?? fonts?.HighAnsi?.Value)
-            : (fonts?.EastAsia?.Value ?? fonts?.Ascii?.Value ?? fonts?.HighAnsi?.Value);
-        // Skip theme font references (e.g. "+mn-lt", "+mj-ea") — those are shorthand
-        // markers, not real font names; the theme-resolved value would already be in
-        // AsciiTheme etc. which we don't read here.
-        // Also skip when the resolved font matches the document default — body-level
-        // CSS already declares font-family there, so duplicating it on every run
-        // span only bloats the HTML and obscures real per-run overrides.
+            ? (fonts?.ComplexScript?.Value ?? ResolveThemeFont(fonts?.ComplexScriptTheme?.InnerText)
+               ?? fonts?.Ascii?.Value ?? ResolveThemeFont(fonts?.AsciiTheme?.InnerText)
+               ?? fonts?.HighAnsi?.Value ?? ResolveThemeFont(fonts?.HighAnsiTheme?.InnerText))
+            : (fonts?.EastAsia?.Value ?? ResolveThemeFont(fonts?.EastAsiaTheme?.InnerText)
+               ?? fonts?.Ascii?.Value ?? ResolveThemeFont(fonts?.AsciiTheme?.InnerText)
+               ?? fonts?.HighAnsi?.Value ?? ResolveThemeFont(fonts?.HighAnsiTheme?.InnerText));
+        // Skip the legacy "+mn-lt" / "+mj-ea" shorthand syntax (rare, predates
+        // the typed *Theme attributes — and the typed path above already
+        // handled the modern equivalent). Also skip when the resolved font
+        // matches the document default — body-level CSS already declares
+        // font-family there, so duplicating it on every run span only bloats
+        // the HTML and obscures real per-run overrides.
         if (font != null
             && !font.StartsWith("+", StringComparison.Ordinal)
             && !string.Equals(font, ReadDocDefaults().Font, StringComparison.Ordinal))
@@ -1571,6 +1632,47 @@ public partial class WordHandler
             if (cv != null && cv != "auto" && IsHexColor(cv)) return $"#{cv}";
             var tc = style.StyleRunProperties?.Color?.ThemeColor?.InnerText;
             if (tc != null && GetThemeColors().TryGetValue(tc, out var tcHex)) return $"#{tcHex}";
+            current = style.BasedOn?.Val?.Value;
+        }
+        return null;
+    }
+
+    private ParagraphBorders? ResolveStyleParagraphBorders(string? styleId)
+    {
+        if (string.IsNullOrEmpty(styleId)) return null;
+        var visited = new HashSet<string>();
+        var current = styleId;
+        while (current != null && visited.Add(current))
+        {
+            var style = _doc.MainDocumentPart?.StyleDefinitionsPart?.Styles
+                ?.Elements<Style>().FirstOrDefault(s => s.StyleId?.Value == current);
+            if (style == null) break;
+            // GetFirstChild — Open XML SDK doesn't always surface less-common
+            // pPr children as typed properties on StyleParagraphProperties.
+            var pBdr = style.StyleParagraphProperties?.GetFirstChild<ParagraphBorders>();
+            if (pBdr != null) return pBdr;
+            current = style.BasedOn?.Val?.Value;
+        }
+        return null;
+    }
+
+    // Resolved bold state for a pStyle chain: true → chain explicitly bold,
+    // false → chain explicitly NOT bold, null → unspecified. Distinguishing
+    // the three matters for headings: the Word `Title` style ships no <w:b/>
+    // (renders thin), but the browser default `<h1>{font-weight:bold}` would
+    // force it bold unless the renderer explicitly emits `font-weight:normal`.
+    private bool? ResolveStyleBold(string? styleId)
+    {
+        if (string.IsNullOrEmpty(styleId)) return null;
+        var visited = new HashSet<string>();
+        var current = styleId;
+        while (current != null && visited.Add(current))
+        {
+            var style = _doc.MainDocumentPart?.StyleDefinitionsPart?.Styles
+                ?.Elements<Style>().FirstOrDefault(s => s.StyleId?.Value == current);
+            if (style == null) break;
+            var b = style.StyleRunProperties?.Bold;
+            if (b != null) return b.Val == null || b.Val.Value;
             current = style.BasedOn?.Val?.Value;
         }
         return null;
