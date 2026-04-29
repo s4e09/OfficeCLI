@@ -2234,6 +2234,69 @@ public partial class WordHandler
         return pm;
     }
 
+    // ==================== sectPr schema-order insertion ====================
+
+    /// <summary>
+    /// Canonical CT_SectPr child schema order (subset, in document order):
+    ///   headerReference*, footerReference*, footnotePr, endnotePr, type, pgSz,
+    ///   pgMar, paperSrc, pgBorders, lnNumType, pgNumType, cols, formProt,
+    ///   vAlign, noEndnote, titlePg, textDirection, bidi, rtlGutter, docGrid,
+    ///   printerSettings, sectPrChange.
+    /// Used to map a child element to its schema-order rank for ordered insertion.
+    /// </summary>
+    private static int SectPrChildOrder(OpenXmlElement el) => el switch
+    {
+        HeaderReference => 0,
+        FooterReference => 1,
+        FootnoteProperties => 2,
+        EndnoteProperties => 3,
+        SectionType => 4,
+        PageSize => 5,
+        PageMargin => 6,
+        PaperSource => 7,
+        PageBorders => 8,
+        LineNumberType => 9,
+        PageNumberType => 10,
+        Columns => 11,
+        FormProtection => 12,
+        VerticalTextAlignmentOnPage => 13,
+        NoEndnote => 14,
+        TitlePage => 15,
+        TextDirection => 16,
+        BiDi => 17,
+        // (rtlGutter would be rank 18 here, but the SDK type isn't surfaced;
+        // unknown elements fall through to the default and append at the end.)
+        DocGrid => 19,
+        PrinterSettingsReference => 20,
+        SectionPropertiesChange => 21,
+        _ => 99,
+    };
+
+    /// <summary>
+    /// Insert <paramref name="newChild"/> into <paramref name="sectPr"/> at the
+    /// position dictated by CT_SectPr schema order. Required for elements like
+    /// &lt;w:bidi/&gt; which Word's schema validator rejects when appended after
+    /// &lt;w:docGrid/&gt;. Mirrors the InsertRunPropInSchemaOrder pattern used
+    /// for run properties.
+    /// </summary>
+    private static void InsertSectPrChildInOrder(SectionProperties sectPr, OpenXmlElement newChild)
+    {
+        var newRank = SectPrChildOrder(newChild);
+        OpenXmlElement? successor = null;
+        foreach (var child in sectPr.ChildElements)
+        {
+            if (SectPrChildOrder(child) > newRank)
+            {
+                successor = child;
+                break;
+            }
+        }
+        if (successor != null)
+            successor.InsertBeforeSelf(newChild);
+        else
+            sectPr.AppendChild(newChild);
+    }
+
     // ==================== w14 Text Effects ====================
 
     private const string W14Ns = "http://schemas.microsoft.com/office/word/2010/wordml";

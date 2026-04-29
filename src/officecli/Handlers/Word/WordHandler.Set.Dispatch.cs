@@ -771,7 +771,7 @@ public partial class WordHandler
                     // Required for visually-correct Arabic / Hebrew documents
                     // alongside paragraph-level direction.
                     sectPr.RemoveAllChildren<BiDi>();
-                    if (ParseDirectionRtl(value)) sectPr.AppendChild(new BiDi());
+                    if (ParseDirectionRtl(value)) InsertSectPrChildInOrder(sectPr, new BiDi());
                     break;
                 }
                 case "titlepage" or "titlepg":

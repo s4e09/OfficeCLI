@@ -87,7 +87,7 @@ public partial class WordHandler
                 // page direction for Arabic / Hebrew layouts.
                 var sectPr = EnsureSectionProperties();
                 sectPr.RemoveAllChildren<BiDi>();
-                if (ParseDirectionRtl(value)) sectPr.AppendChild(new BiDi());
+                if (ParseDirectionRtl(value)) InsertSectPrChildInOrder(sectPr, new BiDi());
                 return true;
             }
             case "pagestart" or "pagenumberstart" or "pagenumstart":
