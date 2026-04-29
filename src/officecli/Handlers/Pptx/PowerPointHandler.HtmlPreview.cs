@@ -204,6 +204,7 @@ public partial class PowerPointHandler
 
             sb.AppendLine("    </div>");
             sb.AppendLine("  </div>");
+            RenderSpeakerNotes(sb, slidePart);
             sb.AppendLine("</div>");
         }
 
@@ -309,6 +310,7 @@ public partial class PowerPointHandler
 
         sb.AppendLine("    </div>");
         sb.AppendLine("  </div>");
+        RenderSpeakerNotes(sb, slidePart);
         sb.AppendLine("</div>");
 
         return sb.ToString();
@@ -320,6 +322,65 @@ public partial class PowerPointHandler
     public int GetSlideCount()
     {
         return GetSlideParts().Count();
+    }
+
+    // ==================== Speaker Notes ====================
+
+    /// <summary>
+    /// Render the slide's speaker notes (if any) as a sibling block under the
+    /// slide-wrapper. R8-bt-3: prior to this, ViewAsHtml silently dropped
+    /// notes — Arabic / Hebrew authors reviewing notes saw nothing.
+    /// Direction is propagated from the notes body shape's first paragraph
+    /// rtl flag so RTL notes render right-aligned.
+    /// </summary>
+    private static void RenderSpeakerNotes(StringBuilder sb, SlidePart slidePart)
+    {
+        var notesPart = slidePart.NotesSlidePart;
+        var spTree = notesPart?.NotesSlide?.CommonSlideData?.ShapeTree;
+        if (spTree == null) return;
+
+        Shape? notesShape = null;
+        foreach (var shape in spTree.Elements<Shape>())
+        {
+            var ph = shape.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties
+                ?.GetFirstChild<PlaceholderShape>();
+            if (ph?.Index?.Value == 1)
+            {
+                notesShape = shape;
+                break;
+            }
+        }
+        if (notesShape == null) return;
+
+        var paragraphs = notesShape.TextBody?.Elements<Drawing.Paragraph>().ToList()
+            ?? new List<Drawing.Paragraph>();
+        if (paragraphs.Count == 0) return;
+
+        // Reduce to plain-text lines; bail if every paragraph is empty.
+        var lines = paragraphs
+            .Select(p => string.Concat(p.Elements<Drawing.Run>().Select(r => r.Text?.Text ?? "")))
+            .ToList();
+        if (lines.All(string.IsNullOrEmpty)) return;
+
+        // Inherit direction from the first paragraph's rtl flag (notes-level
+        // direction is uniform — ApplyNotesDirection stamps every paragraph).
+        bool rtl = paragraphs.FirstOrDefault()?.ParagraphProperties?.RightToLeft?.Value == true;
+        var dirAttr = rtl ? " dir=\"rtl\"" : "";
+
+        sb.AppendLine($"  <div class=\"slide-notes\"{dirAttr}>");
+        sb.AppendLine("    <div class=\"slide-notes-label\">Notes</div>");
+        sb.AppendLine("    <div class=\"slide-notes-body\">");
+        foreach (var line in lines)
+        {
+            // System.Net.WebUtility.HtmlEncode is the canonical escape used
+            // elsewhere in the preview — empty paragraphs render as <br/>.
+            if (string.IsNullOrEmpty(line))
+                sb.AppendLine("      <br/>");
+            else
+                sb.AppendLine($"      <div>{System.Net.WebUtility.HtmlEncode(line)}</div>");
+        }
+        sb.AppendLine("    </div>");
+        sb.AppendLine("  </div>");
     }
 
     // ==================== CSS ====================
