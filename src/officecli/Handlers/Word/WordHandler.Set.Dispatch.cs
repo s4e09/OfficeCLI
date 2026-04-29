@@ -1134,6 +1134,19 @@ public partial class WordHandler
             // detached rPr first; only attach a real StyleRunProperties to
             // the style if the probe accepts the key. Pre-creating rPr
             // unconditionally pollutes pure-pPr styles with a stray <w:rPr/>.
+            // direction lives on style pPr (<w:bidi/>) — must be routed there
+            // BEFORE the rPr probe, because ApplyRunFormatting also accepts
+            // direction (writes <w:rtl/> on rPr) and would steal the key.
+            // Mirror SetParagraphProperties' direction handler (Set.cs).
+            var keyLower = key.ToLowerInvariant();
+            if (keyLower is "direction" or "dir" or "bidi")
+            {
+                var dPPr = style.StyleParagraphProperties ?? EnsureStyleParagraphProperties(style);
+                if (ParseDirectionRtl(value)) dPPr.BiDi = new BiDi();
+                else dPPr.RemoveAllChildren<BiDi>();
+                continue;
+            }
+
             var rPrProbeFmt = new StyleRunProperties();
             if (ApplyRunFormatting(rPrProbeFmt, key, value))
             {

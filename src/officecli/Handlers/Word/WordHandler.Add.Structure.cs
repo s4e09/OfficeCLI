@@ -444,6 +444,18 @@ public partial class WordHandler
             sp.After = SpacingConverter.ParseWordSpacing(sSAfter).ToString();
             hasPPr = true;
         }
+        // Reading direction: <w:bidi/> on style pPr (mirrors AddParagraph).
+        // Without this, `add /styles --prop direction=rtl` either fell through
+        // to the dotted-key probe (which writes <w:rtl/> on rPr but skips
+        // pPr) or surfaced as UNSUPPORTED.
+        if (properties.TryGetValue("direction", out var sDirRaw)
+            || properties.TryGetValue("dir", out sDirRaw)
+            || properties.TryGetValue("bidi", out sDirRaw))
+        {
+            var sRtl = ParseDirectionRtl(sDirRaw);
+            if (sRtl) stylePPr.BiDi = new BiDi();
+            hasPPr = true;
+        }
         if (hasPPr) newStyle.AppendChild(stylePPr);
 
         // Style run properties
@@ -554,6 +566,7 @@ public partial class WordHandler
             "type", "basedon", "basedOn", "next",
             "alignment", "align", "spacebefore", "spaceBefore",
             "spaceafter", "spaceAfter", "font", "size", "bold", "italic", "color",
+            "direction", "dir", "bidi",
             "font.ascii", "font.hAnsi", "font.eastAsia", "font.cs",
             "numId", "numid", "ilvl", "numLevel", "numlevel",
         };

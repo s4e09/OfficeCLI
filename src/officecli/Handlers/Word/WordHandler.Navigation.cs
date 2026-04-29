@@ -2172,6 +2172,10 @@ public partial class WordHandler
         "jc", "ind", "outlineLvl", "widowControl",
         "keepNext", "keepLines", "pageBreakBefore", "contextualSpacing",
         "pBdr", "numPr", "tabs", "pStyle",
+        // bidi maps to canonical `direction` in style/paragraph readback;
+        // skip the long-tail fallback to avoid emitting both `direction: rtl`
+        // and `bidi: true` for the same <w:bidi/> child element.
+        "bidi",
         // Container elements covered by the curated paragraph-mark / run-property
         // reader (see paraRp block ~line 1004). Without this, an empty <w:rPr/>
         // left behind by Set bold=false (etc.) would surface as `rPr: true` via

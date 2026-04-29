@@ -299,6 +299,16 @@
       "readback": "true/false",
       "enforcement": "report"
     },
+    "direction": {
+      "type": "enum",
+      "values": ["rtl", "ltr"],
+      "aliases": ["dir"],
+      "description": "Paragraph reading direction (Arabic / Hebrew). 'rtl' writes <w:bidi/> on the style pPr; equivalent to bidi=true in canonical form.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop direction=rtl"],
+      "readback": "rtl | ltr",
+      "enforcement": "report"
+    },
     "overflowPunct": {
       "type": "bool",
       "description": "allow punctuation to hang outside the text margin (CJK). Applied to the style's pPr.",

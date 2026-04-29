@@ -620,6 +620,9 @@ public partial class WordHandler
             if (pPr != null)
             {
                 if (pPr.Justification?.Val?.Value != null) styleNode.Format["alignment"] = pPr.Justification.Val.InnerText;
+                // direction: <w:bidi/> on style pPr maps to canonical
+                // direction=rtl. Mirrors paragraph readback canonical key.
+                if (pPr.BiDi != null) styleNode.Format["direction"] = "rtl";
                 if (pPr.SpacingBetweenLines != null)
                 {
                     var sp = pPr.SpacingBetweenLines;
