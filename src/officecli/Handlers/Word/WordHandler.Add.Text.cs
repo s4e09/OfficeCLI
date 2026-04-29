@@ -458,6 +458,20 @@ public partial class WordHandler
                 case "font.cs":
                 case "font.complexscript":
                 case "font.complex":
+                // CS run flags (<w:bCs/> / <w:iCs/> / <w:szCs/>) — the
+                // hoisted block at line 57-74 writes them to the paragraph
+                // mark rPr; the dotted-fallback below would re-flag them
+                // here because TypedAttributeFallback can't resolve the
+                // dotted-name into the OpenXml element type.
+                case "bold.cs":
+                case "italic.cs":
+                case "size.cs":
+                case "font.bold.cs":
+                case "font.italic.cs":
+                case "font.size.cs":
+                case "boldcs":
+                case "italiccs":
+                case "sizecs":
                     continue;
             }
             if (Core.TypedAttributeFallback.TrySet(pProps, key, value)) continue;
@@ -822,6 +836,19 @@ public partial class WordHandler
                 case "font.cs":
                 case "font.complexscript":
                 case "font.complex":
+                // CS run flags (<w:bCs/> / <w:iCs/> / <w:szCs/>) — the
+                // run-add block above writes them through ApplyRunFormatting;
+                // dotted-fallback can't resolve the dotted name into the
+                // OpenXml element type.
+                case "bold.cs":
+                case "italic.cs":
+                case "size.cs":
+                case "font.bold.cs":
+                case "font.italic.cs":
+                case "font.size.cs":
+                case "boldcs":
+                case "italiccs":
+                case "sizecs":
                     continue;
             }
             if (Core.TypedAttributeFallback.TrySet(newRProps, key, value)) continue;
