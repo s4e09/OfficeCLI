@@ -96,6 +96,21 @@ static partial class CommandBuilder
                     return 2;
             }
 
+            // Path that does not start with '/' is rejected up front (must run before
+            // TryResident — resident has its own dispatch and would otherwise execute
+            // selector-mode silently). handler.Set treats no-slash paths as CSS selectors
+            // (Query→Set per match), so a typo like "section[1]" would corrupt the doc with
+            // no way for the user to notice. Selector-mode is opt-in via the `query`
+            // subcommand, not via dropping the slash. CONSISTENCY(no-slash-reject):
+            // ResidentServer.ExecuteSet enforces the same rule.
+            if (!string.IsNullOrEmpty(path) && !path.StartsWith("/"))
+            {
+                var err = $"Error: path '{path}' must start with '/'. Did you mean '/{path}'?";
+                if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeError(err));
+                else Console.Error.WriteLine(err);
+                return 1;
+            }
+
             if (TryResident(file.FullName, req =>
             {
                 req.Command = "set";
@@ -110,6 +125,7 @@ static partial class CommandBuilder
             var properties = ParsePropsArray(props);
 
             using var handler = DocumentHandlerFactory.Open(file.FullName, editable: true);
+
             var unsupported = handler.Set(path, properties);
 
             // Scope the unsupported-prop fuzzy-suggestion pool by handler type

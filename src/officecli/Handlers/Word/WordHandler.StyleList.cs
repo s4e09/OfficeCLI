@@ -777,15 +777,29 @@ public partial class WordHandler
 
     /// <summary>
     /// Finds an existing NumberingInstance that uses the same list type (bullet vs ordered),
-    /// scanning the last paragraph in the body to support list continuation.
+    /// scanning the last paragraph in the same container (body / header / footer) as the
+    /// paragraph being styled. Header/footer paragraphs were previously falling through to
+    /// the body scan, which always missed (body has no list paras when adding to a header)
+    /// and a fresh numId was minted per paragraph.
     /// </summary>
-    private int? FindContinuationNumId(bool isBullet)
+    private int? FindContinuationNumId(bool isBullet, Paragraph? targetPara = null, OpenXmlElement? containerHint = null)
     {
-        var body = _doc.MainDocumentPart?.Document?.Body;
-        if (body == null) return null;
+        // Resolution order for the scan container:
+        //   1. explicit hint from caller (Add path passes the still-detached para's
+        //      parent — the para hasn't been appended yet so ancestor walk fails)
+        //   2. ancestor walk on targetPara (Set path or already-inserted paras)
+        //   3. body fallback
+        OpenXmlElement? container = containerHint;
+        if (container == null && targetPara != null)
+        {
+            container = targetPara.Ancestors<Header>().FirstOrDefault()
+                ?? targetPara.Ancestors<Footer>().FirstOrDefault()
+                ?? (OpenXmlElement?)_doc.MainDocumentPart?.Document?.Body;
+        }
+        container ??= _doc.MainDocumentPart?.Document?.Body;
+        if (container == null) return null;
 
-        // Check the last paragraph in the body
-        var lastPara = body.Elements<Paragraph>().LastOrDefault();
+        var lastPara = container.Elements<Paragraph>().LastOrDefault(p => !ReferenceEquals(p, targetPara));
         if (lastPara == null) return null;
 
         var numProps = lastPara.ParagraphProperties?.NumberingProperties;
@@ -800,7 +814,7 @@ public partial class WordHandler
         return null;
     }
 
-    private void ApplyListStyle(Paragraph para, string listStyleValue, int? startValue = null, int? listLevel = null)
+    private void ApplyListStyle(Paragraph para, string listStyleValue, int? startValue = null, int? listLevel = null, OpenXmlElement? containerHint = null)
     {
         // Handle "none" — remove numbering
         if (listStyleValue.ToLowerInvariant() is "none" or "remove" or "clear")
@@ -811,8 +825,11 @@ public partial class WordHandler
 
         var isBullet = listStyleValue.ToLowerInvariant() is "bullet" or "unordered" or "ul";
 
-        // Try to continue from a preceding list of the same type
-        var continuationNumId = FindContinuationNumId(isBullet);
+        // Try to continue from a preceding list of the same type — pass the target
+        // paragraph so the scan walks the right container (body / header / footer).
+        // The Add path supplies containerHint because the para is still detached
+        // when ApplyListStyle runs (insertion happens after).
+        var continuationNumId = FindContinuationNumId(isBullet, para, containerHint);
         if (continuationNumId != null && startValue == null)
         {
             var pProps = para.ParagraphProperties ?? para.PrependChild(new ParagraphProperties());

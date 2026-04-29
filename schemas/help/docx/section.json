@@ -17,7 +17,7 @@
   "properties": {
     "type": {
       "type": "enum",
-      "description": "section break type",
+      "description": "section break type. Only applies to mid-document sections at /section[N]; the body-level path / refers to the final section which has no break type, and Set rejects 'type'/'break' there with an actionable error pointing at /section[N].",
       "values": ["nextPage", "continuous", "evenPage", "oddPage"],
       "aliases": {
         "nextPage": ["next", "nextpage", "newPage", "newpage", "page"],
@@ -98,6 +98,34 @@
       "add": true, "set": true, "get": true,
       "examples": ["--prop columnSpace=1cm"],
       "readback": "unit-qualified cm",
+      "enforcement": "strict"
+    },
+    "titlePage": {
+      "type": "bool",
+      "description": "enable distinct first-page header/footer for the section (writes <w:titlePg/>).",
+      "aliases": ["titlepage", "titlepg"],
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop titlePage=true"],
+      "readback": "true when <w:titlePg/> is present",
+      "enforcement": "strict"
+    },
+    "pageNumFmt": {
+      "type": "enum",
+      "description": "page-number numeric format (writes w:pgNumType/@w:fmt).",
+      "values": ["decimal", "lowerRoman", "upperRoman", "lowerLetter", "upperLetter"],
+      "aliases": ["pagenumfmt", "pagenumberformat", "pagenumberfmt"],
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop pageNumFmt=lowerRoman"],
+      "readback": "innerText of NumberFormatValues",
+      "enforcement": "strict"
+    },
+    "pageStart": {
+      "type": "int",
+      "description": "starting page number for the section (writes w:pgNumType/@w:start). Use 'none'/'off' to clear.",
+      "aliases": ["pagestart", "pagenumberstart", "pagenumstart"],
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop pageStart=1", "--prop pageStart=none"],
+      "readback": "integer start value",
       "enforcement": "strict"
     },
     "lineNumbers": {

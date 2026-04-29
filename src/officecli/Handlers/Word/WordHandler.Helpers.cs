@@ -2484,36 +2484,52 @@ public partial class WordHandler
         var mainPart = _doc.MainDocumentPart;
         if (mainPart?.Document?.Body == null) return result;
 
-        foreach (var inline in mainPart.Document.Body.Descendants<DW.Inline>())
+        // Charts can be inserted in main document body, header parts, or footer parts.
+        // Each part owns its own ImagePart/ChartPart relationships (round23 S host-part
+        // routing), so look up the chart rel against the part the inline belongs to —
+        // not always mainPart. Without this, header/footer charts are dropped from
+        // GetAllWordCharts and AddChart's path emission falls back to /chart[0].
+        var hostScans = new List<(OpenXmlPart Part, OpenXmlElement? Root)>
         {
-            var graphicData = inline.Descendants<A.GraphicData>().FirstOrDefault();
-            if (graphicData == null) continue;
+            (mainPart, mainPart.Document.Body)
+        };
+        foreach (var hp in mainPart.HeaderParts)
+            hostScans.Add((hp, hp.Header));
+        foreach (var fp in mainPart.FooterParts)
+            hostScans.Add((fp, fp.Footer));
 
-            var docProps = inline.Descendants<DW.DocProperties>().FirstOrDefault();
+        foreach (var (hostPart, root) in hostScans)
+        {
+            if (root == null) continue;
+            foreach (var inline in root.Descendants<DW.Inline>())
+            {
+                var graphicData = inline.Descendants<A.GraphicData>().FirstOrDefault();
+                if (graphicData == null) continue;
 
-            if (graphicData.Uri == WordChartUri)
-            {
-                // Standard chart
-                var chartRef = graphicData.Descendants<DocumentFormat.OpenXml.Drawing.Charts.ChartReference>().FirstOrDefault();
-                if (chartRef?.Id?.Value == null) continue;
-                try
+                var docProps = inline.Descendants<DW.DocProperties>().FirstOrDefault();
+
+                if (graphicData.Uri == WordChartUri)
                 {
-                    var chartPart = (ChartPart)mainPart.GetPartById(chartRef.Id.Value);
-                    result.Add(new WordChartInfo { StandardPart = chartPart, DocProperties = docProps, Inline = inline });
+                    var chartRef = graphicData.Descendants<DocumentFormat.OpenXml.Drawing.Charts.ChartReference>().FirstOrDefault();
+                    if (chartRef?.Id?.Value == null) continue;
+                    try
+                    {
+                        var chartPart = (ChartPart)hostPart.GetPartById(chartRef.Id.Value);
+                        result.Add(new WordChartInfo { StandardPart = chartPart, DocProperties = docProps, Inline = inline });
+                    }
+                    catch { /* skip invalid references */ }
                 }
-                catch { /* skip invalid references */ }
-            }
-            else if (graphicData.Uri == WordChartExUri)
-            {
-                // Extended chart (funnel, treemap, etc.)
-                var relId = GetWordExtendedChartRelId(inline);
-                if (relId == null) continue;
-                try
+                else if (graphicData.Uri == WordChartExUri)
                 {
-                    var extPart = (ExtendedChartPart)mainPart.GetPartById(relId);
-                    result.Add(new WordChartInfo { ExtendedPart = extPart, DocProperties = docProps, Inline = inline });
+                    var relId = GetWordExtendedChartRelId(inline);
+                    if (relId == null) continue;
+                    try
+                    {
+                        var extPart = (ExtendedChartPart)hostPart.GetPartById(relId);
+                        result.Add(new WordChartInfo { ExtendedPart = extPart, DocProperties = docProps, Inline = inline });
+                    }
+                    catch { /* skip invalid references */ }
                 }
-                catch { /* skip invalid references */ }
             }
         }
 

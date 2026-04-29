@@ -443,4 +443,25 @@ internal static class ParseHelpers
             width += IsCjkOrFullWidth(ch) ? 1.82 : 1.0;
         return width;
     }
+
+    /// <summary>
+    /// Reject XML 1.0 illegal control characters before they reach the OOXML
+    /// serializer. Without this, the resident process accepts the value into
+    /// the in-memory DOM and only fails at close-time with "save failed —
+    /// data may be lost", losing the user's work. Allowed: \t (0x09), \n
+    /// (0x0A), \r (0x0D). Rejected: 0x00–0x08, 0x0B, 0x0C, 0x0E–0x1F.
+    /// </summary>
+    public static void ValidateXmlText(string? value, string propName)
+    {
+        if (value == null) return;
+        for (int i = 0; i < value.Length; i++)
+        {
+            char c = value[i];
+            if (c == '\t' || c == '\n' || c == '\r') continue;
+            if (c < 0x20)
+                throw new ArgumentException(
+                    $"{propName} contains XML-illegal control character U+{(int)c:X4} at position {i}. " +
+                    "Allowed control chars: \\t, \\n, \\r.");
+        }
+    }
 }

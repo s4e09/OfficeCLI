@@ -103,6 +103,34 @@ public partial class WordHandler
                 if (margins.Left?.Value != null) node.Format["marginLeft"] = FormatTwipsToCm(margins.Left.Value);
                 if (margins.Right?.Value != null) node.Format["marginRight"] = FormatTwipsToCm(margins.Right.Value);
             }
+
+            // CONSISTENCY(root-vs-section-readback): the body-level sectPr surfaced at /
+            // and at /section[N] (for the final section) must yield the same Format keys
+            // so set/get round-trips at either path. Mirror BuildSectionNode in
+            // WordHandler.Query.cs:786-863 — keep encoding identical (restart maps
+            // "newPage"→"restartPage", "newSection"→"restartSection").
+            var pgNumType = sectPr.GetFirstChild<PageNumberType>();
+            if (pgNumType?.Start?.Value != null)
+                node.Format["pageStart"] = pgNumType.Start.Value;
+            if (pgNumType?.Format?.Value != null)
+                node.Format["pageNumFmt"] = pgNumType.Format.InnerText;
+
+            if (sectPr.GetFirstChild<TitlePage>() != null)
+                node.Format["titlePage"] = true;
+
+            var lnNum = sectPr.GetFirstChild<LineNumberType>();
+            if (lnNum != null)
+            {
+                var countBy = lnNum.CountBy?.Value ?? 1;
+                var restartVal = lnNum.Restart?.InnerText ?? "continuous";
+                node.Format["lineNumbers"] = restartVal switch
+                {
+                    "newPage" => "restartPage",
+                    "newSection" => "restartSection",
+                    _ => "continuous"
+                };
+                if (countBy != 1) node.Format["lineNumberCountBy"] = countBy;
+            }
         }
 
         // Document protection
@@ -280,6 +308,15 @@ public partial class WordHandler
     private static List<PathSegment> ParsePath(string path)
     {
         var segments = new List<PathSegment>();
+        // Reject leading double-slash up front — the subsequent Trim('/') would
+        // otherwise eat the second slash and silently resolve "//body" → /body,
+        // "//header[1]" → /header[1], producing inconsistent behavior next to
+        // "//section[1]" which already errors out as Path-not-found via the regex
+        // dispatch. The earlier-dispatch regexes anchor on `^/` so they don't
+        // match `^//…` either; failures fall through here and we now reject.
+        if (path.StartsWith("//"))
+            throw new ArgumentException(
+                $"Malformed path '{path}'. Path must start with exactly one '/'.");
         // Reject trailing slash up front — the subsequent Trim('/') would
         // otherwise silently absorb it and produce a path that looks valid
         // (e.g. "/body/p[1]/" → "body/p[1]") while any callers
@@ -825,14 +862,19 @@ public partial class WordHandler
                 return null;
             }
 
-            // Build path segment: prefer stable ID when available, fallback to positional
+            // Build path segment: prefer stable ID when available, fallback to positional.
+            // Use the resolved element's LocalName (always canonical lowercase for OOXML)
+            // rather than seg.Name (which echoes user capitalization like 'P'), so the
+            // returned path round-trips cleanly and matches Query's canonical form.
+            // Style is exempt — /styles/<id> uses the user-supplied styleId/Name as the key.
+            var canonName = (next is Style) ? seg.Name : next.LocalName;
             if (next is Paragraph navPara && !string.IsNullOrEmpty(navPara.ParagraphId?.Value))
             {
-                parentPath += "/" + seg.Name + $"[@paraId={navPara.ParagraphId.Value}]";
+                parentPath += "/" + canonName + $"[@paraId={navPara.ParagraphId.Value}]";
             }
             else if (next is Comment navComment && navComment.Id?.Value != null)
             {
-                parentPath += "/" + seg.Name + $"[@commentId={navComment.Id.Value}]";
+                parentPath += "/" + canonName + $"[@commentId={navComment.Id.Value}]";
             }
             else if (next is Style navStyle)
             {
@@ -845,17 +887,17 @@ public partial class WordHandler
                 var sdtProps = (next is SdtBlock sb2 ? sb2.SdtProperties : (next as SdtRun)?.SdtProperties);
                 var sdtIdVal = sdtProps?.GetFirstChild<SdtId>()?.Val?.Value;
                 if (sdtIdVal != null)
-                    parentPath += "/" + seg.Name + $"[@sdtId={sdtIdVal}]";
+                    parentPath += "/" + canonName + $"[@sdtId={sdtIdVal}]";
                 else
                 {
                     var posIdx = childList.IndexOf(next) + 1;
-                    parentPath += "/" + seg.Name + $"[{posIdx}]";
+                    parentPath += "/" + canonName + $"[{posIdx}]";
                 }
             }
             else
             {
                 var posIdx = childList.IndexOf(next) + 1;
-                parentPath += "/" + seg.Name + $"[{posIdx}]";
+                parentPath += "/" + canonName + $"[{posIdx}]";
             }
             current = next;
         }
@@ -1459,6 +1501,11 @@ public partial class WordHandler
                 }
                 catch { }
             }
+            // Internal-anchor hyperlink (`add --type hyperlink --prop anchor=Foo`)
+            // sets w:hyperlink/@w:anchor instead of @r:id. Surface it so set/get
+            // round-trips and users can debug why a link points where it does.
+            if (hyperlink.Anchor?.Value != null)
+                node.Format["anchor"] = hyperlink.Anchor.Value;
             // Read run formatting from the first run inside the hyperlink
             var hlRun = hyperlink.Elements<Run>().FirstOrDefault(r => r.GetFirstChild<Text>() != null);
             if (hlRun?.RunProperties != null)

@@ -211,7 +211,7 @@ public partial class WordHandler
                 if (levelVal < 0 || levelVal > 8)
                     throw new ArgumentException($"listLevel must be in range 0..8 (got {levelVal}).");
             }
-            ApplyListStyle(para, listStyle, startVal, levelVal);
+            ApplyListStyle(para, listStyle, startVal, levelVal, containerHint: parent);
             // pProps already appended, skip the append below
             goto paragraphPropsApplied;
         }
@@ -730,6 +730,11 @@ public partial class WordHandler
             run.AppendChild(new Text("") { Space = SpaceProcessingModeValues.Preserve });
             return;
         }
+        // CONSISTENCY(xml-text-validation): mirror Set's text= path — reject XML 1.0
+        // illegal control chars before constructing Text nodes. Without this, the
+        // resident process saves a corrupt DOM and surfaces "save failed — data may
+        // be lost" only on close, costing the user their edits.
+        Core.ParseHelpers.ValidateXmlText(text, "text");
         var s = text.Replace("\r\n", "\n").Replace("\r", "\n");
         int start = 0;
         for (int i = 0; i < s.Length; i++)

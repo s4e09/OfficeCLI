@@ -129,11 +129,15 @@ internal static class SpacingConverter
             return ((uint)Math.Round(num * PointsPerInch * TwipsPerPoint), false);
         }
 
-        // Bare number → backward compat: raw twips with Auto rule
+        // Bare number → multiplier under Auto rule, mirrors the "1.5x" path.
+        // Word stores Auto line spacing in 240ths of a multiplier (1.0 = 240,
+        // 1.5 = 360, 2.0 = 480). Earlier this returned the raw value as twips
+        // (`Math.Round(1.5) = 2 twips`), which Word silently treated as a
+        // single-spaced line because 2 twips is below any visible threshold.
         var bare = ParseNumber(trimmed, "lineSpacing");
         if (bare < 0)
             throw new ArgumentException($"Invalid 'lineSpacing' value '{value}'. Line spacing must be non-negative.");
-        return ((uint)Math.Round(bare), true);
+        return ((uint)Math.Round(bare * WordAutoLineSpacingUnit), true);
     }
 
     // ────────────────────────────────────────────────────────────────

@@ -107,12 +107,66 @@ internal static class TemplateMerger
             }
         }
 
+        // handler.Set("/", find/replace) only walks the body. Header/footer/footnote/
+        // endnote/comment text lives in sibling parts and would otherwise pass through
+        // unchanged — ScanUnresolvedDocx already inspects them, so without this pass
+        // the merge silently leaves {{key}} intact and reports them as unresolved.
+        // CONSISTENCY(merge-aux-parts): keep the part list aligned with
+        // ScanUnresolvedDocx so anything we scan is also actually replaced.
+        ReplacePlaceholdersInAuxDocxParts(filePath, data);
+
         // Scan for unresolved placeholders
         var unresolved = ScanUnresolvedDocx(filePath);
         // Keys that were provided and are not still unresolved were successfully replaced
         var usedKeys = data.Keys.Where(k => !unresolved.Contains(k)).ToList();
 
         return new MergeResult(usedKeys.Count, unresolved, usedKeys);
+    }
+
+    private static void ReplacePlaceholdersInAuxDocxParts(string filePath, Dictionary<string, string> data)
+    {
+        using var doc = DocumentFormat.OpenXml.Packaging.WordprocessingDocument.Open(filePath, true);
+        var mainPart = doc.MainDocumentPart;
+        if (mainPart == null) return;
+
+        IEnumerable<(DocumentFormat.OpenXml.Packaging.OpenXmlPart Part, DocumentFormat.OpenXml.OpenXmlPartRootElement? Root)> auxParts()
+        {
+            foreach (var hp in mainPart.HeaderParts)
+                yield return (hp, hp.Header);
+            foreach (var fp in mainPart.FooterParts)
+                yield return (fp, fp.Footer);
+            if (mainPart.FootnotesPart?.Footnotes != null)
+                yield return (mainPart.FootnotesPart, mainPart.FootnotesPart.Footnotes);
+            if (mainPart.EndnotesPart?.Endnotes != null)
+                yield return (mainPart.EndnotesPart, mainPart.EndnotesPart.Endnotes);
+            if (mainPart.WordprocessingCommentsPart?.Comments != null)
+                yield return (mainPart.WordprocessingCommentsPart, mainPart.WordprocessingCommentsPart.Comments);
+        }
+
+        foreach (var (part, root) in auxParts())
+        {
+            if (root == null) continue;
+            bool changed = false;
+            foreach (var t in root.Descendants<DocumentFormat.OpenXml.Wordprocessing.Text>())
+            {
+                var original = t.Text ?? "";
+                if (original.Length == 0 || !original.Contains("{{")) continue;
+                var replaced = original;
+                foreach (var kvp in data)
+                {
+                    var ph = "{{" + kvp.Key + "}}";
+                    if (replaced.Contains(ph))
+                        replaced = replaced.Replace(ph, kvp.Value);
+                }
+                if (!ReferenceEquals(replaced, original) && replaced != original)
+                {
+                    t.Text = replaced;
+                    t.Space = DocumentFormat.OpenXml.SpaceProcessingModeValues.Preserve;
+                    changed = true;
+                }
+            }
+            if (changed) root.Save();
+        }
     }
 
     private static List<string> ScanUnresolvedDocx(string filePath)

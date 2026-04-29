@@ -33,19 +33,22 @@ public partial class WordHandler
             }
 
             // ==================== Columns ====================
+            // CONSISTENCY(root-vs-section-readback): canonical column keys must match
+            // BuildSectionNode (WordHandler.Query.cs:865-882) so `get /` and
+            // `get /section[N]` round-trip the same key names. Keys: columns,
+            // columnSpace, equalWidth, separator. Separator is emitted only when
+            // true (mirrors BuildSectionNode's truthy filter).
             var cols = sectPr.GetFirstChild<Columns>();
             if (cols != null)
             {
                 if (cols.ColumnCount?.Value != null)
-                    node.Format["columns.count"] = (int)cols.ColumnCount.Value;
-                if (cols.Space?.Value != null && double.TryParse(cols.Space.Value,
-                        System.Globalization.NumberStyles.Any,
-                        System.Globalization.CultureInfo.InvariantCulture, out var spaceVal))
-                    node.Format["columns.space"] = FormatTwipsToCm((uint)Math.Round(spaceVal));
+                    node.Format["columns"] = (int)cols.ColumnCount.Value;
+                if (cols.Space?.Value != null && uint.TryParse(cols.Space.Value, out var colSpaceTwips))
+                    node.Format["columnSpace"] = FormatTwipsToCm(colSpaceTwips);
                 if (cols.EqualWidth?.Value != null)
-                    node.Format["columns.equalWidth"] = cols.EqualWidth.Value;
-                if (cols.Separator?.Value != null)
-                    node.Format["columns.separator"] = cols.Separator.Value;
+                    node.Format["equalWidth"] = cols.EqualWidth.Value;
+                if (cols.Separator?.Value == true)
+                    node.Format["separator"] = true;
             }
 
             // ==================== SectionType ====================

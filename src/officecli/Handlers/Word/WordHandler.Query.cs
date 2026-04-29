@@ -190,7 +190,8 @@ public partial class WordHandler
         // Routed BEFORE ParsePath because the generic predicate validator
         // only accepts positive-integer / last() / [@attr=v] predicates and
         // would reject the documented /formfield[name] form.
-        var ffMatchEarly = System.Text.RegularExpressions.Regex.Match(path, @"^/formfield\[(\w+)\]$");
+        var ffMatchEarly = System.Text.RegularExpressions.Regex.Match(path, @"^/formfield\[(\w+)\]$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (ffMatchEarly.Success)
         {
             var allFormFields = FindFormFields();
@@ -368,7 +369,8 @@ public partial class WordHandler
         }
 
         // Footnote/Endnote paths: /footnote[N], /footnote[@footnoteId=N], /endnote[N], /endnote[@endnoteId=N]
-        var fnMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/footnote\[(?:@footnoteId=)?(\d+)\]$");
+        var fnMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/footnote\[(?:@footnoteId=)?(\d+)\]$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (fnMatch.Success)
         {
             var fnId = int.Parse(fnMatch.Groups[1].Value);
@@ -381,7 +383,8 @@ public partial class WordHandler
             if (fn.Id?.Value != null) fnNode.Format["id"] = fn.Id.Value;
             return fnNode;
         }
-        var enMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/endnote\[(?:@endnoteId=)?(\d+)\]$");
+        var enMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/endnote\[(?:@endnoteId=)?(\d+)\]$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (enMatch.Success)
         {
             var enId = int.Parse(enMatch.Groups[1].Value);
@@ -400,7 +403,8 @@ public partial class WordHandler
         // accepted by Add (WordHandler.Add.cs) and the help text documents
         // both `/toc` and `/tableofcontents` — Get must mirror them.
         var tocMatch = System.Text.RegularExpressions.Regex.Match(path,
-            @"^/(?:toc|tableofcontents)(?:\[(\d+)\])?$");
+            @"^/(?:toc|tableofcontents)(?:\[(\d+)\])?$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (tocMatch.Success)
         {
             var tocIdx = tocMatch.Groups[1].Success ? int.Parse(tocMatch.Groups[1].Value) : 1;
@@ -439,7 +443,8 @@ public partial class WordHandler
         }
 
         // Field paths: /field[N]
-        var fieldMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/field\[(\d+)\]$");
+        var fieldMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/field\[(\d+)\]$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (fieldMatch.Success)
         {
             var fieldIdx = int.Parse(fieldMatch.Groups[1].Value);
@@ -452,7 +457,8 @@ public partial class WordHandler
         // Chart axis-by-role sub-path: /chart[N]/axis[@role=ROLE].
         // Per schemas/help/pptx/chart-axis.json (shared contract across Pptx/Word/Excel).
         var chartAxisGetMatch = System.Text.RegularExpressions.Regex.Match(path,
-            @"^/chart\[(\d+)\]/axis\[@role=([a-zA-Z0-9_]+)\]$");
+            @"^/chart\[(\d+)\]/axis\[@role=([a-zA-Z0-9_]+)\]$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (chartAxisGetMatch.Success)
         {
             var caChartIdx = int.Parse(chartAxisGetMatch.Groups[1].Value);
@@ -470,7 +476,8 @@ public partial class WordHandler
         }
 
         // Chart paths: /chart[N] or /chart[N]/series[K]
-        var chartGetMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/chart\[(\d+)\](?:/series\[(\d+)\])?$");
+        var chartGetMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/chart\[(\d+)\](?:/series\[(\d+)\])?$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (chartGetMatch.Success)
         {
             var chartIdx = int.Parse(chartGetMatch.Groups[1].Value);
@@ -521,7 +528,13 @@ public partial class WordHandler
         }
 
         // Section paths: /section[N]
-        var secMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/section\[(\d+)\]$");
+        // CONSISTENCY(path-element-case-insensitive): top-level element paths like
+        // /section[N], /chart[N], /footnote[N], /toc[N] are matched case-insensitively
+        // so /Section[1] and /section[1] are equivalent. The returned node's Path is
+        // canonicalised to lowercase so callers see a round-trippable form. Style ids
+        // (/styles/<id>) remain case-sensitive — they are user-defined identifiers.
+        var secMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/section\[(\d+)\]$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (secMatch.Success)
         {
             var secIdx = int.Parse(secMatch.Groups[1].Value);
@@ -530,7 +543,7 @@ public partial class WordHandler
                 throw new ArgumentException($"Section {secIdx} not found (total: {sectionProps.Count})");
 
             var sectPr = sectionProps[secIdx - 1];
-            return BuildSectionNode(sectPr, path);
+            return BuildSectionNode(sectPr, path.ToLowerInvariant());
         }
 
         // /docDefaults — root-level access to docDefaults rPr/pPr. Mirrors

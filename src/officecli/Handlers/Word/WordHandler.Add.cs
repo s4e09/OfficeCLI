@@ -532,6 +532,16 @@ public partial class WordHandler
         var doc = _doc.MainDocumentPart?.Document
             ?? throw new InvalidOperationException("Document not found");
 
+        // CONSISTENCY(set-atomicity): multi-prop set must be all-or-nothing. The
+        // resident process keeps the doc in memory, so a throw partway through this
+        // foreach would otherwise leave earlier props applied while the command exits
+        // non-zero — visible to the next read. Snapshot Document OuterXml on entry;
+        // any exception restores the whole document tree before re-throwing. The body
+        // ref captured outside is invalid after restore — callers of doc.Body must
+        // re-resolve via _doc.MainDocumentPart.Document.Body if they cache it.
+        var atomicSnapshot = doc.OuterXml;
+        try
+        {
         foreach (var (key, value) in properties)
         {
             switch (key.ToLowerInvariant())
@@ -556,12 +566,20 @@ public partial class WordHandler
                     TrySetDocDefaults("docdefaults.fontsize", value);
                     break;
 
-                case "pagewidth":
-                    EnsureSectionProperties().GetFirstChild<PageSize>()!.Width = ParseTwips(value);
+                case "pagewidth" or "width":
+                {
+                    var twW = ParseTwips(value);
+                    Core.WordPageDefaults.ValidatePageDim(twW, "pageWidth");
+                    EnsureSectionProperties().GetFirstChild<PageSize>()!.Width = twW;
                     break;
-                case "pageheight":
-                    EnsureSectionProperties().GetFirstChild<PageSize>()!.Height = ParseTwips(value);
+                }
+                case "pageheight" or "height":
+                {
+                    var twH = ParseTwips(value);
+                    Core.WordPageDefaults.ValidatePageDim(twH, "pageHeight");
+                    EnsureSectionProperties().GetFirstChild<PageSize>()!.Height = twH;
                     break;
+                }
                 case "margintop":
                     EnsurePageMargin().Top = (int)ParseTwips(value);
                     break;
@@ -655,6 +673,16 @@ public partial class WordHandler
                         unsupported?.Add(key);
                     break;
             }
+        }
+        }
+        catch
+        {
+            // Restore the in-memory Document tree from the pre-mutation snapshot so the
+            // failed command leaves no partial state. Re-throw so the CLI surface still
+            // reports the original error and exits non-zero. Document(string) accepts
+            // OuterXml form per the OpenXmlElement(outerXml) constructor contract.
+            _doc.MainDocumentPart!.Document = new Document(atomicSnapshot);
+            throw;
         }
     }
 

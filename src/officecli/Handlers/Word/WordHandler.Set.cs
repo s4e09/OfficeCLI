@@ -197,35 +197,45 @@ public partial class WordHandler
 
         // Chart axis-by-role sub-path: /chart[N]/axis[@role=ROLE].
         var chartAxisSetMatch = System.Text.RegularExpressions.Regex.Match(path,
-            @"^/chart\[(\d+)\]/axis\[@role=([a-zA-Z0-9_]+)\]$");
+            @"^/chart\[(\d+)\]/axis\[@role=([a-zA-Z0-9_]+)\]$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (chartAxisSetMatch.Success) return SetChartAxisPath(chartAxisSetMatch, properties);
 
         // Chart paths: /chart[N] or /chart[N]/series[K]
-        var chartMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/chart\[(\d+)\](?:/series\[(\d+)\])?$");
+        var chartMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/chart\[(\d+)\](?:/series\[(\d+)\])?$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (chartMatch.Success) return SetChartPath(chartMatch, properties);
 
         // Field paths: /field[N]
-        var fieldSetMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/field\[(\d+)\]$");
+        var fieldSetMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/field\[(\d+)\]$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (fieldSetMatch.Success) return SetFieldPath(fieldSetMatch, properties);
 
         // TOC paths: /toc[N], /toc (= first), /tableofcontents alias.
         var tocMatch = System.Text.RegularExpressions.Regex.Match(path,
-            @"^/(?:toc|tableofcontents)(?:\[(\d+)\])?$");
+            @"^/(?:toc|tableofcontents)(?:\[(\d+)\])?$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (tocMatch.Success) return SetTocPath(tocMatch, properties);
 
         // Footnote paths: /footnote[N], /footnote[@footnoteId=N] (incl. -1/0
         // structural ids — separator/continuation/continuationNotice).
         var fnSetMatch = System.Text.RegularExpressions.Regex.Match(
-            path, @"/footnote\[(?:@footnoteId=)?(-?\d+)\]$");
+            path, @"/footnote\[(?:@footnoteId=)?(-?\d+)\]$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (fnSetMatch.Success) return SetFootnotePath(fnSetMatch, properties);
 
         // Endnote paths: same shape as footnote.
         var enSetMatch = System.Text.RegularExpressions.Regex.Match(
-            path, @"/endnote\[(?:@endnoteId=)?(-?\d+)\]$");
+            path, @"/endnote\[(?:@endnoteId=)?(-?\d+)\]$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (enSetMatch.Success) return SetEndnotePath(enSetMatch, properties);
 
-        // Section paths: /section[N] or /body/sectPr[N] (canonical form returned by Get/Query)
-        var secSetMatch = System.Text.RegularExpressions.Regex.Match(path, @"^(?:/section\[(\d+)\]|/body/sectPr(?:\[(\d+)\])?)$");
+        // CONSISTENCY(path-element-case-insensitive): same rule as Query.cs — top-level
+        // element paths (/section[N], /body/sectPr[N], /chart[N], /toc[N], …) match
+        // case-insensitively so /Section[1] is equivalent to /section[1]. styleSetMatch
+        // below remains case-sensitive — style ids are user-defined identifiers.
+        var secSetMatch = System.Text.RegularExpressions.Regex.Match(path, @"^(?:/section\[(\d+)\]|/body/sectPr(?:\[(\d+)\])?)$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (secSetMatch.Success) return SetSectionPath(secSetMatch, properties);
 
         // Style paths: /styles/StyleId (set props on the style itself).
@@ -323,6 +333,11 @@ public partial class WordHandler
             {
                 case "text":
                 {
+                    // CONSISTENCY(xml-text-validation): mirror AppendTextWithBreaks —
+                    // reject XML 1.0 illegal control chars at input time so the resident
+                    // process doesn't accept them into the in-memory DOM only to fail at
+                    // close with "save failed — data may be lost" and lose user work.
+                    ParseHelpers.ValidateXmlText(value, "text");
                     // Only replace non-field static text runs. Complex fields are
                     // a multi-run sequence: [Begin][Instr]([Separate][Result])[End].
                     // Runs carrying <w:fldChar>/<w:instrText> AND any run nested
@@ -942,19 +957,29 @@ public partial class WordHandler
     internal static uint ParseTwips(string value)
     {
         value = value.Trim();
+        // Twips back OOXML length attributes that are uint in the schema (pgSz/@w:w,
+        // pgMar/@w:top, etc.). Negative inputs would wrap silently on the (uint) cast
+        // below — reject them up front in every unit branch with a uniform message.
+        // The integer branch already rejects negatives via SafeParseUint.
         if (value.EndsWith("cm", StringComparison.OrdinalIgnoreCase))
         {
             var num = ParseHelpers.SafeParseDouble(value[..^2], "twips (cm)");
+            if (num < 0)
+                throw new ArgumentException($"length must be non-negative, got {num}cm.");
             return (uint)Math.Round(num * 1440.0 / 2.54);
         }
         if (value.EndsWith("in", StringComparison.OrdinalIgnoreCase))
         {
             var num = ParseHelpers.SafeParseDouble(value[..^2], "twips (in)");
+            if (num < 0)
+                throw new ArgumentException($"length must be non-negative, got {num}in.");
             return (uint)Math.Round(num * 1440);
         }
         if (value.EndsWith("pt", StringComparison.OrdinalIgnoreCase))
         {
             var num = ParseHelpers.SafeParseDouble(value[..^2], "twips (pt)");
+            if (num < 0)
+                throw new ArgumentException($"length must be non-negative, got {num}pt.");
             return (uint)Math.Round(num * 20);
         }
         return ParseHelpers.SafeParseUint(value, "twips");

@@ -17,7 +17,30 @@ public partial class WordHandler
 {
     private string AddChart(OpenXmlElement parent, string parentPath, int? index, Dictionary<string, string> properties)
     {
-        var chartMainPart = _doc.MainDocumentPart!;
+        // CONSISTENCY(host-part-rel): same routing as AddPicture (round23 E) and
+        // AddHyperlink (round23 C). When the parent paragraph lives in a Header/Footer
+        // part, the chart rel must live on that part — otherwise r:id in headerN.xml
+        // points to a rel only present in document.xml.rels and Word reports broken.
+        OpenXmlPart chartMainPart = _doc.MainDocumentPart!;
+        // parent may itself be a Header/Footer (e.g. /header[1]) when the chart is
+        // appended directly, or a descendant paragraph (e.g. /header[1]/p[N]).
+        var chartHeaderAnc = parent as Header ?? parent.Ancestors<Header>().FirstOrDefault();
+        if (chartHeaderAnc != null)
+        {
+            var hp = _doc.MainDocumentPart!.HeaderParts
+                .FirstOrDefault(p => ReferenceEquals(p.Header, chartHeaderAnc));
+            if (hp != null) chartMainPart = hp;
+        }
+        else
+        {
+            var chartFooterAnc = parent as Footer ?? parent.Ancestors<Footer>().FirstOrDefault();
+            if (chartFooterAnc != null)
+            {
+                var fp = _doc.MainDocumentPart!.FooterParts
+                    .FirstOrDefault(p => ReferenceEquals(p.Footer, chartFooterAnc));
+                if (fp != null) chartMainPart = fp;
+            }
+        }
 
         // Parse chart data
         var chartType = properties.FirstOrDefault(kv =>
@@ -170,6 +193,38 @@ public partial class WordHandler
         imgStream.Position = 0;
 
         var mainPart = _doc.MainDocumentPart!;
+        // CONSISTENCY(host-part-rel): mirror Add.Misc AddHyperlink and Add.Media OLE host-part
+        // resolution. When the parent paragraph lives in a HeaderPart/FooterPart, the ImagePart
+        // and its rel must be attached to that host part — otherwise the r:embed in headerN.xml
+        // points at a rel only present in document.xml.rels and Word reports a broken link.
+        OpenXmlPart imgHostPart = mainPart;
+        var imgHeaderAncestor = parent as Header ?? parent.Ancestors<Header>().FirstOrDefault();
+        if (imgHeaderAncestor != null)
+        {
+            var hp = mainPart.HeaderParts.FirstOrDefault(p => ReferenceEquals(p.Header, imgHeaderAncestor));
+            if (hp != null) imgHostPart = hp;
+        }
+        else
+        {
+            var imgFooterAncestor = parent as Footer ?? parent.Ancestors<Footer>().FirstOrDefault();
+            if (imgFooterAncestor != null)
+            {
+                var fp = mainPart.FooterParts.FirstOrDefault(p => ReferenceEquals(p.Footer, imgFooterAncestor));
+                if (fp != null) imgHostPart = fp;
+            }
+        }
+
+        // AddImagePart is defined on each concrete part type, not on OpenXmlPart base —
+        // dispatch by runtime type so the rel lands on the correct part.
+        ImagePart AddImg(PartTypeInfo t) => imgHostPart switch
+        {
+            MainDocumentPart mdp => mdp.AddImagePart(t),
+            HeaderPart hp => hp.AddImagePart(t),
+            FooterPart fp => fp.AddImagePart(t),
+            _ => throw new InvalidOperationException(
+                $"Host part type {imgHostPart.GetType().Name} does not support image parts"),
+        };
+
         string relId;
         string? svgRelId = null;
         Stream? fallbackDimStream = null;  // source for TryGetDimensions when raster is the fallback
@@ -179,10 +234,10 @@ public partial class WordHandler
             // a:blip/a:extLst carries an asvg:svgBlip referencing the SVG
             // part. Modern Office picks up the SVG; older versions render
             // the PNG. See SvgImageHelper for namespace/URI details.
-            var svgPart = mainPart.AddImagePart(ImagePartType.Svg);
+            var svgPart = AddImg(ImagePartType.Svg);
             svgPart.FeedData(imgStream);
             imgStream.Position = 0;
-            svgRelId = mainPart.GetIdOfPart(svgPart);
+            svgRelId = imgHostPart.GetIdOfPart(svgPart);
 
             MemoryStream pngStream;
             if (properties.TryGetValue("fallback", out var fallbackPath) && !string.IsNullOrWhiteSpace(fallbackPath))
@@ -192,26 +247,26 @@ public partial class WordHandler
                 pngStream = new MemoryStream();
                 fbRaw.CopyTo(pngStream);
                 pngStream.Position = 0;
-                var fbPart = mainPart.AddImagePart(fbType);
+                var fbPart = AddImg(fbType);
                 fbPart.FeedData(pngStream);
                 pngStream.Position = 0;
-                relId = mainPart.GetIdOfPart(fbPart);
+                relId = imgHostPart.GetIdOfPart(fbPart);
             }
             else
             {
-                var pngPart = mainPart.AddImagePart(ImagePartType.Png);
+                var pngPart = AddImg(ImagePartType.Png);
                 pngPart.FeedData(new MemoryStream(OfficeCli.Core.SvgImageHelper.TransparentPng1x1, writable: false));
-                relId = mainPart.GetIdOfPart(pngPart);
+                relId = imgHostPart.GetIdOfPart(pngPart);
                 pngStream = new MemoryStream(OfficeCli.Core.SvgImageHelper.TransparentPng1x1, writable: false);
             }
             fallbackDimStream = pngStream;
         }
         else
         {
-            var imagePart = mainPart.AddImagePart(imgPartType);
+            var imagePart = AddImg(imgPartType);
             imagePart.FeedData(imgStream);
             imgStream.Position = 0;
-            relId = mainPart.GetIdOfPart(imagePart);
+            relId = imgHostPart.GetIdOfPart(imagePart);
         }
 
         // Determine dimensions. When only one axis is supplied, compute the

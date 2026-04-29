@@ -194,6 +194,17 @@ public partial class WordHandler
             ?? properties.GetValueOrDefault("propertyName")
             ?? properties.GetValueOrDefault("propertyname");
         var hasRewriteFormat = properties.TryGetValue("format", out var rewriteFormat);
+        // Accept both bare value (`M/d/yyyy`) and full-switch form (`\@ "M/d/yyyy"`).
+        // The case-builder below always wraps effFormat in `\@ "..."`, so a user-supplied
+        // \@ prefix would land as `\@ "\@ "M/d/yyyy""`. Strip the prefix + surrounding
+        // whitespace + outer quotes so both input shapes produce the same output.
+        if (hasRewriteFormat && rewriteFormat != null)
+        {
+            var fmt = rewriteFormat.Trim();
+            if (fmt.StartsWith("\\@", StringComparison.Ordinal))
+                fmt = fmt[2..].Trim().Trim('"');
+            rewriteFormat = fmt;
+        }
         if (!string.IsNullOrEmpty(rewriteFieldType) || !string.IsNullOrEmpty(rewriteName) || hasRewriteFormat)
         {
             var existingInstr = field.InstrCode.Text ?? "";
@@ -554,6 +565,13 @@ public partial class WordHandler
             throw new ArgumentException($"Section {secIdx} not found (total: {sectionProps.Count})");
 
         var sectPr = sectionProps[secIdx - 1];
+        // CONSISTENCY(set-atomicity): mirror SetDocumentProperties in WordHandler.Add.cs
+        // — multi-prop set on /section[N] must be all-or-nothing. Snapshot the whole
+        // Document tree on entry; any throw inside the loop restores it before re-throw
+        // so partial writes are not visible to the next read in the resident process.
+        var atomicSnapshot = _doc.MainDocumentPart!.Document.OuterXml;
+        try
+        {
         foreach (var (key, value) in properties)
         {
             switch (key.ToLowerInvariant())
@@ -574,16 +592,27 @@ public partial class WordHandler
                         _ => throw new ArgumentException($"Invalid section break type: '{value}'. Valid values: nextPage (alias: newPage/page), continuous, evenPage, oddPage.")
                     };
                     break;
-                case "pagewidth" or "pageWidth":
-                    EnsureSectPrPageSize(sectPr).Width = ParseTwips(value);
+                case "pagewidth" or "pageWidth" or "width":
+                {
+                    var twW = ParseTwips(value);
+                    Core.WordPageDefaults.ValidatePageDim(twW, "pageWidth");
+                    EnsureSectPrPageSize(sectPr).Width = twW;
                     break;
-                case "pageheight" or "pageHeight":
-                    EnsureSectPrPageSize(sectPr).Height = ParseTwips(value);
+                }
+                case "pageheight" or "pageHeight" or "height":
+                {
+                    var twH = ParseTwips(value);
+                    Core.WordPageDefaults.ValidatePageDim(twH, "pageHeight");
+                    EnsureSectPrPageSize(sectPr).Height = twH;
                     break;
+                }
                 case "orientation":
                 {
                     var ps = EnsureSectPrPageSize(sectPr);
-                    var isLandscape = value.ToLowerInvariant() == "landscape";
+                    var orientLower = value.ToLowerInvariant();
+                    if (orientLower != "landscape" && orientLower != "portrait")
+                        throw new ArgumentException($"Invalid orientation: '{value}'. Valid: portrait, landscape.");
+                    var isLandscape = orientLower == "landscape";
                     ps.Orient = isLandscape
                         ? PageOrientationValues.Landscape : PageOrientationValues.Portrait;
                     // Default to A4 if no dimensions set
@@ -671,6 +700,8 @@ public partial class WordHandler
                     else
                     {
                         var startN = ParseHelpers.SafeParseInt(value, "pageStart");
+                        if (startN < 0)
+                            throw new ArgumentException("pageStart must be a non-negative integer.");
                         var pgNum = sectPr.GetFirstChild<PageNumberType>();
                         if (pgNum == null)
                         {
@@ -744,7 +775,8 @@ public partial class WordHandler
                                 "continuous" => LineNumberRestartValues.Continuous,
                                 "restartpage" or "page" => LineNumberRestartValues.NewPage,
                                 "restartsection" or "section" => LineNumberRestartValues.NewSection,
-                                _ => LineNumberRestartValues.Continuous
+                                _ => throw new ArgumentException(
+                                    $"Invalid lineNumbers value: '{value}'. Valid: continuous, restartPage, restartSection, none, or a positive integer.")
                             };
                         }
                     }
@@ -760,6 +792,12 @@ public partial class WordHandler
                     unsupported.Add(key);
                     break;
             }
+        }
+        }
+        catch
+        {
+            _doc.MainDocumentPart!.Document = new Document(atomicSnapshot);
+            throw;
         }
         _doc.MainDocumentPart?.Document?.Save();
         return unsupported;

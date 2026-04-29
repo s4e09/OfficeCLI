@@ -67,7 +67,49 @@ internal static class ImageSource
             throw new FileNotFoundException($"Image file not found: {path}");
 
         var contentType = ExtensionToContentType(Path.GetExtension(path));
+        var ext = Path.GetExtension(path).TrimStart('.').ToLowerInvariant();
+
+        // Magic-byte validation for raster formats. SVG (XML) / EMF / WMF are
+        // intentionally skipped: SVG has no fixed magic, EMF/WMF have weaker
+        // headers and TrySniffContentType doesn't cover them. Only validate
+        // formats whose first 4 bytes are stable (png/jpg/gif/bmp/tiff).
+        var rasterExts = new[] { "png", "jpg", "jpeg", "gif", "bmp", "tif", "tiff" };
+        if (rasterExts.Contains(ext))
+        {
+            var bytes = File.ReadAllBytes(path);
+            if (TrySniffContentType(bytes, out var sniffed))
+            {
+                if (!IsCompatible(sniffed, contentType))
+                    throw new ArgumentException(
+                        $"Image file '{path}' has extension .{ext} but magic bytes indicate {ContentTypeName(sniffed)}. " +
+                        "Rename or convert the file.");
+            }
+            else
+            {
+                throw new ArgumentException(
+                    $"Image file '{path}' does not appear to be a valid {ext} file (magic bytes mismatch).");
+            }
+            return (new MemoryStream(bytes, writable: false), contentType);
+        }
+
         return (File.OpenRead(path), contentType);
+    }
+
+    private static bool IsCompatible(PartTypeInfo sniffed, PartTypeInfo declared)
+    {
+        if (sniffed == declared) return true;
+        // jpg/jpeg are the same PartTypeInfo so this collapses naturally.
+        return false;
+    }
+
+    private static string ContentTypeName(PartTypeInfo type)
+    {
+        if (type == ImagePartType.Png) return "PNG";
+        if (type == ImagePartType.Jpeg) return "JPEG";
+        if (type == ImagePartType.Gif) return "GIF";
+        if (type == ImagePartType.Bmp) return "BMP";
+        if (type == ImagePartType.Tiff) return "TIFF";
+        return type.ContentType ?? "unknown";
     }
 
     private static (Stream, PartTypeInfo) ResolveDataUri(string dataUri)
@@ -165,6 +207,14 @@ internal static class ImageSource
         // BMP: BM
         if (bytes[0] == 0x42 && bytes[1] == 0x4D)
         { contentType = ImagePartType.Bmp; return true; }
+
+        // TIFF little-endian: 49 49 2A 00 ("II" + magic 42)
+        if (bytes[0] == 0x49 && bytes[1] == 0x49 && bytes[2] == 0x2A && bytes[3] == 0x00)
+        { contentType = ImagePartType.Tiff; return true; }
+
+        // TIFF big-endian: 4D 4D 00 2A ("MM" + magic 42)
+        if (bytes[0] == 0x4D && bytes[1] == 0x4D && bytes[2] == 0x00 && bytes[3] == 0x2A)
+        { contentType = ImagePartType.Tiff; return true; }
 
         return false;
     }

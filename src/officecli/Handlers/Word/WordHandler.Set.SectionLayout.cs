@@ -48,6 +48,162 @@ public partial class WordHandler
                 return true;
             }
 
+            // ==================== Title page / page numbering ====================
+            // CONSISTENCY(section-layout-fallback): SetSectionPath (/section[N]) and
+            // TrySetSectionLayout (/) must accept the same property vocabulary on the
+            // body-level sectPr; titlePage/pageNumFmt/pageStart historically lived only
+            // in the per-section dispatch (Set.Dispatch.cs:664-715) and slipped past the
+            // root-path fallback. Logic mirrors the dispatch cases verbatim.
+            case "titlepage" or "titlepg":
+            {
+                var sectPr = EnsureSectionProperties();
+                if (IsTruthy(value))
+                {
+                    if (sectPr.GetFirstChild<TitlePage>() == null)
+                        sectPr.AppendChild(new TitlePage());
+                }
+                else
+                {
+                    sectPr.RemoveAllChildren<TitlePage>();
+                }
+                return true;
+            }
+            case "pagenumfmt" or "pagenumberformat" or "pagenumberfmt":
+            {
+                var sectPr = EnsureSectionProperties();
+                var fmt = value.ToLowerInvariant() switch
+                {
+                    "decimal" => NumberFormatValues.Decimal,
+                    "lowerroman" => NumberFormatValues.LowerRoman,
+                    "upperroman" => NumberFormatValues.UpperRoman,
+                    "lowerletter" => NumberFormatValues.LowerLetter,
+                    "upperletter" => NumberFormatValues.UpperLetter,
+                    _ => throw new ArgumentException($"Invalid pageNumFmt: '{value}'. Valid: decimal, lowerRoman, upperRoman, lowerLetter, upperLetter.")
+                };
+                var pgNum = sectPr.GetFirstChild<PageNumberType>();
+                if (pgNum == null)
+                {
+                    pgNum = new PageNumberType();
+                    sectPr.AppendChild(pgNum);
+                }
+                pgNum.Format = fmt;
+                return true;
+            }
+            case "pagestart" or "pagenumberstart" or "pagenumstart":
+            {
+                var sectPr = EnsureSectionProperties();
+                var lower = value.ToLowerInvariant();
+                if (lower is "none" or "off" or "false" or "auto")
+                {
+                    sectPr.RemoveAllChildren<PageNumberType>();
+                }
+                else
+                {
+                    var startN = ParseHelpers.SafeParseInt(value, "pageStart");
+                    if (startN < 0)
+                        throw new ArgumentException("pageStart must be a non-negative integer.");
+                    var pgNum = sectPr.GetFirstChild<PageNumberType>();
+                    if (pgNum == null)
+                    {
+                        pgNum = new PageNumberType();
+                        sectPr.AppendChild(pgNum);
+                    }
+                    pgNum.Start = startN;
+                }
+                return true;
+            }
+
+            // ==================== Page orientation ====================
+            // CONSISTENCY(section-layout-fallback): orientation/columns/lineNumbers also
+            // belong on the body-level sectPr fallback path, not just per-section dispatch
+            // (Set.Dispatch.cs:583-752). Logic mirrors the dispatch cases verbatim.
+            case "orientation":
+            {
+                var sectPr = EnsureSectionProperties();
+                var ps = EnsureSectPrPageSize(sectPr);
+                var lower = value.ToLowerInvariant();
+                if (lower != "landscape" && lower != "portrait")
+                    throw new ArgumentException($"Invalid orientation: '{value}'. Valid: portrait, landscape.");
+                var isLandscape = lower == "landscape";
+                ps.Orient = isLandscape
+                    ? PageOrientationValues.Landscape : PageOrientationValues.Portrait;
+                var w = ps.Width?.Value ?? WordPageDefaults.A4WidthTwips;
+                var h = ps.Height?.Value ?? WordPageDefaults.A4HeightTwips;
+                if ((isLandscape && w < h) || (!isLandscape && w > h))
+                {
+                    ps.Width = h;
+                    ps.Height = w;
+                }
+                return true;
+            }
+
+            // ==================== Columns (shorthand) ====================
+            case "columns" or "cols" or "col":
+            {
+                var eqCols = EnsureColumns();
+                var colParts = value.Split(',');
+                if (!short.TryParse(colParts[0], out var colCount))
+                    throw new ArgumentException($"Invalid 'columns' value: '{value}'. Expected an integer or integer,space (e.g. '3' or '3,720').");
+                eqCols.ColumnCount = (DocumentFormat.OpenXml.Int16Value)colCount;
+                eqCols.EqualWidth = true;
+                if (colParts.Length > 1)
+                    eqCols.Space = colParts[1];
+                else
+                    eqCols.Space ??= "720";
+                eqCols.RemoveAllChildren<Column>();
+                return true;
+            }
+
+            // ==================== Line numbers ====================
+            case "linenumbers" or "linenumbering":
+            {
+                var sectPr = EnsureSectionProperties();
+                var lower = value.ToLowerInvariant();
+                if (lower == "none" || lower == "off" || lower == "false")
+                {
+                    sectPr.RemoveAllChildren<LineNumberType>();
+                }
+                else
+                {
+                    var lnNum = sectPr.GetFirstChild<LineNumberType>();
+                    if (lnNum == null)
+                    {
+                        lnNum = new LineNumberType();
+                        sectPr.AppendChild(lnNum);
+                    }
+                    if (int.TryParse(lower, out var countBy))
+                    {
+                        lnNum.CountBy = (short)countBy;
+                        lnNum.Restart = LineNumberRestartValues.Continuous;
+                    }
+                    else
+                    {
+                        lnNum.CountBy = 1;
+                        lnNum.Restart = lower switch
+                        {
+                            "continuous" => LineNumberRestartValues.Continuous,
+                            "restartpage" or "page" => LineNumberRestartValues.NewPage,
+                            "restartsection" or "section" => LineNumberRestartValues.NewSection,
+                            _ => throw new ArgumentException(
+                                $"Invalid lineNumbers value: '{value}'. Valid: continuous, restartPage, restartSection, none, or a positive integer.")
+                        };
+                    }
+                }
+                return true;
+            }
+
+            // Bare `type` / `break` at the body-level path is by-design unsupported:
+            // `/` refers to the final (body-level) section, which has no break type —
+            // the break only makes sense between mid-doc sections. Intercept here so
+            // users get an actionable error instead of the generic UNSUPPORTED.
+            case "type" or "break":
+            {
+                throw new ArgumentException(
+                    "'type'/'break' only applies to mid-document sections (/section[N]). " +
+                    "The body-level path (/) refers to the final section which has no break type. " +
+                    "Use: officecli set doc.docx /section[N] --prop type=...");
+            }
+
             // ==================== SectionType ====================
             case "section.type" or "sectiontype":
             {

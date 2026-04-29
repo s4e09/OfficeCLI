@@ -1070,6 +1070,15 @@ public class ResidentServer : IDisposable
     {
         var path = req.GetArg("path", "/");
         var properties = req.GetProps();
+
+        // CONSISTENCY(no-slash-reject): mirrored in CommandBuilder.Set.cs. handler.Set
+        // treats a no-slash path as a CSS selector (Query→Set per match). Reject up
+        // front so a typo like "section[1]" cannot silently corrupt the document via
+        // the resident path; selector-mode is opt-in via `query`, not via the slash.
+        if (!string.IsNullOrEmpty(path) && !path.StartsWith("/"))
+            throw new ArgumentException(
+                $"path '{path}' must start with '/'. Did you mean '/{path}'?");
+
         var unsupported = _handler.Set(path, properties);
         var unsupportedKeys = unsupported
             .Select(u => u.Contains(' ') ? u[..u.IndexOf(' ')] : u)
