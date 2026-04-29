@@ -62,7 +62,7 @@ Before reaching for a command, know what a good xlsx looks like. These are the d
 
 ### Visual delivery floor (applies to EVERY workbook)
 
-Before you declare done, open `officecli view "$FILE" html --browser` and confirm all of these:
+Before you declare done, run `officecli view "$FILE" html` and Read the returned HTML path to confirm all of these:
 
 - **No `###` in any cell.** `###` means a column is too narrow for its widest value. Every column the user reads needs an explicit `width`. `###` in a delivered file is unfinished work, never "a small visual nit".
 - **No truncated titles.** Sheet titles, section headers, long labels must fit. Widen the column or apply `wrapText=true` on the cell.
@@ -99,11 +99,11 @@ Scope: budgets, forecasts, 3-statement models, valuation, any `$`-heavy analytic
 
 Six steps. Every non-trivial build follows this shape.
 
-1. **Choose the mode.** Always use `officecli open <file>` at the start and `officecli close <file>` at the end. Resident mode is the default, not an optimization — it avoids re-parsing the file on every command. For many cells, use `batch`: **≤ 50 ops/block recommended; pure value-set batches run fine at 80+ ops (Tester verified 82 × 80-op chunks, 0 failures). Keep ≤ 12 only for mixed formula + resident scenarios**.
+1. **Choose the mode.** Always use `officecli open <file>` at the start and `officecli close <file>` at the end. Resident mode is the default, not an optimization — it avoids re-parsing the file on every command. For many cells, use `batch`: **≤ 50 ops/block recommended; pure value-set batches run fine at 80+ ops (verified at 82 × 80-op chunks, 0 failures). Keep ≤ 12 only for mixed formula + resident scenarios**.
 2. **Create or load.** `officecli create foo.xlsx` (new) or `officecli view foo.xlsx outline` (existing — get the lay of the land first).
 3. **Build incrementally.** One command, read the output, continue. After any structural op (new sheet, chart, named range, pivot), run `get` on it to confirm shape before stacking more on top.
 4. **Format.** Column widths, number formats, freeze panes, tab colors, header fills. Formatting is not optional polish — per "Requirements for Outputs" it is part of the deliverable.
-5. **Close, then reckon with the cache.** `officecli close <file>` writes to disk. Newly-added formulas ship without cached values; when a human opens the file in a spreadsheet app, the app recalculates and populates them. **But your downstream `INDEX/MATCH`, `SUMPRODUCT`, or any formula that references an upstream formula will cache whatever the upstream cached at write-time — often `0` or a stale value — and that cached lie survives into non-recalculating readers.** After any multi-formula build involving array formulas (`SUMPRODUCT`, `SUMIFS` with dynamic criteria) or cross-sheet chains, **re-touch every downstream cell** (run `set` again with the same formula) so the engine recomputes its cache from the freshly-cached upstream. Then `officecli get` a few downstream cells and eyeball that their `cachedValue=` is plausible. **Array-formula fallback:** for `SUMPRODUCT(1/COUNTIF(range, range))` distinct-count patterns, the CLI engine treats the inner division as scalar and caches `1/N` (e.g. `0.001543`) rather than the true distinct count. Re-touching won't fix it. **Fallback: hardcode the correct value + an adjacent comment `"hardcoded distinct count; update if Data rows change"`, and tell the reader at delivery**. Better than shipping a cached lie. Do NOT run `validate` while a resident is open — it reports spurious drawing errors.
+5. **Close, then reckon with the cache.** `officecli close <file>` writes to disk. Newly-added formulas ship without cached values; when a human opens the file in a spreadsheet app, the app recalculates and populates them. **But your downstream `INDEX/MATCH`, `SUMPRODUCT`, or any formula that references an upstream formula will cache whatever the upstream cached at write-time — often `0` or a stale value — and that cached lie survives into non-recalculating readers.** After any multi-formula build involving array formulas (`SUMPRODUCT`, `SUMIFS` with dynamic criteria) or cross-sheet chains, **re-touch every downstream cell** (run `set` again with the same formula) so the engine recomputes its cache from the freshly-cached upstream. ⚠️ Re-touch on cross-sheet chains via resident is unreliable (see Batch / resident caveats) — prefer non-resident `set` for the re-touch pass. Then `officecli get` a few downstream cells and eyeball that their `cachedValue=` is plausible. **Array-formula fallback:** for `SUMPRODUCT(1/COUNTIF(range, range))` distinct-count patterns, the CLI engine treats the inner division as scalar and caches `1/N` (e.g. `0.001543`) rather than the true distinct count. Re-touching won't fix it. **Fallback: hardcode the correct value + an adjacent comment `"hardcoded distinct count; update if Data rows change"`, and tell the reader at delivery**. Better than shipping a cached lie. Do NOT run `validate` while a resident is open — it reports spurious drawing errors.
 6. **QA — assume there are problems.** See the QA section. You are not done when your last command exited 0; you are done after one fix-and-verify cycle finds zero new issues.
 
 ## Quick Start
@@ -163,9 +163,9 @@ Outcome: 648-row retail CSV (6490 cells) loads in ~30s, zero failures. Tune: sta
 Start wide, then narrow. `outline` first tells you what sheets exist and where the data is; jump into `view` / `get` / `query` only once you know where to look.
 
 **Open the rendered workbook to eyeball your own work.**
-- `officecli view $FILE html --browser` opens the workbook as a browser tab. Each sheet is addressable, charts render inline. Catches `###`, placeholder leakage, pivot layout, row-height clipping.
-- `officecli watch $FILE` keeps the preview live as you iterate (optional).
-Use this as your **first visual check after a batch of edits** — fix at source.
+- `officecli view $FILE html` — Read the returned HTML to audit the rendered output. Each sheet is addressable, charts render inline. Catches `###`, placeholder leakage, pivot layout, row-height clipping.
+- `officecli watch $FILE` keeps a live preview running for the human user — they open it at their own discretion. Use when the user wants to watch along; agent self-check uses `view html` above.
+Use `view html` as your **first visual check after a batch of edits** — fix at source. For final visual verification, the user opens the `.xlsx` in their Excel / WPS / Numbers viewer.
 
 **Orient.** Sheets, dimensions, formula counts.
 
@@ -265,7 +265,7 @@ Chart types live under `officecli help xlsx chart` — the enum is long (20+). P
 
 **Chart `anchor` and series are immutable after create.** `set chart[N] --prop anchor=...` is rejected (`UNSUPPORTED props: anchor`); likewise new series cannot be appended. To resize, move, or add a series: `officecli remove` the chart, then `officecli add` with the new anchor / full series list. Also note: `remove chart[1]` shifts `chart[2] → chart[1]`, and re-add **appends at the end** — to preserve chart order, remove all and rebuild in order.
 
-**Anchor sizing.** No auto-fit. A column chart with 5-6 categories + 2 series needs roughly `A5:L22` (12 cols × 18 rows) to show all labels uncut. Narrower and X-axis labels clip; wider and the chart can split across pages on print/export. If in doubt, start narrow, preview via `view html --browser`, widen in increments. Page layout (below) is the other half of the fix.
+**Anchor sizing.** No auto-fit. A column chart with 5-6 categories + 2 series needs roughly `A5:L22` (12 cols × 18 rows) to show all labels uncut. Narrower and X-axis labels clip; wider and the chart can split across pages on print/export. If in doubt, start narrow, preview via `view html` (Read the returned HTML path), widen in increments. Page layout (below) is the other half of the fix.
 
 **Chart `dataRange` — always prefix with the sheet.** Even when the chart lives on the same sheet, write `dataRange="Summary!A17:C22"`, not `A17:C22`. The sheet-less form works inconsistently; the prefixed form is 100% reliable.
 
@@ -358,7 +358,7 @@ Your first workbook is almost never correct. Treat QA as a bug hunt, not a confi
    officecli query data.xlsx 'cell:contains("#N/A")'
    ```
 4. `officecli validate data.xlsx` — close any resident first (see Known Issues).
-5. **Visual pass — walk every sheet in the browser preview.** `officecli view "$FILE" html --browser` renders each sheet, charts inline. Scan for `###`, truncated titles, placeholder tokens (`$fy$24`, `{var}`, `<TODO>`), sliced charts, white-slice pie charts, empty chart anchors — **STOP and fix before declaring done**. "validate pass" is not delivery; "the browser preview looks like a real workbook" is delivery.
+5. **Visual pass — walk every sheet via the HTML preview.** Run `officecli view "$FILE" html` and Read the returned HTML path. Each sheet renders with charts inline. Scan for `###`, truncated titles, placeholder tokens (`$fy$24`, `{var}`, `<TODO>`), sliced charts, white-slice pie charts, empty chart anchors — **STOP and fix before declaring done**. "validate pass" is not delivery; "the preview looks like a real workbook" is delivery. For human preview, run `officecli watch "$FILE"` (user opens the live preview at their own discretion) or have them open the `.xlsx` directly in Excel / WPS / Numbers.
 6. **Print / export layout fix (wide tables / multi-chart sheets).** When a sheet holds a chart or a wide table and the user will print or export it, set per-sheet page layout so it fits on one page:
    ```bash
    officecli set data.xlsx "/Summary" --prop orientation=landscape --prop fitToPage=true
@@ -366,7 +366,7 @@ Your first workbook is almost never correct. Treat QA as a bug hunt, not a confi
    Outcome: each sheet's print/export layout is one page with no mid-chart splits. Apply to every sheet that holds a chart or a > 8-column table.
 7. If anything failed, fix, then **rerun the full cycle**. One fix commonly creates another problem.
 
-`officecli view issues` + `view html --browser` are the structural QA pair: `issues` catches broken formulas and empty sheets; `html --browser` catches `###`, truncation, and token leakage. Chart fill colors / theme tints can vary across viewers — spot-check in the user's target viewer when color fidelity matters.
+`officecli view issues` + `view html` are the structural QA pair: `issues` catches broken formulas and empty sheets; `view html` (Read the returned HTML path) catches `###`, truncation, and token leakage. Chart fill colors / theme tints can vary across viewers — spot-check in the user's target viewer when color fidelity matters.
 
 ### Formula verification checklist
 
@@ -390,9 +390,9 @@ officecli query data.xlsx 'cell:contains("xxxx")'
 officecli query data.xlsx 'cell:contains("TBD")'
 ```
 
-### Fresh eyes (subagent)
+### Fresh eyes
 
-xlsx has no visual preview (unlike pptx). You are reading the same cells you wrote. Spawn a subagent with the single instruction: "Open `data.xlsx`, list every problem you see — formulas, numbers that look off, formatting inconsistency, missing data." Fresh eyes find what the builder's eyes confirm.
+When you finish a workbook, open it fresh. Read `view text` / HTML preview top-to-bottom as if you are a new reviewer — look for formulas, numbers that look off, formatting inconsistency, missing data.
 
 ### Honest limit
 
@@ -424,14 +424,14 @@ Avoid these until fixed; they produce invalid XML or silent breakage. Full detai
 - **Line chart `showMarker` defaults to `true`** — omitting the prop is NOT enough. The default emits markers, which in some viewers render as scatter dots (no connecting line). Always pass `--prop showMarker=false` explicitly on line charts. (Older validate bug `c:marker unexpected child` appears fixed in 1.0.57+.)
 - **Chart `anchor` and series are immutable after create** — to resize/move/add-series: `remove` + `add`. `remove chart[N]` shifts subsequent indices down; re-add appends at end.
 - **`validate` while resident open** — reports spurious `tableParts` / `drawing` errors. Always `close` first.
-- **Batch + resident** — intermittent failure (up to 1-in-3) for **mixed formula batches**. For formula batches in resident mode, stay ≤ 12 ops, check output every block, retry failed ops individually; critical cross-sheet formulas prefer individual `set` (100% reliable). Pure value-set batches (no formulas) run reliably at 50-80+ ops even in resident.
+- **Batch + resident for formulas — avoid.** Observed deadlocks (CPU 99%, `main pipe busy`, kill -9 required) for cross-sheet formula batches even at 3-5 ops; the prior "≤ 12 ops safe" guideline is **not reliable**. Rule: **cross-sheet formulas go through non-resident one-big-batch OR individual `set`** (100% reliable). Pure value-set batches (no formulas) stay reliable at 50-80+ ops even in resident. **Multiple officecli resident processes on the same machine also contend** — if another agent/session is running resident, expect non-deterministic hangs.
 - **Conditional formatting naming asymmetry** — the element name for `--type` is `conditionalformatting`; the path suffix is `/cf[N]`. Use `officecli help xlsx conditionalformatting` for schema, `/cf[N]` for paths.
 - **Sheet `position` prop on add** — help says Add processes `position`, but the prop is often ignored. Reorder with `officecli move --index` / `--after` / `--before` after creating the sheet.
 - **`remove /sheet[N]` cascade guard** — 1.0.59+ rejects sheet remove/rename when the sheet is referenced by validation / conditional format / sparkline / hyperlink / named range on another sheet. Remove those dependent elements first, then remove the sheet.
 
 ### Renderer caveats (cross-viewer color fidelity)
 
-`officecli view html --browser` is the right tool for structural QA (overflow, truncation, placeholder leakage, layout). Some chart rendering details vary across the viewer the end user opens the file in. Observed divergences:
+`officecli view html` is the right tool for structural QA (overflow, truncation, placeholder leakage, layout) — Read the returned HTML path. Some chart rendering details vary across the viewer the end user opens the file in. Observed divergences:
 
 - **Pie / doughnut fill colors may collapse to a single theme tint** in some viewers (slices look "all white" or "all one color"). The file may be fine in the user's target viewer.
 - **Line chart / column chart series colors may drift** from the workbook theme in some viewers.
