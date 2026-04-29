@@ -452,8 +452,16 @@ public partial class PowerPointHandler
                     // OpenXml SDK doesn't expose rtlCol as a typed property on
                     // BodyProperties — set the attribute directly. "1"/"0" is
                     // the only canonical xsd:boolean form Office tooling reads.
+                    // For ltr (the schema default), strip the attribute rather
+                    // than writing rtlCol="0" so a rtl→ltr toggle leaves no
+                    // stale explicit-default noise in the XML.
                     if (dirBodyPr != null)
-                        dirBodyPr.SetAttribute(new DocumentFormat.OpenXml.OpenXmlAttribute("", "rtlCol", "", rtl ? "1" : "0"));
+                    {
+                        if (rtl)
+                            dirBodyPr.SetAttribute(new DocumentFormat.OpenXml.OpenXmlAttribute("", "rtlCol", "", "1"));
+                        else
+                            dirBodyPr.RemoveAttribute("rtlCol", "");
+                    }
                     break;
                 }
 

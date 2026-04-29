@@ -158,8 +158,16 @@ public partial class PowerPointHandler
                         pProps.RightToLeft = rtl;
                     }
                     var dirBodyPr = newShape.TextBody?.Elements<Drawing.BodyProperties>().FirstOrDefault();
+                    // For ltr (schema default), strip the attribute rather
+                    // than writing rtlCol="0" — keeps the XML free of
+                    // explicit-default noise on rtl→ltr toggles.
                     if (dirBodyPr != null)
-                        dirBodyPr.SetAttribute(new DocumentFormat.OpenXml.OpenXmlAttribute("", "rtlCol", "", rtl ? "1" : "0"));
+                    {
+                        if (rtl)
+                            dirBodyPr.SetAttribute(new DocumentFormat.OpenXml.OpenXmlAttribute("", "rtlCol", "", "1"));
+                        else
+                            dirBodyPr.RemoveAttribute("rtlCol", "");
+                    }
                 }
 
                 // Text margin (padding inside shape)
