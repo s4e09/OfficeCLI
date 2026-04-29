@@ -330,7 +330,18 @@ public partial class WordHandler
                 };
             }
             if (properties.TryGetValue("color", out var pColor) || properties.TryGetValue("font.color", out pColor))
-                rProps.Color = new Color { Val = SanitizeHex(pColor) };
+            {
+                // CONSISTENCY(theme-color): Add paragraph color must accept
+                // scheme color names (accent1, dark2, hyperlink, …) the same
+                // way ApplyRunFormatting (Set path) does — otherwise
+                // Add(.., {color=accent1}) would call SanitizeHex on the
+                // scheme name and produce garbage hex.
+                var pSchemeName = OfficeCli.Core.ParseHelpers.NormalizeSchemeColorName(pColor);
+                if (pSchemeName != null)
+                    rProps.Color = new Color { Val = "auto", ThemeColor = new EnumValue<ThemeColorValues>(new ThemeColorValues(pSchemeName)) };
+                else
+                    rProps.Color = new Color { Val = SanitizeHex(pColor) };
+            }
             if (properties.TryGetValue("underline", out var pUnderline) || properties.TryGetValue("font.underline", out pUnderline))
             {
                 var ulVal = NormalizeUnderlineValue(pUnderline);
@@ -756,7 +767,16 @@ public partial class WordHandler
             };
         }
         if (properties.TryGetValue("color", out var rColor) || properties.TryGetValue("font.color", out rColor))
-            newRProps.Color = new Color { Val = SanitizeHex(rColor) };
+        {
+            // CONSISTENCY(theme-color): Add run color accepts scheme color
+            // names (accent1, dark2, hyperlink, …); same logic as
+            // ApplyRunFormatting in WordHandler.Helpers.cs.
+            var rSchemeName = OfficeCli.Core.ParseHelpers.NormalizeSchemeColorName(rColor);
+            if (rSchemeName != null)
+                newRProps.Color = new Color { Val = "auto", ThemeColor = new EnumValue<ThemeColorValues>(new ThemeColorValues(rSchemeName)) };
+            else
+                newRProps.Color = new Color { Val = SanitizeHex(rColor) };
+        }
         if (properties.TryGetValue("underline", out var rUnderline) || properties.TryGetValue("font.underline", out rUnderline))
         {
             var ulVal = NormalizeUnderlineValue(rUnderline);
