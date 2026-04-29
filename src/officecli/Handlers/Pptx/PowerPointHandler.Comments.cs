@@ -83,6 +83,22 @@ public partial class PowerPointHandler
         var author = properties.GetValueOrDefault("author", "OfficeCli");
         var initials = properties.GetValueOrDefault("initials", DeriveInitials(author));
 
+        // R7-bt-5: PPT comment direction surface. p:cm has no rtl attribute
+        // and the body is a plain p:text (no rPr/pPr). Mirror the
+        // pure-text RTL convention: prepend U+200F (RIGHT-TO-LEFT MARK) on
+        // direction=rtl so PowerPoint and viewers render the comment with
+        // Arabic / Hebrew bidi context. ltr / unset leaves the text alone.
+        // No UNSUPPORTED — the key is consumed.
+        if ((properties.TryGetValue("direction", out var pcmDir)
+             || properties.TryGetValue("dir", out pcmDir)
+             || properties.TryGetValue("rtl", out pcmDir))
+            && ParsePptDirectionRtl(pcmDir)
+            && !string.IsNullOrEmpty(text)
+            && text[0] != '‏')
+        {
+            text = "‏" + text;
+        }
+
         var ca = GetOrCreateCommentAuthor(author, initials);
 
         // x/y positions are stored in EMUs internally; OOXML p:cm uses a CT_Point

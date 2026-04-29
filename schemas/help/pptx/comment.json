@@ -65,6 +65,15 @@
       "examples": ["--prop y=2cm"],
       "readback": "EMU",
       "enforcement": "report"
+    },
+    "direction": {
+      "type": "string",
+      "aliases": ["dir", "rtl"],
+      "description": "Reading direction for the comment text. rtl prepends U+200F (RIGHT-TO-LEFT MARK) so Arabic / Hebrew comments render with proper bidi context. p:cm has no native rtl attribute, so this is the standard pure-text convention.",
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop direction=rtl"],
+      "readback": "rtl|ltr",
+      "enforcement": "report"
     }
   }
 }
