@@ -200,6 +200,17 @@ public partial class WordHandler
                     null => null,
                     var b => TryReadOnOff(b.Val) is { } on ? (on ? "rtl" : "ltr") : null,
                 },
+                // R11-bt-5: `rtl` alias — mirrors paragraph-level direction in
+                // boolean form so users can write paragraph[rtl=true] without
+                // remembering whether bidi/direction is the canonical key.
+                // rtl=true ⇔ BiDi present and truthy.
+                // rtl=false ⇔ BiDi absent OR explicit val=0 (LTR is the
+                // implicit default in OOXML, so absent w:bidi == ltr).
+                "rtl" => para.ParagraphProperties?.BiDi switch
+                {
+                    null => "false",
+                    var b => TryReadOnOff(b.Val) is { } on ? (on ? "true" : "false") : "true",
+                },
                 // Run-level properties: check first text-bearing run (same approach as Get readback)
                 "bold" => GetFirstRunForSelector(para, ref firstRun, ref firstRunResolved)?.RunProperties?.Bold != null ? "true" : "false",
                 "italic" => GetFirstRunForSelector(para, ref firstRun, ref firstRunResolved)?.RunProperties?.Italic != null ? "true" : "false",
@@ -313,6 +324,19 @@ public partial class WordHandler
                     ? run.GetFirstChild<PositionalTab>()!.RelativeTo!.InnerText : null,
                 "leader" => run.GetFirstChild<PositionalTab>()?.Leader?.HasValue == true
                     ? run.GetFirstChild<PositionalTab>()!.Leader!.InnerText : null,
+                // R11-bt-5: `rtl` selector mirrors run rPr/rtl boolean.
+                // Get returns node.Format["rtl"]=true|false; the selector
+                // must accept the same key. Absent rtl element ⇒ null
+                // (so rtl=false matches only runs with explicit w:rtl val=0).
+                "rtl" or "direction" or "dir" or "bidi" => run.RunProperties?.RightToLeftText switch
+                {
+                    null => null,
+                    var r => TryReadOnOff(r.Val) is { } on
+                        ? (key.Equals("rtl", StringComparison.OrdinalIgnoreCase)
+                            ? (on ? "true" : "false")
+                            : (on ? "rtl" : "ltr"))
+                        : (key.Equals("rtl", StringComparison.OrdinalIgnoreCase) ? "true" : "rtl"),
+                },
                 "fieldchartype" => run.GetFirstChild<FieldChar>()?.FieldCharType?.HasValue == true
                     ? run.GetFirstChild<FieldChar>()!.FieldCharType!.InnerText : null,
                 "instr" => run.GetFirstChild<FieldCode>()?.Text,
