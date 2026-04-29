@@ -1976,17 +1976,55 @@ public partial class ExcelHandler
     // or bare), font.color (#FF0000 / FF0000 / rgb() / named), font.name.
     internal static RunProperties BuildCommentRunProperties(Dictionary<string, string> properties)
     {
+        // CONSISTENCY(xlsx/comment-rtl): R9-3 — direction/dir/font.rtl propagate
+        // <x:rtl/> on CT_RPrElt. We accept either a top-level direction key
+        // (mirrors the rest of the i18n surface) or the explicit font.rtl
+        // boolean. The flag is independent of font.* defaults — a comment
+        // with only direction=rtl must still keep the legacy Tahoma 9 default
+        // for the font facets, just with an additional <x:rtl/> child.
+        bool wantsRtl = false;
+        bool hasExplicitRtl = false;
+        if (properties.TryGetValue("direction", out var dirRaw)
+            || properties.TryGetValue("dir", out dirRaw))
+        {
+            hasExplicitRtl = true;
+            wantsRtl = string.Equals(dirRaw, "rtl", StringComparison.OrdinalIgnoreCase);
+        }
+        if (properties.TryGetValue("font.rtl", out var fRtl))
+        {
+            hasExplicitRtl = true;
+            wantsRtl = IsTruthy(fRtl);
+        }
+
         bool hasAnyFont = properties.Keys.Any(k =>
             k.StartsWith("font.", StringComparison.OrdinalIgnoreCase));
-        if (!hasAnyFont)
+        if (!hasAnyFont && !hasExplicitRtl)
         {
             return new RunProperties(
                 new FontSize { Val = 9 },
                 new Color { Indexed = 81 },
                 new RunFont { Val = "Tahoma" });
         }
+        // CT_RPrElt has no schema-level <rtl> child; we synthesize one as an
+        // unknown element using the Spreadsheet namespace so consumers that
+        // honor the i18n extension (Excel for Mac / RTL locales) pick it up.
+        // The element is a leaf empty marker; absence means LTR (default).
+        const string xlsNs = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+        OpenXmlElement BuildRtlMarker() =>
+            new DocumentFormat.OpenXml.OpenXmlUnknownElement("rtl", xlsNs);
+
+        if (!hasAnyFont && hasExplicitRtl)
+        {
+            var rPrDefault = new RunProperties();
+            if (wantsRtl) rPrDefault.AppendChild(BuildRtlMarker());
+            rPrDefault.AppendChild(new FontSize { Val = 9 });
+            rPrDefault.AppendChild(new Color { Indexed = 81 });
+            rPrDefault.AppendChild(new RunFont { Val = "Tahoma" });
+            return rPrDefault;
+        }
 
         var rPr = new RunProperties();
+        if (wantsRtl) rPr.AppendChild(BuildRtlMarker());
         if (properties.TryGetValue("font.bold", out var fb) && IsTruthy(fb))
             rPr.AppendChild(new Bold());
         if (properties.TryGetValue("font.italic", out var fi) && IsTruthy(fi))
