@@ -13,6 +13,7 @@
     "stable": ["/slide[N]/shape[@id=ID]"],
     "positional": ["/slide[N]/shape[N]"]
   },
+  "note": "Positional /shape[N] enumerates ALL shapes on the slide including layout-inherited placeholders (title, body, etc.) — newly added shapes typically land at the end, not at /shape[1]. The 'add' command echoes back the canonical /shape[@id=ID] path; prefer that for follow-up Set/Get rather than guessing the positional index.",
   "properties": {
     "text": {
       "type": "string",
