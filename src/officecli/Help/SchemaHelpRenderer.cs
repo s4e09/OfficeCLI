@@ -91,6 +91,21 @@ internal static class SchemaHelpRenderer
             var form = addressing.TryGetProperty("pathForm", out var pf) ? pf.GetString() : null;
             if (!string.IsNullOrEmpty(form))
                 sb.AppendLine($"Addressing: {form}");
+
+            // Render the address-key's allowed values (e.g. role=cat|val|ser).
+            // Without this, the path placeholder ("ROLE") is undocumented and
+            // callers must guess.
+            if (addressing.TryGetProperty("key", out var keyEl)
+                && keyEl.ValueKind == JsonValueKind.String
+                && addressing.TryGetProperty("keyValues", out var kv)
+                && kv.ValueKind == JsonValueKind.Array)
+            {
+                var vals = new List<string>();
+                foreach (var v in kv.EnumerateArray())
+                    if (v.ValueKind == JsonValueKind.String) vals.Add(v.GetString()!);
+                if (vals.Count > 0)
+                    sb.AppendLine($"  {keyEl.GetString()} values: {string.Join(", ", vals)}");
+            }
         }
 
         if (root.TryGetProperty("operations", out var ops))
