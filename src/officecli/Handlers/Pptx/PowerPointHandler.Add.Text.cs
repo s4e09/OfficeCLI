@@ -140,6 +140,30 @@ public partial class PowerPointHandler
                     ApplyNotesDirection(notesSlidePart, notesDir);
                     notesSlidePart.NotesSlide!.Save();
                 }
+                // CONSISTENCY(add-set-symmetry): notes Set accepts lang=
+                // (routes through SetRunOrShapeProperties on the notes
+                // body). Add must accept the same key — without this,
+                // `add /slide[N] --type notes --prop lang=ar-SA` reported
+                // UNSUPPORTED while Set succeeded.
+                if (properties.TryGetValue("lang", out var notesLang))
+                {
+                    Shape? notesBody = null;
+                    var notesShapeTree = notesSlidePart.NotesSlide?.CommonSlideData?.ShapeTree;
+                    if (notesShapeTree != null)
+                    {
+                        foreach (var sh in notesShapeTree.Elements<Shape>())
+                        {
+                            var ph = sh.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties?.GetFirstChild<PlaceholderShape>();
+                            if (ph?.Index?.Value == 1) { notesBody = sh; break; }
+                        }
+                    }
+                    if (notesBody != null)
+                    {
+                        var notesRuns = notesBody.Descendants<Drawing.Run>().ToList();
+                        SetRunOrShapeProperties(new Dictionary<string, string> { ["lang"] = notesLang }, notesRuns, notesBody);
+                        notesSlidePart.NotesSlide!.Save();
+                    }
+                }
                 return $"/slide[{notesSlideIdx}]/notes";
     }
 
