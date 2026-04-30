@@ -39,10 +39,11 @@
     },
     "font": {
       "type": "string",
-      "description": "font family (e.g. \"Times New Roman\", \"SimSun\")",
+      "description": "bare font family — write-only convenience that sets ASCII+HighAnsi+EastAsia to the same value. Get normalizes the readback to per-script canonical keys (font.latin / font.ea / font.cs) so a get→set round-trip preserves divergent slot values.",
       "aliases": ["fontname", "fontFamily", "font.name"],
-      "add": true, "set": true, "get": true,
+      "add": true, "set": true, "get": false,
       "examples": ["--prop font=\"Times New Roman\""],
+      "readback": "see font.latin / font.ea / font.cs",
       "enforcement": "strict"
     },
     "size": {

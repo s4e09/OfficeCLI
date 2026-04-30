@@ -87,12 +87,12 @@
     },
     "numId": {
       "type": "int",
-      "description": "numbering definition id (w:numId). Low-level entry point — prefer 'listStyle' unless you specifically need to reference an existing numbering instance.",
+      "description": "numbering definition id (w:numId). Low-level entry point — prefer 'listStyle' unless you specifically need to reference an existing numbering instance. Requires the numId to already exist in /numbering (create via `add /numbering --type num` first).",
       "aliases": ["numid"],
       "add": true, "set": true, "get": true,
       "examples": ["--prop numId=1"],
       "readback": "numbering id as stored on the paragraph",
-      "enforcement": "strict"
+      "enforcement": "report"
     },
     "numLevel": {
       "type": "int",
@@ -102,7 +102,7 @@
       "add": true, "set": true, "get": true,
       "examples": ["--prop numLevel=1 --prop numId=1", "--prop ilvl=1 --prop numId=1"],
       "readback": "integer level as stored on the paragraph (only when numId is set)",
-      "enforcement": "strict"
+      "enforcement": "report"
     },
     "start": {
       "type": "int",
