@@ -19,6 +19,14 @@ public partial class WordHandler
     // prevent catastrophic-backtracking DoS (e.g. "(a+)+b" against long inputs).
     private static readonly TimeSpan FindRegexMatchTimeout = TimeSpan.FromSeconds(5);
 
+    // Tolerant BCP-47 shape used to validate run lang.{val,ea,cs} values.
+    // Matches the PPTX shape validator: starts with a letter, allows letters,
+    // digits, and hyphens (zh-Hant-TW, en-US, x-private, ...). Rejects bare
+    // hyphens and other malformed input that would write an unloadable
+    // <w:lang> attribute.
+    private static readonly System.Text.RegularExpressions.Regex LangBcp47Shape =
+        new(@"^[A-Za-z][A-Za-z0-9-]*$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
     /// <summary>
     /// Resolve the OpenXmlPart that owns a given element. Returns the
     /// HeaderPart/FooterPart/FootnotesPart/EndnotesPart/CommentsPart when the
@@ -1241,6 +1249,12 @@ public partial class WordHandler
                 // <w:lang w:val=".." w:eastAsia=".." w:bidi=".."/> — three slots
                 // for Latin / EastAsian / ComplexScript scripts. Mirrors the
                 // font.latin/font.ea/font.cs vocabulary.
+                // CONSISTENCY(bcp47-validation): match the PPTX shape lang
+                // validator (Bcp47Shape) — reject malformed tags up front
+                // rather than writing them into <w:lang> and producing an
+                // unloadable document.
+                if (!string.IsNullOrEmpty(value) && !LangBcp47Shape.IsMatch(value))
+                    throw new ArgumentException($"Invalid BCP-47 language tag for {key}: '{value}'. Expected a tag like 'en-US', 'ja-JP', or 'ar-SA'.");
                 var lang = props.GetFirstChild<Languages>();
                 if (lang == null)
                 {

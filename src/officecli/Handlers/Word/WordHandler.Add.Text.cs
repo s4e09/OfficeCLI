@@ -545,6 +545,29 @@ public partial class WordHandler
                 case "sizecs":
                     continue;
             }
+            // CONSISTENCY(add-set-symmetry / bcp47-validation): route lang.*
+            // through ApplyRunFormatting (Set's path) so the validator runs
+            // on Add too. Target the existing run rPr if present, else the
+            // paragraph mark rPr.
+            switch (key.ToLowerInvariant())
+            {
+                case "lang.latin":
+                case "lang.val":
+                case "lang.ea":
+                case "lang.eastasia":
+                case "lang.eastasian":
+                case "lang.cs":
+                case "lang.complexscript":
+                case "lang.bidi":
+                {
+                    if (rPropsForFallback != null
+                        && ApplyRunFormatting(rPropsForFallback, key, value)) continue;
+                    var langMarkRPr = pProps.GetFirstChild<ParagraphMarkRunProperties>()
+                        ?? pProps.AppendChild(new ParagraphMarkRunProperties());
+                    if (ApplyRunFormatting(langMarkRPr, key, value)) continue;
+                    break;
+                }
+            }
             if (Core.TypedAttributeFallback.TrySet(pProps, key, value)) continue;
             if (rPropsForFallback != null
                 && Core.TypedAttributeFallback.TrySet(rPropsForFallback, key, value)) continue;
@@ -956,6 +979,23 @@ public partial class WordHandler
                 case "italiccs":
                 case "sizecs":
                     continue;
+            }
+            // CONSISTENCY(add-set-symmetry / bcp47-validation): route lang.*
+            // through ApplyRunFormatting so the BCP-47 validator that Set
+            // applies also runs on Add (without this, malformed lang values
+            // like "-" silently became <w:lang w:val="-"/>).
+            switch (key.ToLowerInvariant())
+            {
+                case "lang.latin":
+                case "lang.val":
+                case "lang.ea":
+                case "lang.eastasia":
+                case "lang.eastasian":
+                case "lang.cs":
+                case "lang.complexscript":
+                case "lang.bidi":
+                    if (ApplyRunFormatting(newRProps, key, value)) continue;
+                    break;
             }
             if (Core.TypedAttributeFallback.TrySet(newRProps, key, value)) continue;
             LastAddUnsupportedProps.Add(key);
