@@ -348,10 +348,15 @@
     },
     "gradient": {
       "type": "string",
-      "description": "gradient fill spec: colors separated by '-' (e.g. 'FF0000-0000FF' linear).",
-      "add": true, "set": true, "get": false,
-      "examples": ["--prop gradient=\"FF0000-0000FF\""],
-      "readback": "n/a",
+      "description": "gradient fill spec. Linear: 'C1-C2[-ANGLE]' or 'LINEAR;C1;C2;ANGLE'. Radial: 'radial:C1-C2[-FOCUS]' (focus: tl/tr/bl/br/center). Path: 'path:C1-C2[-FOCUS]'. Per-stop position: 'C@PCT' (e.g. 'FF0000@0-0000FF@100').",
+      "add": true, "set": true, "get": true,
+      "examples": [
+        "--prop gradient=\"FF0000-0000FF\"",
+        "--prop gradient=\"FF0000-0000FF-90\"",
+        "--prop gradient=\"LINEAR;FF0000;0000FF;45\"",
+        "--prop gradient=\"radial:4B0082-1E90FF-center\""
+      ],
+      "readback": "linear: 'linear;C1;C2;ANGLE' (semicolon-separated, degree integer). radial/path: 'radial:C1-C2-FOCUS' / 'path:C1-C2-FOCUS'. When gradient is present, 'fill' reads back as 'gradient' unless a solidFill also exists.",
       "enforcement": "report"
     },
     "pattern": {
