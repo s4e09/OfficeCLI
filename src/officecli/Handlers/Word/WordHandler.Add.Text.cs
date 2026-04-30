@@ -967,14 +967,16 @@ public partial class WordHandler
             {
                 targetPara.InsertBefore(newRun, refElement);
             }
-            var runPosIdx = targetPara.Elements<Run>().ToList().IndexOf(newRun) + 1;
+            // CONSISTENCY(run-path-index): match navigation's r[N] enumeration
+            // (Descendants<Run>() minus comment-reference runs) via GetAllRuns.
+            var runPosIdx = GetAllRuns(targetPara).IndexOf(newRun) + 1;
             // CONSISTENCY(para-path-canonical): canonicalize to paraId-form.
             resultPath = $"{ReplaceTrailingParaSegment(parentPath, targetPara)}/r[{runPosIdx}]";
         }
         else
         {
             targetPara.AppendChild(newRun);
-            var runCount = targetPara.Elements<Run>().Count();
+            var runCount = GetAllRuns(targetPara).IndexOf(newRun) + 1;
             resultPath = $"{ReplaceTrailingParaSegment(parentPath, targetPara)}/r[{runCount}]";
         }
 
@@ -1135,7 +1137,7 @@ public partial class WordHandler
         // so textId must regenerate to mark the paragraph as modified for
         // revision-tracking and diff tooling. Mirrors AddRun's behavior.
         para.TextId = GenerateParaId();
-        var runIdx = para.Elements<Run>().TakeWhile(r => r != ptabRun).Count() + 1;
+        var runIdx = GetAllRuns(para).IndexOf(ptabRun) + 1;
         // CONSISTENCY(para-path-canonical): when parent is itself a
         // paragraph, parentPath already points at it — appending another
         // /p[N] would yield an illegal /p[1]/p[1]/r[N] path. Replace the

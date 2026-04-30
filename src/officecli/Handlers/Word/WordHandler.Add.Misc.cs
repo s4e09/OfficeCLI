@@ -598,7 +598,7 @@ public partial class WordHandler
                     fieldPara,
                     new OpenXmlElement[] { fieldRunBegin, fieldRunInstr, fieldRunSep, fieldRunResult, fieldRunEnd },
                     index);
-                var runIdxAfterInsert = fieldPara.Elements<Run>().TakeWhile(r => r != fieldRunResult).Count();
+                var runIdxAfterInsert = GetAllRuns(fieldPara).IndexOf(fieldRunResult);
                 resultPath = $"{fieldParaPath}/r[{runIdxAfterInsert + 1}]";
             }
             else
@@ -636,7 +636,7 @@ public partial class WordHandler
             // Strip the trailing /r[K] segment to get the paragraph path.
             var slashIdx = hostParaPath.LastIndexOf("/r[", StringComparison.Ordinal);
             if (slashIdx > 0) hostParaPath = hostParaPath.Substring(0, slashIdx);
-            var runIdxAfter = hostRunPara.Elements<Run>().TakeWhile(r => r != fieldRunResult).Count();
+            var runIdxAfter = GetAllRuns(hostRunPara).IndexOf(fieldRunResult);
             resultPath = $"{hostParaPath}/r[{runIdxAfter + 1}]";
         }
         else
@@ -800,7 +800,7 @@ public partial class WordHandler
             // index is a childElement-index (ResolveAnchorPosition counts pPr).
             // pPr-aware insert keeps pPr as the first child of <w:p>.
             InsertIntoParagraph(brkPara, brkRun, index);
-            var brkRunIdx = brkPara.Elements<Run>().TakeWhile(r => r != brkRun).Count() + 1;
+            var brkRunIdx = GetAllRuns(brkPara).IndexOf(brkRun) + 1;
             // CONSISTENCY(para-path-canonical): parentPath already targets
             // the paragraph; replacing its trailing /p[...] segment with
             // paraId-form yields a path that mirrors what Get later
