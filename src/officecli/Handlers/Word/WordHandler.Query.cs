@@ -937,6 +937,42 @@ public partial class WordHandler
     }
 
     /// <summary>
+    /// Find the SectionProperties that owns <paramref name="para"/> in
+    /// document order: the first paragraph-level sectPr at or after the
+    /// paragraph, falling back to the body-level (final) sectPr. Used by
+    /// effective-direction inheritance (paragraphs cascade from their
+    /// owning section's <w:bidi/>).
+    /// </summary>
+    private SectionProperties? FindOwningSectionProperties(Paragraph para)
+    {
+        var body = _doc.MainDocumentPart?.Document?.Body;
+        if (body == null) return null;
+
+        // Walk top-level body paragraphs starting from para's top-level
+        // ancestor. Paragraphs nested inside tables/sdt still belong to
+        // whatever section their containing block belongs to, so the
+        // walk anchors on the Body-direct ancestor.
+        OpenXmlElement? bodyChild = para;
+        while (bodyChild != null && bodyChild.Parent is not Body)
+            bodyChild = bodyChild.Parent;
+        if (bodyChild == null) return body.GetFirstChild<SectionProperties>();
+
+        // Scan forward from bodyChild for the first paragraph-level sectPr.
+        var cur = bodyChild;
+        while (cur != null)
+        {
+            if (cur is Paragraph p)
+            {
+                var sectPr = p.ParagraphProperties?.GetFirstChild<SectionProperties>();
+                if (sectPr != null) return sectPr;
+            }
+            cur = cur.NextSibling();
+        }
+        // Fall back to the body-level sectPr (final section).
+        return body.GetFirstChild<SectionProperties>();
+    }
+
+    /// <summary>
     /// Represents a complex field (fldChar begin → instrText → separate → result → end).
     /// </summary>
     private record FieldInfo(Run BeginRun, FieldCode InstrCode, Run? SeparateRun, List<Run> ResultRuns, Run EndRun, OpenXmlElement Container);

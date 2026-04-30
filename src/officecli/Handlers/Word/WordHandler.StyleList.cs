@@ -627,6 +627,29 @@ public partial class WordHandler
         }
         if (!node.Format.ContainsKey("direction") && direction == null)
         {
+            // R15-bt-3: enclosing section's <w:bidi/> on sectPr cascades
+            // to every paragraph in the section. The section that owns a
+            // paragraph is the first paragraph-level sectPr that comes
+            // after it in document order, falling back to the body-level
+            // (final) sectPr if none does.
+            var owningSect = FindOwningSectionProperties(para);
+            if (owningSect != null && owningSect.GetFirstChild<BiDi>() != null)
+            {
+                // sectPr <w:bidi/> has no Val attribute defaulting to true
+                // (CT_OnOff default-true). Honor explicit Val=false too.
+                var on = TryReadOnOff(owningSect.GetFirstChild<BiDi>()?.Val);
+                if (on != true) on = on ?? true;
+                direction = on.Value ? "rtl" : "ltr";
+                // Locate the section's 1-based document-order index for src.
+                var sects = FindSectionProperties();
+                var idx = sects.FindIndex(s => ReferenceEquals(s, owningSect));
+                directionSrc = idx >= 0
+                    ? $"/section[{idx + 1}]"
+                    : "/body/sectPr[1]";
+            }
+        }
+        if (!node.Format.ContainsKey("direction") && direction == null)
+        {
             // docDefaults pPrDefault.bidi
             var docDefaults = _doc.MainDocumentPart?.StyleDefinitionsPart?.Styles?.DocDefaults;
             var pPrDefault = docDefaults?.ParagraphPropertiesDefault?.ParagraphPropertiesBaseStyle;
