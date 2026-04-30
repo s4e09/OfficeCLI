@@ -17,7 +17,7 @@
   "properties": {
     "chartType": {
       "type": "enum",
-      "values": ["column", "bar", "line", "pie", "doughnut", "area", "scatter", "radar", "stock", "bubble", "surface", "funnel", "treemap", "sunburst", "boxWhisker", "histogram"],
+      "values": ["column", "bar", "line", "pie", "doughnut", "area", "scatter", "radar", "stock", "bubble", "surface", "funnel", "treemap", "sunburst", "boxWhisker", "histogram", "waterfall", "pareto", "combo"],
       "aliases": ["type", "charttype"],
       "add": true, "set": true, "get": true,
       "examples": ["--prop chartType=column"],

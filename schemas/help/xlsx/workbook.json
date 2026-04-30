@@ -13,7 +13,7 @@
   "paths": {
     "positional": ["/"]
   },
-  "note": "Root container. Get returns sheet list and workbook-level metadata. Set exists for workbook-wide properties (defaultFont, defaultFontSize, calculation, author). Sheets are mutated via /SheetName paths.",
+  "note": "Root container. Get returns sheet list and workbook-level metadata. Set exists for workbook-wide properties (defaultFont, defaultFontSize, calc.mode, calc.iterate, author, title, subject). Sheets are mutated via /SheetName paths.",
   "properties": {
     "defaultFont": {
       "type": "string",
@@ -54,6 +54,49 @@
       "add": false, "set": true, "get": true,
       "examples": ["--prop subject=Finance"],
       "readback": "subject string",
+      "enforcement": "report"
+    },
+    "calc.mode": {
+      "type": "enum",
+      "values": ["auto", "manual", "autoExceptTables"],
+      "description": "workbook formula calculation mode. 'auto' recalculates on every change, 'manual' requires F9, 'autoExceptTables' skips data tables.",
+      "aliases": ["calcmode"],
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop calc.mode=manual", "--prop calcmode=auto"],
+      "readback": "calc mode name",
+      "enforcement": "report"
+    },
+    "calc.iterate": {
+      "type": "bool",
+      "description": "enable iterative calculation for circular references.",
+      "aliases": ["iterate"],
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop calc.iterate=true", "--prop iterate=false"],
+      "readback": "true|false",
+      "enforcement": "report"
+    },
+    "calc.iterateCount": {
+      "type": "number",
+      "description": "maximum number of iterations when calc.iterate is enabled.",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop calc.iterateCount=100"],
+      "readback": "integer",
+      "enforcement": "report"
+    },
+    "calc.iterateDelta": {
+      "type": "number",
+      "description": "maximum change between iterations to consider the calculation converged.",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop calc.iterateDelta=0.001"],
+      "readback": "number",
+      "enforcement": "report"
+    },
+    "calc.fullPrecision": {
+      "type": "bool",
+      "description": "if true, calculations use full precision rather than the displayed value.",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop calc.fullPrecision=true"],
+      "readback": "true|false",
       "enforcement": "report"
     }
   },
