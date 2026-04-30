@@ -53,7 +53,7 @@
       "description": "chart frame width; accepts cm/in/pt/EMU.",
       "add": true, "set": true, "get": true,
       "examples": ["--prop width=15cm"],
-      "readback": "EMU / unit-qualified",
+      "readback": "length in cm (e.g. \"2cm\")",
       "enforcement": "report"
     },
     "height": {
@@ -61,7 +61,7 @@
       "description": "chart frame height; accepts cm/in/pt/EMU.",
       "add": true, "set": true, "get": true,
       "examples": ["--prop height=10cm"],
-      "readback": "EMU / unit-qualified",
+      "readback": "length in cm (e.g. \"2cm\")",
       "enforcement": "report"
     },
 

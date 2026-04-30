@@ -56,14 +56,14 @@
       "type": "length",
       "add": true, "set": true, "get": true,
       "examples": ["--prop x=2cm"],
-      "readback": "EMU",
+      "readback": "EMU integer (raw long; not unit-qualified)",
       "enforcement": "report"
     },
     "y": {
       "type": "length",
       "add": true, "set": true, "get": true,
       "examples": ["--prop y=2cm"],
-      "readback": "EMU",
+      "readback": "EMU integer (raw long; not unit-qualified)",
       "enforcement": "report"
     },
     "direction": {

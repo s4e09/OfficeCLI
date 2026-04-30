@@ -20,7 +20,7 @@
       "description": "column width in EMU-parseable length. Defaults to average of existing columns or ~2.54cm.",
       "add": true, "set": true, "get": true,
       "examples": ["--prop width=3cm"],
-      "readback": "EMU numeric",
+      "readback": "length in cm (e.g. \"2cm\")",
       "enforcement": "report"
     },
     "text": {

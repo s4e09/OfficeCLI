@@ -27,14 +27,14 @@
       "type": "length",
       "add": true, "set": true, "get": true,
       "examples": ["--prop x=1in"],
-      "readback": "unit-qualified length",
+      "readback": "length in cm (e.g. \"2cm\")",
       "enforcement": "report"
     },
     "y": {
       "type": "length",
       "add": true, "set": true, "get": true,
       "examples": ["--prop y=1in"],
-      "readback": "unit-qualified length",
+      "readback": "length in cm (e.g. \"2cm\")",
       "enforcement": "report"
     },
     "width": {
@@ -42,7 +42,7 @@
       "description": "EMU-parseable. Defaults to 6in if omitted.",
       "add": true, "set": true, "get": true,
       "examples": ["--prop width=3in"],
-      "readback": "unit-qualified length",
+      "readback": "length in cm (e.g. \"2cm\")",
       "enforcement": "report"
     },
     "height": {
@@ -50,7 +50,7 @@
       "description": "EMU-parseable. Defaults to 4in if omitted.",
       "add": true, "set": true, "get": true,
       "examples": ["--prop height=2in"],
-      "readback": "unit-qualified length",
+      "readback": "length in cm (e.g. \"2cm\")",
       "enforcement": "report"
     },
     "crop": {

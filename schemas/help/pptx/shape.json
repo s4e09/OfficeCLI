@@ -392,7 +392,7 @@
       "aliases": ["lineWidth"],
       "add": true, "set": true, "get": true,
       "examples": ["--prop linewidth=1pt"],
-      "readback": "unit-qualified",
+      "readback": "length in pt (e.g. \"1pt\")",
       "enforcement": "report"
     },
     "list": {

@@ -13,7 +13,7 @@
   "paths": {
     "positional": ["/slide[N]/ole[M]"]
   },
-  "note": "Aliases: oleobject, object, embed. Binary package + preview image. Position via x/y/width/height (EMU).",
+  "note": "Aliases: oleobject, object, embed. Binary package + preview image. Position via x/y/width/height (EMU-parseable; readback in cm).",
   "properties": {
     "src": {
       "type": "string",
@@ -42,28 +42,28 @@
       "type": "length",
       "add": true, "set": true, "get": true,
       "examples": ["--prop x=2cm"],
-      "readback": "EMU",
+      "readback": "length in cm (e.g. \"2cm\")",
       "enforcement": "report"
     },
     "y": {
       "type": "length",
       "add": true, "set": true, "get": true,
       "examples": ["--prop y=2cm"],
-      "readback": "EMU",
+      "readback": "length in cm (e.g. \"2cm\")",
       "enforcement": "report"
     },
     "width": {
       "type": "length",
       "add": true, "set": true, "get": true,
       "examples": ["--prop width=10cm"],
-      "readback": "EMU",
+      "readback": "length in cm (e.g. \"2cm\")",
       "enforcement": "report"
     },
     "height": {
       "type": "length",
       "add": true, "set": true, "get": true,
       "examples": ["--prop height=8cm"],
-      "readback": "EMU",
+      "readback": "length in cm (e.g. \"2cm\")",
       "enforcement": "report"
     }
   }

@@ -28,7 +28,7 @@
       "description": "row height in EMU-parseable length. Defaults to first-row height or ~1cm.",
       "add": true, "set": true, "get": true,
       "examples": ["--prop height=1cm"],
-      "readback": "EMU numeric",
+      "readback": "length in cm (e.g. \"2cm\")",
       "enforcement": "report"
     }
   }
