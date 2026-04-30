@@ -70,7 +70,7 @@
       "enforcement": "report"
     },
     "hyperlink": {
-      "type": "boolean",
+      "type": "bool",
       "description": "REF field: append \\h switch so the inserted reference becomes a clickable hyperlink to the bookmark target.",
       "add": true, "set": true, "get": true,
       "examples": ["--prop hyperlink=true"],

@@ -50,7 +50,7 @@
       "enforcement": "report"
     },
     "volatile": {
-      "type": "boolean",
+      "type": "bool",
       "description": "force recalculation of the defined name on every workbook change (Excel volatile flag).",
       "add": true, "set": true, "get": true,
       "examples": ["--prop volatile=true"],
