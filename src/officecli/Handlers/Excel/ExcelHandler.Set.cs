@@ -1153,7 +1153,14 @@ public partial class ExcelHandler
                         },
                         _ => ParseHelpers.IsTruthy(value),
                     };
-                    sheetView.RightToLeft = rtlOn;
+                    // CONSISTENCY(canonical): on default-LTR (Excel sheets have
+                    // no inheritance source above them), explicit ltr clears the
+                    // attribute rather than writing rightToLeft="0". Mirrors
+                    // Word `direction=ltr` clear semantics on default-LTR
+                    // contexts. Get already only emits direction=rtl, so this
+                    // restores Add/Set/Get symmetry.
+                    if (rtlOn) sheetView.RightToLeft = true;
+                    else sheetView.RightToLeft = null;
                     break;
                 }
 
