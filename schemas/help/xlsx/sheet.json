@@ -95,9 +95,17 @@
     },
     "protect": {
       "type": "bool",
-      "description": "sheet protection state (read from <sheetProtection sheet=true>). Emitted only when protection is enabled. On Set: pass sheet password or `none` to remove protection.",
+      "description": "sheet protection state. On Set: pass `true` to enable protection, `false` to disable. Use the separate `password` property to set/clear an Excel legacy password hash.",
       "add": false, "set": true, "get": true,
       "readback": "true if sheet protection enabled",
+      "enforcement": "report"
+    },
+    "password": {
+      "type": "string",
+      "description": "Excel legacy password hash for sheet protection (ECMA-376 14.7.1). On Set: pass plaintext password to hash and apply, or `none` to clear. Implicitly enables protection if not already set.",
+      "add": false, "set": true, "get": false,
+      "examples": ["--prop password=secret123", "--prop password=none"],
+      "readback": "n/a (hash not exposed on Get)",
       "enforcement": "report"
     },
     "orientation": {
