@@ -201,11 +201,11 @@
     },
     "type": {
       "type": "enum",
-      "values": ["string", "number", "boolean", "date", "richtext", "shared", "inline"],
-      "description": "force a cell type. Normally inferred from value/formula.",
+      "values": ["string", "number", "boolean", "date", "error", "richtext"],
+      "description": "force a cell type. Normally inferred from value/formula. Add/Set accept the listed values only; SST-backed shared strings and inline strings are not creatable via Add (use plain string instead). Get may still surface 'SharedString' or 'InlineString' when reading cells written by Excel or other tools.",
       "add": true, "set": true, "get": true,
       "examples": ["--prop value=01234 --prop type=string"],
-      "readback": "type token",
+      "readback": "PascalCase type name (e.g. \"String\", \"Number\", \"Boolean\", \"Error\", \"SharedString\", \"InlineString\", \"Date\")",
       "enforcement": "report"
     },
     "runs": {
