@@ -13,7 +13,7 @@
   "paths": {
     "positional": ["/slide[N]/shape[M]/animation[K]"]
   },
-  "note": "Animation attached to a specific shape. Effect name drives the timing preset; trigger controls sequencing (onClick / withPrevious / afterPrevious). On Get, effect/class/direction/duration are packed into the 'animation' key value as 'effectName-class-direction-duration' (e.g. 'fly-entrance-left-500'); there is no standalone 'direction' readback key. `repeat` and `restart` properties are not currently supported via prop — they are silently dropped with a stderr warning. Use raw-set on the timing nodes if needed.",
+  "note": "Animation attached to a specific shape. Effect name drives the timing preset; trigger controls sequencing (onClick / withPrevious / afterPrevious). On Get, returns individual keys: effect (preset name), class (entrance/emphasis/exit), presetId (numeric), trigger (onClick/afterPrevious/withPrevious), duration (ms integer). No composite 'animation' key is emitted. The `direction` parameter is consumed at Add time and not surfaced on Get. `repeat` and `restart` properties are not currently supported via prop — they are silently dropped with a stderr warning. Use raw-set on the timing nodes if needed.",
   "properties": {
     "effect": {
       "type": "enum",
