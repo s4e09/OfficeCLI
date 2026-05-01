@@ -27,6 +27,12 @@
     "minorGridlines": { "type": "bool",   "description": "show or hide minor gridlines. Applies to all roles.", "set": true, "get": true, "examples": ["--prop minorGridlines=false"], "enforcement": "report" },
     "majorUnit": { "type":"number", "add":false, "set":true, "get":true, "description":"major tick interval on the value axis. Applies to role=value|value2.", "readback":"numeric interval", "examples":["--prop majorUnit=20"], "enforcement":"report" },
     "minorUnit": { "type":"number", "add":false, "set":true, "get":true, "description":"minor tick interval on the value axis. Applies to role=value|value2.", "readback":"numeric interval", "examples":["--prop minorUnit=5"], "enforcement":"report" },
-    "dispUnits": { "type":"enum", "values":["hundreds","thousands","tenThousands","hundredThousands","millions","tenMillions","hundredMillions","billions","trillions"], "add":false, "set":true, "get":true, "description":"display units for value axis labels. Applies to role=value|value2.", "readback":"display unit token", "examples":["--prop dispUnits=thousands"], "enforcement":"report" }
+    "dispUnits": { "type":"enum", "values":["hundreds","thousands","tenThousands","hundredThousands","millions","tenMillions","hundredMillions","billions","trillions"], "add":false, "set":true, "get":true, "description":"display units for value axis labels. Applies to role=value|value2.", "readback":"display unit token", "examples":["--prop dispUnits=thousands"], "enforcement":"report" },
+    "axisMin":         { "type":"number", "add":false, "set":false, "get":true, "description":"value-axis minimum readback (also surfaced via min on axis-by-role path).", "readback":"numeric value", "enforcement":"report" },
+    "axisMax":         { "type":"number", "add":false, "set":false, "get":true, "description":"value-axis maximum readback (also surfaced via max on axis-by-role path).", "readback":"numeric value", "enforcement":"report" },
+    "axisTitle":       { "type":"string", "add":false, "set":false, "get":true, "description":"value-axis title readback (chart-level convenience; axis-by-role uses 'title').", "readback":"title string", "enforcement":"report" },
+    "axisFont":        { "type":"string", "add":false, "set":false, "get":true, "description":"axis text font readback.", "readback":"font name string", "enforcement":"report" },
+    "axisOrientation": { "type":"string", "add":false, "set":false, "get":true, "description":"axis scaling orientation (e.g. maxMin when reversed).", "readback":"orientation token", "enforcement":"report" },
+    "axisNumFmt":      { "type":"string", "add":false, "set":false, "get":true, "description":"axis number format string.", "readback":"format code", "enforcement":"report" }
   }
 }

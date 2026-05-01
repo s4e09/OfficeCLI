@@ -90,6 +90,10 @@
       "examples": ["--prop lineDash=dash", "--prop lineDash=solid"],
       "readback": "OOXML preset dash token",
       "enforcement": "report"
-    }
+    },
+    "dataLabels.separator": { "type":"string", "add":false, "set":false, "get":true, "description":"per-series data label separator string readback.", "readback":"separator string", "enforcement":"report" },
+    "dataLabels.numFmt":    { "type":"string", "add":false, "set":false, "get":true, "description":"per-series data label number format readback.", "readback":"format code", "enforcement":"report" },
+    "invertIfNeg":          { "type":"bool",   "add":false, "set":false, "get":true, "description":"invert color for negative values (per-series readback).", "readback":"true | false", "enforcement":"report" },
+    "errBars":              { "type":"string", "add":false, "set":false, "get":true, "description":"error bar value type token (e.g. cust, fixedVal, stdDev).", "readback":"OOXML errValType token", "enforcement":"report" }
   }
 }

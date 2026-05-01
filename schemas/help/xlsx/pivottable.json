@@ -325,6 +325,13 @@
       "description": "target cell range where the pivot table is rendered (e.g. D1:E4).",
       "readback": "A1 range string",
       "enforcement": "report"
+    },
+    "collapsedFields": {
+      "type": "string",
+      "add": false, "set": false, "get": true,
+      "description": "comma-separated names of fields with collapsed items.",
+      "readback": "comma-separated field names",
+      "enforcement": "report"
     }
   }
 }
