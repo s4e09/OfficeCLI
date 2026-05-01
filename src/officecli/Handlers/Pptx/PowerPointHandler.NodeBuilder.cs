@@ -402,7 +402,6 @@ public partial class PowerPointHandler
         var presetGeom = shape.ShapeProperties?.GetFirstChild<Drawing.PresetGeometry>();
         if (presetGeom?.Preset?.HasValue == true)
         {
-            node.Format["preset"] = presetGeom.Preset.InnerText;
             node.Format["geometry"] = presetGeom.Preset.InnerText;
         }
         else
@@ -410,7 +409,6 @@ public partial class PowerPointHandler
             var custGeom = shape.ShapeProperties?.GetFirstChild<Drawing.CustomGeometry>();
             if (custGeom != null)
             {
-                node.Format["preset"] = "custom";
                 // Reconstruct SVG-like path string from the custom geometry path list
                 var pathData = ReconstructCustomGeometryPath(custGeom);
                 node.Format["geometry"] = !string.IsNullOrEmpty(pathData) ? pathData : "custom";
