@@ -561,11 +561,12 @@
       ],
       "add": true,
       "set": true,
-      "get": false,
+      "get": true,
       "description": "pie/doughnut slice explosion 0..400 (percent of radius); 0 removes.",
       "examples": [
         "--prop explosion=10"
-      ]
+      ],
+      "readback": "as emitted by handler (per-format details vary)"
     },
     "firstSliceAngle": {
       "type": "number",
@@ -626,12 +627,13 @@
       ],
       "add": true,
       "set": true,
-      "get": false,
+      "get": true,
       "description": "gradient fill applied to every series. Format: 'c1-c2[-c3][:angle]' (angle in degrees). Errors if chart has no series.",
       "examples": [
         "--prop gradient=FF0000-0000FF",
         "--prop gradient=FF0000-00FF00-0000FF:90"
-      ]
+      ],
+      "readback": "as emitted by handler (per-format details vary)"
     },
     "gradients": {
       "type": "string",
@@ -922,12 +924,13 @@
       ],
       "add": true,
       "set": true,
-      "get": false,
+      "get": true,
       "description": "marker symbol for line/scatter/radar series only (other types silently skipped). Format: 'symbol' or 'symbol:size' or 'symbol:size:color'. Symbols: none, auto, circle, square, diamond, triangle, x, plus, star, dash, dot, picture.",
       "examples": [
         "--prop marker=circle",
         "--prop marker=square:8:FF0000"
-      ]
+      ],
+      "readback": "as emitted by handler (per-format details vary)"
     },
     "markersize": {
       "type": "number",
@@ -986,12 +989,13 @@
       "type": "number",
       "add": true,
       "set": true,
-      "get": false,
+      "get": true,
       "description": "bar/column overlap within a group, -100..100 (negative = gap, positive = overlap).",
       "examples": [
         "--prop overlap=0",
         "--prop overlap=100"
-      ]
+      ],
+      "readback": "as emitted by handler (per-format details vary)"
     },
     "plotFill": {
       "type": "color",
@@ -1209,11 +1213,12 @@
       },
       "add": true,
       "set": true,
-      "get": false,
+      "get": true,
       "description": "smooth lines on line/scatter charts. Reported unsupported for other chart types.",
       "examples": [
         "--prop smooth=true"
-      ]
+      ],
+      "readback": "as emitted by handler (per-format details vary)"
     },
     "style": {
       "type": "number",
@@ -1222,11 +1227,12 @@
       ],
       "add": true,
       "set": true,
-      "get": false,
+      "get": true,
       "description": "built-in chart style id 1..48; pass 'none' to clear.",
       "examples": [
         "--prop style=2"
-      ]
+      ],
+      "readback": "as emitted by handler (per-format details vary)"
     },
     "tickLabelPos": {
       "type": "string",
@@ -1333,14 +1339,15 @@
       "type": "string",
       "add": true,
       "set": true,
-      "get": false,
+      "get": true,
       "description": "add trendline to every series. Format: 'type[:order]' or 'type:forward:backward'. Types: linear (default), exp|exponential, log|logarithmic, poly|polynomial, power, movingAvg|moving|movingAverage. Order applies to poly/movingAvg. Pass 'none' to clear.",
       "examples": [
         "--prop trendline=linear",
         "--prop trendline=poly:3",
         "--prop trendline=none",
         "--prop trendline=movingAvg:3"
-      ]
+      ],
+      "readback": "as emitted by handler (per-format details vary)"
     },
     "updownbars": {
       "type": "string",
@@ -1392,13 +1399,14 @@
       ],
       "add": true,
       "set": true,
-      "get": false,
+      "get": true,
       "description": "3D view angles. Format: 'rotX,rotY,perspective' (any tail optional) or single integer for perspective only. Named-key form (rotX=...) is rejected.",
       "examples": [
         "--prop view3d=15,20,30",
         "--prop view3d=20",
         "--prop perspective=30"
-      ]
+      ],
+      "readback": "as emitted by handler (per-format details vary)"
     },
     "width": {
       "type": "length",

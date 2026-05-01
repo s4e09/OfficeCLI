@@ -25,7 +25,9 @@
       "enforcement": "report",
       "aliases": [
         "font.bold"
-      ]
+      ],
+      "get": true,
+      "readback": "as emitted by handler (per-format details vary)"
     },
     "color": {
       "type": "color",
@@ -39,7 +41,9 @@
       "enforcement": "report",
       "aliases": [
         "font.color"
-      ]
+      ],
+      "get": true,
+      "readback": "as emitted by handler (per-format details vary)"
     },
     "fill": {
       "type": "color",
@@ -127,7 +131,9 @@
       "enforcement": "report",
       "aliases": [
         "font.italic"
-      ]
+      ],
+      "get": true,
+      "readback": "as emitted by handler (per-format details vary)"
     },
     "line": {
       "type": "string",
@@ -154,7 +160,7 @@
       "description": "uniform internal padding (text inset) for shape body.",
       "add": true,
       "set": true,
-      "get": false,
+      "get": true,
       "examples": [
         "--prop margin=4",
         "--prop margin=0.1in"
@@ -199,7 +205,9 @@
       "examples": [
         "--prop rotation=45"
       ],
-      "enforcement": "report"
+      "enforcement": "report",
+      "get": true,
+      "readback": "as emitted by handler (per-format details vary)"
     },
     "shadow": {
       "type": "string",
@@ -272,7 +280,9 @@
       "enforcement": "report",
       "aliases": [
         "font.underline"
-      ]
+      ],
+      "get": true,
+      "readback": "as emitted by handler (per-format details vary)"
     },
     "valign": {
       "type": "string",

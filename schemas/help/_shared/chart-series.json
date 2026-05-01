@@ -8,11 +8,12 @@
       "description": "per-series category override; range reference only.",
       "add": true,
       "set": true,
-      "get": false,
+      "get": true,
       "examples": [
         "--prop series1.categories=\"Sheet1!$A$2:$A$5\""
       ],
-      "enforcement": "report"
+      "enforcement": "report",
+      "readback": "as emitted by handler (per-format details vary)"
     },
     "categoriesRef": {
       "type": "string",

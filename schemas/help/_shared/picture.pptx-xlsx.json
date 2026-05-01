@@ -12,7 +12,9 @@
         "--prop crop=5,10",
         "--prop crop=10,5,10,5"
       ],
-      "enforcement": "report"
+      "enforcement": "report",
+      "get": true,
+      "readback": "as emitted by handler (per-format details vary)"
     },
     "cropBottom": {
       "type": "string",

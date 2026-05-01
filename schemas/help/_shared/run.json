@@ -43,7 +43,7 @@
       ],
       "add": true,
       "set": true,
-      "get": false,
+      "get": true,
       "examples": [
         "--prop font=Calibri",
         "--prop font=\"Arial\"",

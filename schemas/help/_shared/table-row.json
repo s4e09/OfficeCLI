@@ -8,7 +8,7 @@
       "description": "override column count for the new row (defaults to table grid column count).",
       "add": true,
       "set": false,
-      "get": false,
+      "get": true,
       "examples": [
         "--prop cols=4",
         "--prop cols=3"
