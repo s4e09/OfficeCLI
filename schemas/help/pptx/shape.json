@@ -151,7 +151,9 @@
       "description": "Flip the shape horizontally.",
       "add": true,
       "set": true,
+      "get": true,
       "examples": ["--prop flipH=true"],
+      "readback": "true | false",
       "enforcement": "report"
     },
     "flipV": {
@@ -160,7 +162,9 @@
       "description": "Flip the shape vertically.",
       "add": true,
       "set": true,
+      "get": true,
       "examples": ["--prop flipV=true"],
+      "readback": "true | false",
       "enforcement": "report"
     },
     "opacity": {

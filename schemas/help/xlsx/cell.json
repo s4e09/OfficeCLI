@@ -14,7 +14,7 @@
     "stable":     ["/<sheetName>/<A1Ref>"],
     "positional": ["/Sheet1/A1", "/Sheet1/B2:C3"]
   },
-  "note": "Canonical keys per CLAUDE.md: numberformat (not `format`), alignment.horizontal / alignment.vertical / alignment.wrapText. Font properties surface in Get as font.bold / font.italic / font.name / font.size / font.color (readback namespace). Add/Set accept both the short forms (bold, italic, font, size, color) and the font.* forms. Parent path controls placement: `add <file> /Sheet1 --type cell` appends to the next empty cell; use `add <file> /Sheet1/A2 --type cell` to target a specific cell.",
+  "note": "Canonical keys per CLAUDE.md: numberformat (not `format`), alignment.horizontal / alignment.vertical / alignment.wrapText. Font properties surface in Get as font.bold / font.italic / font.name / font.size / font.color (readback namespace). Add/Set accept both the short forms (bold, italic, font, size) and the font.* forms. Note: the bare 'color' alias is intentionally rejected on cells due to ambiguity with 'fill' (cell background) — use 'font.color' explicitly. Parent path controls placement: `add <file> /Sheet1 --type cell` appends to the next empty cell; use `add <file> /Sheet1/A2 --type cell` to target a specific cell.",
   "properties": {
     "value": {
       "type": "string",
@@ -78,9 +78,9 @@
     },
     "font.color": {
       "type": "color",
-      "aliases": ["color"],
+      "description": "font color on the cell. Note: the bare 'color' alias is intentionally rejected on cells due to ambiguity with 'fill' (background) — use 'font.color' explicitly.",
       "add": true, "set": true, "get": true,
-      "examples": ["--prop color=FF0000"],
+      "examples": ["--prop font.color=FF0000"],
       "readback": "#RRGGBB uppercase",
       "enforcement": "report"
     },
