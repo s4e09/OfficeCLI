@@ -134,7 +134,18 @@
     "theme.font.major.eastAsia":  { "type":"string", "add":false, "set":true, "get":true, "description":"major (heading) East Asian typeface.", "readback":"font family name", "enforcement":"report" },
     "theme.font.minor.latin":     { "type":"string", "add":false, "set":true, "get":true, "description":"minor (body) Latin typeface.", "readback":"font family name", "enforcement":"report" },
     "theme.font.minor.eastAsia":  { "type":"string", "add":false, "set":true, "get":true, "description":"minor (body) East Asian typeface.", "readback":"font family name", "enforcement":"report" },
-    "theme.formatScheme":  { "type":"string", "add":false, "set":false, "get":true, "description":"format scheme name (a:fmtScheme/@name).", "readback":"format scheme name", "enforcement":"report" }
+    "theme.formatScheme":  { "type":"string", "add":false, "set":false, "get":true, "description":"format scheme name (a:fmtScheme/@name).", "readback":"format scheme name", "enforcement":"report" },
+    "extended.application":        { "type":"string", "add":false, "set":false, "get":true, "description":"from docProps/app.xml application identifier (e.g. \"Microsoft PowerPoint\").", "readback":"application string", "enforcement":"report" },
+    "extended.applicationVersion": { "type":"string", "add":false, "set":false, "get":true, "description":"docProps/app.xml AppVersion field.", "readback":"version string", "enforcement":"report" },
+    "extended.template":           { "type":"string", "add":false, "set":true,  "get":true, "description":"docProps/app.xml Template field.", "readback":"template name", "enforcement":"report" },
+    "extended.company":            { "type":"string", "add":false, "set":true,  "get":true, "description":"docProps/app.xml Company field.", "readback":"company name", "enforcement":"report" },
+    "extended.manager":            { "type":"string", "add":false, "set":true,  "get":true, "description":"docProps/app.xml Manager field.", "readback":"manager name", "enforcement":"report" },
+    "extended.pages":              { "type":"number", "add":false, "set":false, "get":true, "description":"docProps/app.xml Pages count.", "readback":"integer", "enforcement":"report" },
+    "extended.words":              { "type":"number", "add":false, "set":false, "get":true, "description":"docProps/app.xml Words count.", "readback":"integer", "enforcement":"report" },
+    "extended.characters":         { "type":"number", "add":false, "set":false, "get":true, "description":"docProps/app.xml Characters count.", "readback":"integer", "enforcement":"report" },
+    "extended.lines":              { "type":"number", "add":false, "set":false, "get":true, "description":"docProps/app.xml Lines count.", "readback":"integer", "enforcement":"report" },
+    "extended.paragraphs":         { "type":"number", "add":false, "set":false, "get":true, "description":"docProps/app.xml Paragraphs count.", "readback":"integer", "enforcement":"report" },
+    "extended.totalTime":          { "type":"number", "add":false, "set":false, "get":true, "description":"docProps/app.xml TotalTime field (minutes).", "readback":"integer minutes", "enforcement":"report" }
   },
   "children": [
     { "element": "slide",       "pathSegment": "slide",       "cardinality": "0..n" },

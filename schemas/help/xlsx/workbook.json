@@ -101,7 +101,18 @@
     },
     "lastModifiedBy": { "type":"string", "aliases":["lastmodifiedby"], "add":false, "set":true, "get":true, "description":"from docProps/core.xml lastModifiedBy field.", "examples":["--prop lastModifiedBy=\"Alice\""], "readback":"author string", "enforcement":"report" },
     "created":        { "type":"string", "add":false, "set":false, "get":true, "description":"creation timestamp ISO-8601.", "readback":"ISO-8601 timestamp", "enforcement":"report" },
-    "modified":       { "type":"string", "add":false, "set":false, "get":true, "description":"last modification timestamp ISO-8601.", "readback":"ISO-8601 timestamp", "enforcement":"report" }
+    "modified":       { "type":"string", "add":false, "set":false, "get":true, "description":"last modification timestamp ISO-8601.", "readback":"ISO-8601 timestamp", "enforcement":"report" },
+    "extended.application":        { "type":"string", "add":false, "set":false, "get":true, "description":"from docProps/app.xml application identifier (e.g. \"Microsoft Excel\").", "readback":"application string", "enforcement":"report" },
+    "extended.applicationVersion": { "type":"string", "add":false, "set":false, "get":true, "description":"docProps/app.xml AppVersion field.", "readback":"version string", "enforcement":"report" },
+    "extended.template":           { "type":"string", "add":false, "set":true,  "get":true, "description":"docProps/app.xml Template field.", "readback":"template name", "enforcement":"report" },
+    "extended.company":            { "type":"string", "add":false, "set":true,  "get":true, "description":"docProps/app.xml Company field.", "readback":"company name", "enforcement":"report" },
+    "extended.manager":            { "type":"string", "add":false, "set":true,  "get":true, "description":"docProps/app.xml Manager field.", "readback":"manager name", "enforcement":"report" },
+    "extended.pages":              { "type":"number", "add":false, "set":false, "get":true, "description":"docProps/app.xml Pages count.", "readback":"integer", "enforcement":"report" },
+    "extended.words":              { "type":"number", "add":false, "set":false, "get":true, "description":"docProps/app.xml Words count.", "readback":"integer", "enforcement":"report" },
+    "extended.characters":         { "type":"number", "add":false, "set":false, "get":true, "description":"docProps/app.xml Characters count.", "readback":"integer", "enforcement":"report" },
+    "extended.lines":              { "type":"number", "add":false, "set":false, "get":true, "description":"docProps/app.xml Lines count.", "readback":"integer", "enforcement":"report" },
+    "extended.paragraphs":         { "type":"number", "add":false, "set":false, "get":true, "description":"docProps/app.xml Paragraphs count.", "readback":"integer", "enforcement":"report" },
+    "extended.totalTime":          { "type":"number", "add":false, "set":false, "get":true, "description":"docProps/app.xml TotalTime field (minutes).", "readback":"integer minutes", "enforcement":"report" }
   },
   "children": [
     { "element": "sheet", "pathSegment": "{SheetName}", "cardinality": "1..n" }

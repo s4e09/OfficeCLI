@@ -350,7 +350,18 @@
     "marginTop": { "type":"length", "add":false, "set":true, "get":true, "description":"convenience readback from sectPr; primary edit path is /section[N].", "readback":"length in cm", "examples":["--prop marginTop=2.54cm"], "enforcement":"report" },
     "marginBottom": { "type":"length", "add":false, "set":true, "get":true, "description":"convenience readback from sectPr; primary edit path is /section[N].", "readback":"length in cm", "examples":["--prop marginBottom=2.54cm"], "enforcement":"report" },
     "marginLeft": { "type":"length", "add":false, "set":true, "get":true, "description":"convenience readback from sectPr; primary edit path is /section[N].", "readback":"length in cm", "examples":["--prop marginLeft=3.18cm"], "enforcement":"report" },
-    "marginRight": { "type":"length", "add":false, "set":true, "get":true, "description":"convenience readback from sectPr; primary edit path is /section[N].", "readback":"length in cm", "examples":["--prop marginRight=3.18cm"], "enforcement":"report" }
+    "marginRight": { "type":"length", "add":false, "set":true, "get":true, "description":"convenience readback from sectPr; primary edit path is /section[N].", "readback":"length in cm", "examples":["--prop marginRight=3.18cm"], "enforcement":"report" },
+    "extended.application":        { "type":"string", "add":false, "set":false, "get":true, "description":"from docProps/app.xml application identifier (e.g. \"Microsoft Word\").", "readback":"application string", "enforcement":"report" },
+    "extended.applicationVersion": { "type":"string", "add":false, "set":false, "get":true, "description":"docProps/app.xml AppVersion field.", "readback":"version string", "enforcement":"report" },
+    "extended.template":           { "type":"string", "add":false, "set":true,  "get":true, "description":"docProps/app.xml Template field.", "readback":"template name", "enforcement":"report" },
+    "extended.company":            { "type":"string", "add":false, "set":true,  "get":true, "description":"docProps/app.xml Company field.", "readback":"company name", "enforcement":"report" },
+    "extended.manager":            { "type":"string", "add":false, "set":true,  "get":true, "description":"docProps/app.xml Manager field.", "readback":"manager name", "enforcement":"report" },
+    "extended.pages":              { "type":"number", "add":false, "set":false, "get":true, "description":"docProps/app.xml Pages count.", "readback":"integer", "enforcement":"report" },
+    "extended.words":              { "type":"number", "add":false, "set":false, "get":true, "description":"docProps/app.xml Words count.", "readback":"integer", "enforcement":"report" },
+    "extended.characters":         { "type":"number", "add":false, "set":false, "get":true, "description":"docProps/app.xml Characters count.", "readback":"integer", "enforcement":"report" },
+    "extended.lines":              { "type":"number", "add":false, "set":false, "get":true, "description":"docProps/app.xml Lines count.", "readback":"integer", "enforcement":"report" },
+    "extended.paragraphs":         { "type":"number", "add":false, "set":false, "get":true, "description":"docProps/app.xml Paragraphs count.", "readback":"integer", "enforcement":"report" },
+    "extended.totalTime":          { "type":"number", "add":false, "set":false, "get":true, "description":"docProps/app.xml TotalTime field (minutes).", "readback":"integer minutes", "enforcement":"report" }
   },
   "children": [
     { "element": "body",      "pathSegment": "body",      "cardinality": "1" },
