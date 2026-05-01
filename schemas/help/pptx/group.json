@@ -37,6 +37,34 @@
       "add": false, "set": false, "get": true,
       "readback": "1-based integer (1 = back)",
       "enforcement": "report"
+    },
+    "x": {
+      "type": "length",
+      "description": "horizontal offset (group origin). Readback in cm via EmuConverter.",
+      "add": false, "set": false, "get": true,
+      "readback": "length in cm (e.g. \"2cm\")",
+      "enforcement": "report"
+    },
+    "y": {
+      "type": "length",
+      "description": "vertical offset.",
+      "add": false, "set": false, "get": true,
+      "readback": "length in cm",
+      "enforcement": "report"
+    },
+    "width": {
+      "type": "length",
+      "description": "group bounding box width.",
+      "add": false, "set": false, "get": true,
+      "readback": "length in cm",
+      "enforcement": "report"
+    },
+    "height": {
+      "type": "length",
+      "description": "group bounding box height.",
+      "add": false, "set": false, "get": true,
+      "readback": "length in cm",
+      "enforcement": "report"
     }
   }
 }

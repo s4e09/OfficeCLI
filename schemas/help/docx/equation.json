@@ -27,9 +27,9 @@
     "mode": {
       "type": "enum",
       "values": ["display", "inline"],
-      "add": true, "set": false, "get": false,
+      "add": true, "set": false, "get": true,
       "examples": ["--prop mode=inline"],
-      "readback": "determined by parent element type",
+      "readback": "display | inline",
       "enforcement": "report"
     }
   }
