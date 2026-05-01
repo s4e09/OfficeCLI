@@ -1130,7 +1130,7 @@ public partial class WordHandler
 
         var node = new DocumentNode { Path = path, Type = "field" };
         node.Text = resultText;
-        node.Format["instruction"] = instr;
+        node.Format["instr"] = instr;
         node.Format["fieldType"] = fieldType;
 
         // Check dirty flag
