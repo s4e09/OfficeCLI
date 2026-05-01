@@ -16,11 +16,24 @@
     ]
   },
   "note": "Aliases: link. Exactly one of 'url' (external) or 'anchor' (internal bookmark ref) is required. Colors default to theme Hyperlink (or 0563C1 fallback) with single underline.",
-  "extends": [
-    "_shared/hyperlink",
-    "_shared/hyperlink.docx-xlsx"
-  ],
+  "extends": "_shared/hyperlink",
   "properties": {
+    "url": {
+      "type": "string",
+      "description": "external URL. Aliases: href, link. docx Set accepts all three (url canonical).",
+      "aliases": [
+        "href",
+        "link"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop url=https://example.com"
+      ],
+      "readback": "URL string",
+      "enforcement": "report"
+    },
     "anchor": {
       "type": "string",
       "description": "bookmark name for internal links. Set after Add not supported — formatting lives on inner runs (Set the run, not the hyperlink wrapper).",

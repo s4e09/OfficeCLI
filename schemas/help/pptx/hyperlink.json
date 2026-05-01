@@ -19,6 +19,21 @@
   "note": "Aliases: link. Attached to a shape (shape-wide link) or to a run (inline link). Exactly one of 'url' or 'slide' is required.",
   "extends": "_shared/hyperlink",
   "properties": {
+    "link": {
+      "type": "string",
+      "description": "external URL or internal target. pptx Set/Get canonical key on shape/run is 'link'. Alias: url.",
+      "aliases": [
+        "url"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop link=https://example.com"
+      ],
+      "readback": "URL string or internal target",
+      "enforcement": "report"
+    },
     "slide": {
       "type": "int",
       "description": "internal target slide index (1-based).",
