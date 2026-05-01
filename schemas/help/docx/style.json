@@ -56,6 +56,13 @@
       "readback": "BasedOn.Val",
       "enforcement": "report"
     },
+    "basedOn.path": {
+      "type": "string",
+      "add": false, "set": false, "get": true,
+      "description": "resolved path to the parent style node (get-only). Shortcut: use basedOn to Set.",
+      "readback": "/styles/{styleId}",
+      "enforcement": "report"
+    },
     "next": {
       "type": "string",
       "description": "next-paragraph style id.",

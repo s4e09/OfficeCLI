@@ -317,13 +317,14 @@
       "readback": "n/a",
       "enforcement": "report"
     },
-    "autofit": {
+    "autoFit": {
       "type": "enum",
-      "description": "auto-fit mode for shape text body.",
-      "values": ["none", "normal", "shape", "noAutofit", "spAutoFit"],
+      "values": ["normal", "shape", "none"],
+      "aliases": ["autofit"],
       "add": true, "set": true, "get": true,
-      "examples": ["--prop autofit=shape"],
-      "readback": "one of: none | normal | shape",
+      "description": "text body auto-fit mode. 'normal' shrinks text to fit; 'shape' resizes the shape to fit text; 'none' overflows. Aliases on Set: true/shrink → normal, resize → shape, false → none.",
+      "examples": ["--prop autoFit=normal", "--prop autoFit=shape", "--prop autoFit=none"],
+      "readback": "normal | shape | none",
       "enforcement": "report"
     },
     "lineSpacing": {
