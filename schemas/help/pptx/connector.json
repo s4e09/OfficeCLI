@@ -116,6 +116,14 @@
       "add": false, "set": false, "get": true,
       "readback": "integer shape id",
       "enforcement": "report"
+    },
+    "name": {
+      "type": "string",
+      "description": "connector name",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop name=\"Arrow1\""],
+      "readback": "plain string",
+      "enforcement": "report"
     }
   }
 }

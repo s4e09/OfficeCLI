@@ -24,9 +24,9 @@
     },
     "cols": {
       "type": "int",
-      "add": true, "set": false, "get": false,
+      "add": true, "set": false, "get": true,
       "examples": ["--prop cols=3"],
-      "readback": "n/a (use tableGrid count)",
+      "readback": "integer column count",
       "enforcement": "strict"
     },
     "data": {
@@ -41,9 +41,9 @@
       "type": "string",
       "description": "comma-separated per-column widths in twips. Aliases: colWidths.",
       "aliases": ["colWidths"],
-      "add": true, "set": false, "get": false,
+      "add": true, "set": false, "get": true,
       "examples": ["--prop colwidths=3000,2000,5000"],
-      "readback": "per-column grid widths, not aggregated",
+      "readback": "comma-separated column widths in OOXML units",
       "enforcement": "strict"
     },
     "direction": {
