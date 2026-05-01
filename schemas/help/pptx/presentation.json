@@ -72,6 +72,48 @@
       "examples": ["--prop revision=3"],
       "readback": "revision string",
       "enforcement": "report"
+    },
+    "created": {
+      "type": "string",
+      "description": "creation timestamp from docProps/core.xml.",
+      "add": false, "set": false, "get": true,
+      "readback": "ISO 8601 timestamp",
+      "enforcement": "report"
+    },
+    "modified": {
+      "type": "string",
+      "description": "last-modified timestamp from docProps/core.xml.",
+      "add": false, "set": false, "get": true,
+      "readback": "ISO 8601 timestamp",
+      "enforcement": "report"
+    },
+    "slideWidth": {
+      "type": "string",
+      "description": "slide width from <p:sldSz/@cx>, formatted via FormatEmu.",
+      "add": false, "set": false, "get": true,
+      "readback": "unit-qualified length string (e.g. '25.4cm', '720pt')",
+      "enforcement": "report"
+    },
+    "slideHeight": {
+      "type": "string",
+      "description": "slide height from <p:sldSz/@cy>, formatted via FormatEmu.",
+      "add": false, "set": false, "get": true,
+      "readback": "unit-qualified length string (e.g. '19.05cm', '540pt')",
+      "enforcement": "report"
+    },
+    "slideSize": {
+      "type": "string",
+      "description": "slide size preset name derived from <p:sldSz/@type>.",
+      "add": false, "set": false, "get": true,
+      "readback": "preset name: widescreen | standard | 16:10 | a4 | a3 | letter | b4 | b5 | 35mm | overhead | banner | ledger | custom",
+      "enforcement": "report"
+    },
+    "defaultFont": {
+      "type": "string",
+      "description": "default minor (body) font from the first slide master's theme FontScheme.",
+      "add": false, "set": false, "get": true,
+      "readback": "default text font family name",
+      "enforcement": "report"
     }
   },
   "children": [

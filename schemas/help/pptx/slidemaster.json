@@ -22,6 +22,27 @@
       "add": false, "set": false, "get": true,
       "readback": "master name string",
       "enforcement": "report"
+    },
+    "layoutCount": {
+      "type": "number",
+      "description": "number of slide layouts associated with this master.",
+      "add": false, "set": false, "get": true,
+      "readback": "integer count of associated slide layouts",
+      "enforcement": "report"
+    },
+    "theme": {
+      "type": "string",
+      "description": "name of the theme attached to this master, when the theme has a name.",
+      "add": false, "set": false, "get": true,
+      "readback": "theme name string (absent if theme has no name)",
+      "enforcement": "report"
+    },
+    "shapeCount": {
+      "type": "number",
+      "description": "count of background shapes (Shape + Picture) on the master's shape tree.",
+      "add": false, "set": false, "get": true,
+      "readback": "count of background shapes on the master",
+      "enforcement": "report"
     }
   },
   "children": [

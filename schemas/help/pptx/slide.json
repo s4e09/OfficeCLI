@@ -80,6 +80,13 @@
       "examples": ["--prop notes=\"Speaker notes here\""],
       "readback": "notes text when present",
       "enforcement": "report"
+    },
+    "hidden": {
+      "type": "bool",
+      "description": "true when the slide is hidden from slideshow (Slide/@show=false). Surfaces only on Get/Query.",
+      "add": false, "set": false, "get": true,
+      "readback": "true if slide is hidden in slideshow",
+      "enforcement": "report"
     }
   },
   "children": [

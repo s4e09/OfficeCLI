@@ -12,6 +12,7 @@
     "remove": true
   },
   "paths": {
+    "stable":     ["/footnote[@footnoteId=N]"],
     "positional": ["/footnotes/footnote[N]"]
   },
   "note": "Footnotes live in FootnotesPart. A FootnoteReference run is inserted at the anchor point; the note body is appended to footnotes.xml. Parent must be a paragraph path (/body/p[N]); use --index N to control position within the paragraph. Run-level parent (/body/p[N]/r[M]) is not accepted -- the footnote reference is inserted as a new run.",
@@ -84,6 +85,13 @@
       "aliases": ["font.size.cs", "sizecs"],
       "add": true, "set": true, "get": false,
       "examples": ["--prop size.cs=14pt"],
+      "enforcement": "report"
+    },
+    "id": {
+      "type": "number",
+      "description": "OOXML footnote id (w:footnote/@w:id). Assigned by the writer; surfaces only on Get/Query.",
+      "add": false, "set": false, "get": true,
+      "readback": "integer footnote ID",
       "enforcement": "report"
     }
   }

@@ -12,6 +12,7 @@
     "remove": true
   },
   "paths": {
+    "stable":     ["/comments/comment[@commentId=N]"],
     "positional": ["/comments/comment[N]"]
   },
   "note": "Comments live in WordprocessingCommentsPart. Anchor: CommentRangeStart/End surround the target run or paragraph; CommentReference marks the inline anchor.",
@@ -45,6 +46,20 @@
       "add": true, "set": true, "get": true,
       "examples": ["--prop date=2025-01-15T10:00:00Z"],
       "readback": "Date attribute",
+      "enforcement": "report"
+    },
+    "id": {
+      "type": "number",
+      "description": "OOXML comment id (w:comment/@w:id). Assigned by the writer; surfaces only on Get/Query.",
+      "add": false, "set": false, "get": true,
+      "readback": "integer comment ID",
+      "enforcement": "report"
+    },
+    "anchoredTo": {
+      "type": "string",
+      "description": "path of the paragraph or run the comment is anchored to (resolved from CommentRangeStart).",
+      "add": false, "set": false, "get": true,
+      "readback": "path of anchored paragraph/run",
       "enforcement": "report"
     }
   }
