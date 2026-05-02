@@ -469,30 +469,26 @@ officecli add "$FILE" "/slide[last()]" --type shape --prop text="Financial Perfo
 officecli add "$FILE" / --type slide --prop layout=blank --prop background=FFFFFF
 officecli add "$FILE" "/slide[last()]" --type shape --prop text="FY26 Revenue Beat Plan by 18%" \
   --prop x=1.5cm --prop y=1cm --prop width=30cm --prop height=1.8cm \
-  --prop font=Georgia --prop size=36 --prop bold=true --prop color=1E2761 --prop fill=none
+  --prop font=Georgia --prop size=36 --prop bold=true --prop color=1E2761
 
-# Chart — left 2/3
+# Chart — left 2/3 (single-quote the title because of `$`)
 officecli add "$FILE" "/slide[last()]" --type chart --prop chartType=column \
   --prop series1.name=Actual --prop series1.values="42,45,48,55" --prop series1.color=1E2761 \
-  --prop series2.name=Plan   --prop series2.values="40,42,45,48" --prop series2.color=CADCFC \
-  --prop categories="Q1,Q2,Q3,Q4" \
-  --prop x=1.5cm --prop y=3.5cm --prop width=20cm --prop height=14cm \
-  --prop title='FY26 Revenue ($M)'
+  --prop series2.name=Plan --prop series2.values="40,42,45,48" --prop series2.color=CADCFC \
+  --prop categories="Q1,Q2,Q3,Q4" --prop x=1.5cm --prop y=3.5cm --prop width=20cm --prop height=14cm --prop title='FY26 Revenue ($M)'
 
-# Commentary card — right 1/3 (background card + heading + body)
+# Commentary card — right 1/3: background + heading shape + body shape
 officecli add "$FILE" "/slide[last()]" --type shape --prop preset=roundRect --prop fill=F5F7FA --prop line=none \
   --prop x=22.5cm --prop y=3.5cm --prop width=9.8cm --prop height=14cm
 officecli add "$FILE" "/slide[last()]" --type shape --prop text="Key Insight" \
   --prop x=23cm --prop y=4cm --prop width=9cm --prop height=1.2cm \
-  --prop font=Georgia --prop size=20 --prop bold=true --prop color=1E2761 --prop fill=none
+  --prop font=Georgia --prop size=20 --prop bold=true --prop color=1E2761
 officecli add "$FILE" "/slide[last()]" --type shape --prop text="EMEA launch + NRR at 118% drove 12pp of the 18pp beat." \
   --prop x=23cm --prop y=5.5cm --prop width=9cm --prop height=11cm \
-  --prop font=Calibri --prop size=18 --prop color=333333 --prop fill=none
+  --prop font=Calibri --prop size=18 --prop color=333333
 
 officecli add "$FILE" "/slide[last()]" --type notes --prop text="Lead with the 18% beat, then the EMEA + NRR story."
 ```
-
-`$` in chart title: wrap the whole prop in single quotes (`--prop title='FY26 Revenue ($M)'`) to prevent shell expansion.
 
 #### (c) Flowchart / process diagram (connectors + shapes) — batch-heredoc
 
