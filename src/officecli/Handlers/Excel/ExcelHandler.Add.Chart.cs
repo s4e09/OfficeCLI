@@ -11,6 +11,7 @@ using C = DocumentFormat.OpenXml.Drawing.Charts;
 using Drawing = DocumentFormat.OpenXml.Drawing;
 using SpreadsheetDrawing = DocumentFormat.OpenXml.Spreadsheet.Drawing;
 using XDR = DocumentFormat.OpenXml.Drawing.Spreadsheet;
+using CX = DocumentFormat.OpenXml.Office2016.Drawing.ChartDrawing;
 
 namespace OfficeCli.Handlers;
 
@@ -104,8 +105,39 @@ public partial class ExcelHandler
         // Extended chart types (cx:chart) — funnel, treemap, sunburst, boxWhisker, histogram
         if (ChartExBuilder.IsExtendedChartType(chartType))
         {
+            // Excel chartEx pulls data directly from the host workbook via
+            // cx:f references, not from an embedded xlsx. When the caller
+            // provided inline categories+values (no dataRange), persist
+            // them into the chart's host sheet at A1..B(N+1) so the cx:f
+            // formulas resolve. Skip when dataRange is given — those cx:f
+            // already point at user-owned cells.
+            if (string.IsNullOrEmpty(dataRangeStr))
+                WriteChartExInlineDataToSheet(chartWorksheet, categories, seriesData);
+
             var cxChartSpace = ChartExBuilder.BuildExtendedChartSpace(
                 chartType, chartTitle, categories, seriesData, properties);
+            // Excel chartEx references the host workbook directly via cx:f
+            // formulas (no embedded xlsx sidecar). Strip the externalData
+            // element the shared builder emits for PPT/Word, otherwise Excel
+            // tries to resolve rId1 against this chart's rels and errors out.
+            var extData = cxChartSpace.Descendants<CX.ExternalData>().FirstOrDefault();
+            extData?.Remove();
+            // Rewrite cx:f Sheet1 references to the actual host sheet name
+            // (BuildExtendedChartSpace hardcodes "Sheet1" — fine for the
+            // PPT/Word embedded xlsx but breaks here when the chart sits
+            // on a different sheet).
+            if (!string.IsNullOrEmpty(dataRangeStr) || chartSheetName != "Sheet1")
+            {
+                var refSheet = !string.IsNullOrEmpty(dataRangeStr) ? null : chartSheetName;
+                if (refSheet != null)
+                {
+                    foreach (var f in cxChartSpace.Descendants<CX.Formula>())
+                    {
+                        if (f.Text.StartsWith("Sheet1!", StringComparison.Ordinal))
+                            f.Text = refSheet + f.Text.Substring("Sheet1".Length);
+                    }
+                }
+            }
             var extChartPart = drawingsPart.AddNewPart<ExtendedChartPart>();
             extChartPart.ChartSpace = cxChartSpace;
             extChartPart.ChartSpace.Save();
@@ -287,6 +319,59 @@ public partial class ExcelHandler
         var siblings = fbParent.ChildElements.Where(e => e.LocalName == created.LocalName).ToList();
         var createdIdx = siblings.IndexOf(created) + 1;
         return $"{parentPath}/{created.LocalName}[{createdIdx}]";
+    }
+
+    // Write inline chartEx categories/values into the host sheet at A1..B(N+1).
+    // cx:f formulas in BuildExtendedChartSpace assume:
+    //   row 1     = headers (A1 empty, B1+ = series names)
+    //   rows 2..  = data (col A = categories, col B+ = series values)
+    private void WriteChartExInlineDataToSheet(
+        WorksheetPart worksheetPart,
+        string[]? categories,
+        List<(string name, double[] values)> seriesData)
+    {
+        if (seriesData.Count == 0) return;
+        var sheet = worksheetPart.Worksheet
+            ?? throw new InvalidOperationException("WorksheetPart has no Worksheet element.");
+        var sheetData = sheet.GetFirstChild<SheetData>() ?? sheet.AppendChild(new SheetData());
+
+        // Header row: B1, C1, ... = series names
+        for (int s = 0; s < seriesData.Count; s++)
+        {
+            var col = ColumnIndexToName(2 + s); // B=2, C=3, ...
+            var cell = FindOrCreateCell(sheetData, $"{col}1");
+            cell.DataType = CellValues.String;
+            cell.CellValue = new CellValue(seriesData[s].name);
+        }
+        // Data rows: A = category, B/C/... = series values
+        var rowCount = categories?.Length ?? seriesData.Max(s => s.values.Length);
+        for (int r = 0; r < rowCount; r++)
+        {
+            if (categories != null && r < categories.Length)
+            {
+                var aCell = FindOrCreateCell(sheetData, $"A{r + 2}");
+                aCell.DataType = CellValues.String;
+                aCell.CellValue = new CellValue(categories[r]);
+            }
+            for (int s = 0; s < seriesData.Count; s++)
+            {
+                if (r >= seriesData[s].values.Length) continue;
+                var col = ColumnIndexToName(2 + s);
+                var vCell = FindOrCreateCell(sheetData, $"{col}{r + 2}");
+                vCell.DataType = CellValues.Number;
+                vCell.CellValue = new CellValue(
+                    seriesData[s].values[r].ToString("G", System.Globalization.CultureInfo.InvariantCulture));
+            }
+        }
+        SaveWorksheet(worksheetPart);
+    }
+
+    private static string ColumnIndexToName(int idx)
+    {
+        // 1-indexed: 1→A, 2→B, ..., 26→Z, 27→AA
+        var sb = new System.Text.StringBuilder();
+        while (idx > 0) { idx--; sb.Insert(0, (char)('A' + idx % 26)); idx /= 26; }
+        return sb.ToString();
     }
 
 }
