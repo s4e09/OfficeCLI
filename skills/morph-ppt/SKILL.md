@@ -1,5 +1,4 @@
 ---
-# officecli: v1.0.63
 name: morph-ppt
 description: "Use this skill when the user wants a .pptx with smooth cross-slide animation — PowerPoint Morph transitions, Keynote-style continuous motion, shapes that grow / move / rotate as the slide advances. Trigger on: 'morph', 'morph transition', 'smooth transition', 'continuous animation across slides', 'Keynote-style transition', 'animated slide sequence', 'shape continuity across slides'. Output is a single .pptx. This skill is a scene layer on top of officecli-pptx — inherits every pptx v2 rule (visual floor, grid, palettes, connector canon, Delivery Gate 1–5a). DO NOT invoke for a generic deck, pitch deck, or board review without cross-slide motion — route those to officecli-pptx base or officecli-pitch-deck."
 ---
@@ -47,7 +46,7 @@ officecli help pptx animation       # preset + trigger + duration values
 officecli help pptx <element> --json  # machine-readable schema
 ```
 
-Help is pinned to the installed CLI version (v1.0.63). When skill and help disagree, **help wins.** Every `--prop X=` in this file is grep-verified against `officecli help pptx <element>` on v1.0.63. Specific confirmations: `transition=morph` is a listed value on `slide`; `advanceTime` / `advanceClick` are valid. **There is NO standalone `transition` element** — `officecli help pptx transition` returns error. Sub-props such as `duration` / `delay` / `easing` for the transition itself are **not exposed on `slide`** — see §Known Issues for the raw-set path if you need them.
+Help reflects the installed CLI version. When skill and help disagree, **help wins.** Every `--prop X=` in this file is grep-verified against `officecli help pptx <element>`. Specific confirmations: `transition=morph` is a listed value on `slide`; `advanceTime` / `advanceClick` are valid. **There is NO standalone `transition` element** — `officecli help pptx transition` returns error. Sub-props such as `duration` / `delay` / `easing` for the transition itself are **not exposed on `slide`** — see §Known Issues for the raw-set path if you need them.
 
 ## Mental Model & Inheritance
 

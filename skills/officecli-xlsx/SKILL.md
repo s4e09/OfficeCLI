@@ -1,5 +1,4 @@
 ---
-# officecli: v1.0.63
 name: officecli-xlsx
 description: "Use this skill any time a .xlsx file is involved -- as input, output, or both. This includes: creating spreadsheets, financial models, dashboards, or trackers; reading, parsing, or extracting data from any .xlsx file; editing, modifying, or updating existing workbooks; working with formulas, charts, pivot tables, or templates; importing CSV/TSV data into Excel format. Trigger whenever the user mentions 'spreadsheet', 'workbook', 'Excel', 'financial model', 'tracker', 'dashboard', or references a .xlsx/.csv filename."
 ---
@@ -43,7 +42,7 @@ officecli help xlsx <verb> <element>        # Verb-scoped (e.g. add chart, set c
 officecli help xlsx <element> --json        # Machine-readable schema
 ```
 
-Help is pinned to the installed CLI version (v1.0.63). When this skill and help disagree, **help is authoritative**.
+Help reflects the installed CLI version. When this skill and help disagree, **help is authoritative**.
 
 ## Shell & Execution Discipline
 

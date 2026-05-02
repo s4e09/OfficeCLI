@@ -1,5 +1,4 @@
 ---
-# officecli: v1.0.63
 name: decision-rules
 description: "Planning prompt for PPT — infer audience, purpose, narrative, then emit brief.md. Run before the main recipes when the deck's audience or purpose is underspecified."
 ---

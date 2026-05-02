@@ -1,5 +1,4 @@
 ---
-# officecli: v1.0.63
 name: officecli-pitch-deck
 description: "Use this skill when the user is building a fundraising / investor pitch deck — seed, Series A / B / C, convertible note, SAFE round, strategic raise. Trigger on: 'pitch deck', 'investor deck', 'Series A deck', 'Series B deck', 'Series C deck', 'fundraising deck', 'seed pitch', 'VC deck', 'raising capital', 'term sheet presentation'. Output is a single .pptx. This skill is a scene layer on top of officecli-pptx — inherits every pptx v2 rule (visual floor, grid, palettes, connector canon, Delivery Gate). DO NOT invoke for a generic board review, sales deck, all-hands, or product launch — route those to officecli-pptx base."
 ---
@@ -46,7 +45,7 @@ officecli help pptx <element>                # Full schema (e.g. chart, shape, c
 officecli help pptx <element> --json         # Machine-readable
 ```
 
-Help is pinned to the installed CLI version. When this skill and help disagree, **help wins.** Every `--prop X=` in this file has been grep-verified against `officecli help pptx <element>` on v1.0.63 — if help adds / renames a prop in a later version, trust help.
+Help reflects the installed CLI version. When this skill and help disagree, **help wins.** Every `--prop X=` in this file has been grep-verified against `officecli help pptx <element>` — if help adds / renames a prop in a later version, trust help.
 
 ## Mental Model & Inheritance
 

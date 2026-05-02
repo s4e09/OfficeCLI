@@ -1,5 +1,4 @@
 ---
-# officecli: v1.0.63
 name: officecli-data-dashboard
 description: "Use this skill to build a multi-element Excel dashboard — Dashboard sheet on open, multiple formula-driven KPI cards, multiple charts, sparklines, and conditional formatting — from CSV or tabular input. Trigger on: 'dashboard', 'KPI dashboard', 'analytics dashboard', 'executive dashboard', 'metrics dashboard', 'CSV to dashboard', 'data visualization'. Output is a single .xlsx. Scene-layer on officecli-xlsx: inherits every xlsx hard rule. DO NOT invoke for: a single budget tracker / one-sheet CSV-with-formatting (use xlsx), a 3-statement / DCF / LBO financial model (use financial-model), a weekly report with ≤ 1 chart and < 10 rows (use xlsx)."
 ---
@@ -43,7 +42,7 @@ officecli help xlsx sparkline                # sparklines
 officecli help xlsx conditionalformatting    # all CF rule types
 ```
 
-Help pins to the installed CLI (v1.0.63). When this skill and help disagree, **help wins**. DeferredAddKeys (`preset`, `referenceline`, `trendline`, `axisNumFmt`, `holesize`, `combosplit`) work on `add` only — see Reference.
+Help reflects the installed CLI version. When this skill and help disagree, **help wins**. DeferredAddKeys (`preset`, `referenceline`, `trendline`, `axisNumFmt`, `holesize`, `combosplit`) work on `add` only — see Reference.
 
 ## Mental Model & Inheritance
 

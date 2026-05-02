@@ -1,5 +1,4 @@
 ---
-# officecli: v1.0.63
 name: officecli-pptx
 description: "Use this skill any time a .pptx file is involved -- as input, output, or both. This includes: creating slide decks, pitch decks, or presentations; reading, parsing, or extracting text from any .pptx file; editing, modifying, or updating existing presentations; combining or splitting slide files; working with templates, layouts, speaker notes, or comments. Trigger whenever the user mentions 'deck', 'slides', 'presentation', 'pitch', or references a .pptx filename."
 ---
@@ -43,7 +42,7 @@ officecli help pptx <verb> <element>        # Verb-scoped (e.g. add shape, set s
 officecli help pptx <element> --json        # Machine-readable schema
 ```
 
-Help is pinned to the installed CLI version (v1.0.63). When skill and help disagree, **help is authoritative**. Triggers to run help immediately: `UNSUPPORTED props:` warning, unknown animation preset, `connector.shape=` enum (drifts — C-P-5), prop-vs-alias (`lineWidth` vs `line.width`, `color` vs `font.color`).
+Help reflects the installed CLI version. When skill and help disagree, **help is authoritative**. Triggers to run help immediately: `UNSUPPORTED props:` warning, unknown animation preset, `connector.shape=` enum (drifts — C-P-5), prop-vs-alias (`lineWidth` vs `line.width`, `color` vs `font.color`).
 
 ## Mental Model & Inheritance
 
@@ -113,8 +112,7 @@ These four fire on live-room failure modes that the Requirements table alone has
 ### Hard rules worth repeating
 
 - **`layout=blank` is the default for custom designs.** Titles become plain `shape` elements, not placeholders. `view outline` / `view issues` reporting `(untitled)` / `Slide has no title` is **expected**, not a defect. Use `layout=title` + `placeholder[title]` only when screen-reader outline compatibility matters.
-- **Alt text on pictures is two-step.** `add --prop alt=` is rejected (C-P-7 bug, still open on 1.0.63). `set /slide[N]/picture[M] --prop alt="..."` afterwards. `view stats "Pictures without alt text: 0"` is a false-positive zero — verify via `view annotated`.
-- **Hyperlink + tooltip needs ordering.** Set `link=` + `tooltip=` BEFORE any run-level styling on the same shape, or clean up with raw-set afterwards (Known Issues C-P-1).
+- **Alt text verification.** `view stats "Pictures without alt text: 0"` is a false-positive zero (alt auto-fills to filename) — verify via `view annotated`.
 
 ## Design Principles
 
@@ -239,7 +237,7 @@ These are the patterns that make a deck look AI-generated or amateur:
 
 1. **Open/close mode.** Always `officecli open <file>` at start + `officecli close <file>` at end. Resident is the default, not an optimization. Use `batch` in ≤ 12-op chunks for repetitive shape grids.
 2. **Orient.** New deck: `officecli create "$FILE"`. Existing: `officecli view "$FILE" outline` first. Never edit blind.
-3. **Build in display order — HARD RULE.** `--index` on slide add is frequently ignored. Add slides in audience-view order: cover → agenda → section-1 divider → section-1 content → section-2 divider → … → closing. Out-of-order insertion requires `officecli move "$FILE" /slide[N] --index M` + re-verify with `get --depth 0`. **Before final delivery, confirm slide count + narrative arc match your build plan.** Gate 4 catches cases where the cover ends up as slide 11 of 14 instead of slide 1.
+3. **Build in display order — HARD RULE.** `--index` on slide add is frequently ignored. Add slides in audience-view order: cover → agenda → section-1 divider → section-1 content → section-2 divider → … → closing. Out-of-order insertion requires `officecli move "$FILE" /slide[N] --index M` + re-verify with `get --depth 0`. **Before final delivery, confirm slide count + narrative arc match your build plan.** Gate 3 catches cases where the cover ends up as slide 11 of 14 instead of slide 1.
 4. **Incremental per slide.** Create slide + background, then title, then supporting shapes / charts / connectors. Always `layout=blank` for custom designs. After each structural op, `get /slide[N] --depth 1` to confirm shape IDs.
 5. **Format to spec.** Explicit title ≥ 36pt, body ≥ 18pt, colors from one palette, connectors via `@id=`. Formatting is deliverable, not polish.
 6. **Close + verify in target viewer.** `officecli close` writes the ZIP. `view html` — Read the returned HTML path — is OK for structural QA; **always open in the target presentation viewer before shipping** — chart colors, animations, font substitution, zoom are runtime features that only the live viewer renders faithfully.
@@ -396,10 +394,9 @@ Gotchas: (1) series cannot be added after creation — include all series at `ad
 ### Pictures
 
 ```bash
-# add --prop alt= is rejected (UNSUPPORTED, C-P-7). Two-step workflow:
 officecli add "$FILE" /slide[4] --type picture --prop src=hero.jpg \
-  --prop x=1cm --prop y=1cm --prop width=32cm --prop height=18cm
-officecli set "$FILE" "/slide[4]/picture[1]" --prop alt="Product hero, gradient lit from right"
+  --prop x=1cm --prop y=1cm --prop width=32cm --prop height=18cm \
+  --prop alt="Product hero, gradient lit from right"
 ```
 
 Confirm with `officecli query "$FILE" 'picture:no-alt'` — must be empty before delivery (but remember `view stats` is a false-positive zero because alt auto-fills to filename).
@@ -409,15 +406,12 @@ Confirm with `officecli query "$FILE" 'picture:no-alt'` — must be empty before
 Draws a line between two shapes or free coordinates. CLI-native props: `shape`, `from`, `to`, `x`, `y`, `width`, `height`, `color`, `headEnd`, `tailEnd` (values: `triangle|arrow|stealth|diamond|oval|none`). `line=`, `lineWidth=`, `lineDash=` are UNSUPPORTED — use raw-set `a:ln` for custom line styling.
 
 - `shape` enum: short form `straight | elbow | curve`, or storage form `straightConnector1 | bentConnector3 | curvedConnector3 | line`. `bentConnector2` / `curvedConnector2` are REJECTED (C-P-5).
-- `from=`/`to=` **do NOT accept `@name=`** (C-P-6). Resolve `@id=` first via `query`.
+- `from=`/`to=` accept the same shape-ref forms as the rest of the CLI: bare integer (shape ID), `/slide[N]/shape[M]` (positional), `/slide[N]/shape[@id=M]`, or `/slide[N]/shape[@name=Foo]`.
 - Arrowheads via `--prop tailEnd=triangle` (or `headEnd=` for reverse direction) — **requires CLI 1.0.63+**. On older 1.0.60–1.0.62 the `tailEnd=` / `headEnd=` props were UNSUPPORTED on connector; fall back to raw-set `<a:tailEnd type="triangle" w="med" len="med"/>` on `/connector[@id=ID]/spPr/ln`. Accepted values: `triangle | arrow | stealth | diamond | oval | none` (plus `closed`/`open`/`circle`, parsed by `ParseLineEndType`). For custom arrow size `w`/`len` on any version, use raw-set.
 
 ```bash
-# query --json schema: results are wrapped in .data.results[] — NOT bare `.[0]`.
-FROM_ID=$(officecli query "$FILE" 'shape[name=BoxA]' --json | jq -r '.data.results[0].format.id')
-TO_ID=$(officecli query "$FILE" 'shape[name=BoxB]' --json | jq -r '.data.results[0].format.id')
 officecli add "$FILE" /slide[5] --type connector \
-  --prop "from=/slide[5]/shape[@id=$FROM_ID]" --prop "to=/slide[5]/shape[@id=$TO_ID]" \
+  --prop "from=/slide[5]/shape[@name=BoxA]" --prop "to=/slide[5]/shape[@name=BoxB]" \
   --prop shape=elbow --prop color=333333 --prop tailEnd=triangle
 
 # Optional — raw-set for custom arrow size (w=med, len=med):
@@ -437,7 +431,8 @@ One preset per slide, ≤ 600ms. Set via shape-level prop (authoritative; deep-p
 ```bash
 officecli set "$FILE" "/slide[2]/shape[@name=HeroCard]" --prop animation=fade-entrance-400
 officecli get "$FILE" "/slide[2]/shape[@name=HeroCard]" --json | jq .animation
-officecli set "$FILE" "/slide[2]/shape[@name=HeroCard]" --prop animation=none    # remove (C-P-4)
+officecli set "$FILE" "/slide[2]/shape[@name=HeroCard]" --prop animation=none    # remove all animations on shape
+officecli remove "$FILE" "/slide[2]/shape[@name=HeroCard]/animation[1]"          # remove a specific animation by index
 ```
 
 **Get round-trip (1.0.58+).** `get animation[N]` now returns the `trigger` field as well — `onClick | afterPrevious | withPrevious` — so Add/Set and Get round-trip. Verify with `officecli get "$FILE" "/slide[N]/shape[@name=X]/animation[1]" --json | jq '.trigger,.duration'` if you need to confirm the read-back matches what you set.
@@ -450,11 +445,6 @@ officecli set "$FILE" "/slide[2]/shape[@name=HeroCard]" --prop animation=none   
 officecli set "$FILE" "/slide[7]/shape[@name=NavBtn]" --prop link=slide:2 --prop tooltip="Back to Agenda"
 officecli set "$FILE" "/slide[7]/shape[@name=DocsBtn]" --prop link=https://example.com
 ```
-
-**CRITICAL ordering** (C-P-1): on a shape that already has run-level styling (`bold`/`color`/`font`/`size`), setting `link=` + `tooltip=` emits schema-invalid XML. Fix:
-
-1. Set `link=` + `tooltip=` BEFORE any run-level styling. OR
-2. Post-hoc cleanup: `officecli raw-set "$FILE" /slide[N] --xpath //a:rPr/a:hlinkClick --action remove`.
 
 ### Tables, placeholders, groups, zoom — one-liners
 
@@ -474,7 +464,7 @@ officecli set "$FILE" "/slide[7]/shape[@name=DocsBtn]" --prop link=https://examp
 
 - **L1** — high-level props (`--prop fill=`, `--prop size=`): your default.
 - **L2** — dotted-attr fallback (`line.width`, `text.padding`, `fill.alpha`): when L1 lacks the knob.
-- **L3** — `raw-set` with XML: last resort. Required for `a:ln` line styling, `a:custGeom` custom paths, `a:hlinkClick` cleanup.
+- **L3** — `raw-set` with XML: last resort. Required for `a:ln` line styling, `a:custGeom` custom paths.
 
 Hex colors never start with `#`: `FF0000`, not `#FF0000`.
 
@@ -577,15 +567,12 @@ cat <<EOF | officecli batch "$FILE"
 ]
 EOF
 
-# Connectors. @name= is rejected on from/to (C-P-6); resolve @id= via query (correct jq path below).
-# Arrowhead via --prop tailEnd=triangle on add (CLI-native).
+# Connectors. Arrowhead via --prop tailEnd=triangle on add (CLI-native).
 for pair in "Step1 Step2" "Step2 Step3" "Step3 Step4"; do
   A=$(echo $pair | cut -d' ' -f1); B=$(echo $pair | cut -d' ' -f2)
-  FROM_ID=$(officecli query "$FILE" "shape[name=$A]" --json | jq -r '.data.results[0].format.id')
-  TO_ID=$(officecli query "$FILE"   "shape[name=$B]" --json | jq -r '.data.results[0].format.id')
   officecli add "$FILE" "/slide[$SLIDE]" --type connector \
-    --prop "from=/slide[$SLIDE]/shape[@id=$FROM_ID]" \
-    --prop "to=/slide[$SLIDE]/shape[@id=$TO_ID]" \
+    --prop "from=/slide[$SLIDE]/shape[@name=$A]" \
+    --prop "to=/slide[$SLIDE]/shape[@name=$B]" \
     --prop shape=elbow --prop color=333333 --prop tailEnd=triangle
 done
 ```
@@ -638,7 +625,7 @@ done
 | 19 | 4-year plan | white | (b) chart + commentary | Hockey stick + honest assumptions panel |
 | 20 | The Ask / Thank you | dark | (a) cover variant | `$XX M` hero number + 3 bullet use-of-funds + contact |
 
-Parallel to (d) — swap recipes per row; each divider must appear BEFORE its section content (see Gate 4).
+Parallel to (d) — swap recipes per row; each divider must appear BEFORE its section content (see Gate 3).
 
 #### (e) KPI callouts — giant-number card grid
 
@@ -739,7 +726,7 @@ Color convention: red path = stop/escalate, blue path = standard-action, green t
 
 ### Delivery Gate (any failure = REJECT, do NOT deliver)
 
-Five checks. Gates 1–3 are token-grep defenses; Gate 4 catches build-order bugs; Gate 5 is the only visual-assembly check. **None of Gates 1–3 can see a rendered slide.** Refuse to declare done until every gate prints its OK message.
+Five checks. Gates 1–2 are schema/token-grep defenses; Gate 3 catches build-order bugs; Gate 4 is static contrast; Gate 5 is the only visual-assembly check. **None of Gates 1–4 can see a rendered slide.** Refuse to declare done until every gate prints its OK message.
 
 ```bash
 FILE="deck.pptx"
@@ -758,32 +745,28 @@ officecli view "$FILE" text | \
   grep -nE '(\$[A-Za-z_]+\$|\{\{[^}]+\}\}|<TODO>|xxxx|lorem|\\[\$tn]|\([[:space:]]*\)|\[[[:space:]]*\])' && \
   { echo "REJECT Gate 2: token leak above"; exit 1; } || echo "Gate 2 OK"
 
-# Gate 3 — raw-XML hyperlink rPr schema trap (C-P-1). Any a:rPr containing a:hlinkClick = REJECT.
-officecli raw "$FILE" slide 2>/dev/null | grep -E '<a:rPr[^>]*>.*<a:hlinkClick' && \
-  { echo "REJECT Gate 3: hyperlink rPr (C-P-1) — clean with raw-set remove //a:rPr/a:hlinkClick"; exit 1; } || echo "Gate 3 OK"
-
-# Gate 4 — slide-order sanity. Must match your build plan.
+# Gate 3 — slide-order sanity. Must match your build plan.
 # COUNT via query (works closed or open; plain `get --depth 0` default output is NOT JSON and grep returns 0).
 SLIDE_COUNT=$(officecli query "$FILE" 'slide' --json | jq '.data.results | length')
-if [ "$SLIDE_COUNT" -lt 1 ]; then echo "REJECT Gate 4: zero slides"; exit 1; fi
-echo "Gate 4: total slides = $SLIDE_COUNT"
+if [ "$SLIDE_COUNT" -lt 1 ]; then echo "REJECT Gate 3: zero slides"; exit 1; fi
+echo "Gate 3: total slides = $SLIDE_COUNT"
 # Dump titles in order to compare to your narrative outline:
 officecli query "$FILE" 'shape[@name=Title]' --format 'path: %p text: %t' 2>/dev/null || \
   officecli query "$FILE" 'shape' --format 'path: %p name: %n text: %t' | head -40
 # REJECT if sequence (cover first, dividers before their sections, closing last) doesn't match your plan.
-echo "Gate 4: review above — REJECT if order wrong, else OK"
+echo "Gate 3: review above — REJECT if order wrong, else OK"
 
-# Gate 5a — static contrast pre-check. Dark-fill shapes must declare near-white text.
+# Gate 4 — static contrast pre-check. Dark-fill shapes must declare near-white text.
 DARK_HIT=$(officecli query "$FILE" 'shape[fill=1E2761],shape[fill=0A1628],shape[fill=8B1A1A],shape[fill=2C5F2D],shape[fill=36454F]' --json 2>/dev/null | \
   jq -r '.data.results[]? | select((.format.textColor // "") | tostring | test("^#?(F[0-9A-F]{5}|FFFFFF)$") | not) | .path' 2>/dev/null)
-[ -z "$DARK_HIT" ] && echo "Gate 5a OK" || { echo "REJECT Gate 5a: dark-on-dark candidates below"; echo "$DARK_HIT"; exit 1; }
+[ -z "$DARK_HIT" ] && echo "Gate 4 OK" || { echo "REJECT Gate 4: dark-on-dark candidates below"; echo "$DARK_HIT"; exit 1; }
 
-echo "Delivery Gate 1–5a PASS — proceed to Gate 5b (fresh-eyes visual audit)"
+echo "Delivery Gate 1–4 PASS — proceed to Gate 5 (fresh-eyes visual audit)"
 ```
 
-Each grep catches a real failure class: `$...$` = shell-escape leaks, `{{...}}` = unmigrated tokens, `()` / `[]` = chart-title unit placeholders, `\$`/`\t`/`\n` = shell-escape literals, Gate 3 = hyperlink rPr on styled buttons, Gate 4 = scrambled slide order, Gate 5a = dark-on-dark contrast.
+Each grep catches a real failure class: `$...$` = shell-escape leaks, `{{...}}` = unmigrated tokens, `()` / `[]` = chart-title unit placeholders, `\$`/`\t`/`\n` = shell-escape literals, Gate 3 = scrambled slide order, Gate 4 = dark-on-dark contrast.
 
-### Gate 5b — Visual audit via HTML preview (MANDATORY, not optional)
+### Gate 5 — Visual audit via HTML preview (MANDATORY, not optional)
 
 You are reading the same deck you wrote. **Gates 1–4 cannot see rendered slides.** This step is the only visual-assembly check. Do not skip.
 
@@ -795,7 +778,7 @@ Run `officecli view "$FILE" html` and Read the returned HTML path. For every sli
 - **order sanity**: does the slide sequence match the narrative outline (cover → agenda → dividers-before-their-sections → closing)?
 - **missing arrowheads**: do flowchart/decision-tree connectors show direction, or plain lines?
 
-REJECT the delivery if ANY of the above is present; list every instance with its slide number. If none, report "Gate 5b PASS".
+REJECT the delivery if ANY of the above is present; list every instance with its slide number. If none, report "Gate 5 PASS".
 
 ### Honest limit
 
@@ -805,16 +788,13 @@ REJECT the delivery if ANY of the above is present; list every instance with its
 
 When something looks broken, attribute it first: **[AGENT-ERROR]** (deck itself is wrong — fix the deck), **[RENDERER-BUG]** (deck is correct; a specific viewer renders it differently — don't chase), or **[SKILL gap]** (rule missing — open an issue).
 
-### CLI bug backlog (C-P-1 through C-P-7)
+### CLI bug backlog
 
 | # | Symptom | Workaround |
 |---|---|---|
-| **C-P-1** | Hyperlink `link=`+`tooltip=` on a shape with pre-existing run-level styling (`bold/color/font/size`) emits schema-invalid `<a:rPr><a:hlinkClick>`. | Set `link=`+`tooltip=` **BEFORE** any run-level styling. Post-hoc cleanup: `officecli raw-set "$FILE" /slide[N] --xpath //a:rPr/a:hlinkClick --action remove`. Gate 3 in the Delivery Gate catches it. |
 | **C-P-2** | `validate` reports `ChartShapeProperties` schema warnings (1 per chart). Renders correctly everywhere. | Whitelist in Gate 1. Do not chase. |
 | **C-P-3** | `get /slide[N]/shape[@name=X]/animation[1]` returns stale `duration` after `set animation=...`. | Trust shape-level readback: `get "/slide[N]/shape[@name=X]" --json \| jq .animation`. |
-| **C-P-4** | `remove /slide[N]/shape[@id=X]/animation[1]` rejected (deep-path accepted by `add` but not `remove`). | Use `set --prop animation=none`, or overwrite with a new preset. |
 | **C-P-5** | `shape=bentConnector2` / `curvedConnector2` rejected. Only 3 short + 3 specific storage names accepted. | Use short form `straight \| elbow \| curve`, or storage `straightConnector1 \| bentConnector3 \| curvedConnector3 \| line`. |
-| **C-P-6** | Connector `from=/to=` rejects `@name=` selectors (works everywhere else). | Resolve `@id=` first via `query`. See Recipe (c). |
 | **C-P-7** | [RENDERER-BUG] Some viewers normalize chart series colors to theme defaults, ignoring `seriesN.color=`. | Verify chart colors in the user's target presentation viewer. `view html` respects colors as the officecli-layer ground truth. |
 
 ### Renderer honesty
@@ -827,7 +807,6 @@ Props that exit 0 at write time but produce bad XML on close.
 
 | Disabled | Working form |
 |---|---|
-| `add picture --prop alt=` | Two-step: `add picture` then `set /slide[N]/picture[M] --prop alt=` |
 | `add paragraph --prop bold=/size=/color=/font=` | `add paragraph --prop text=` then `set paragraph[K] --prop ...` — or `add run` |
 | `set slide --prop showHeader=true` | Use `showFooter/showSlideNumber/showDate`; or a shape at `y=0.3cm` |
 | `--prop geometry="M 0,0 L 50,50 Z"` | Named preset (`rect`, `roundRect`, `ellipse`, ...); or raw-set `a:custGeom` |
@@ -835,7 +814,7 @@ Props that exit 0 at write time but produce bad XML on close.
 | Picture `--prop geometry=ellipse` / `shape=roundRect` | Overlay a `preset=ellipse` shape `fill=none`; or raw-set `p:pic` |
 | Chart `--prop gap=/gapwidth=` on `add` | `set /slide[N]/chart[M] --prop gap=80` after creation |
 
-Grep disabled forms in your command log: `grep -nE '(add.*picture.*alt=|add.*paragraph.*--prop (bold|size|color|font)=|showHeader=true|geometry="M|connector.*(line|lineWidth|lineDash)=)' commands.log`.
+Grep disabled forms in your command log: `grep -nE '(add.*paragraph.*--prop (bold|size|color|font)=|showHeader=true|geometry="M|connector.*(line|lineWidth|lineDash)=)' commands.log`.
 
 ### Shell escape — three layers
 
@@ -870,7 +849,7 @@ Single-verb where pptxgenjs / raw-XML would need hand-work: `help <element> --js
 
 ## Common Pitfalls
 
-Sanity-check cheatsheet — what breaks on the first try. CLI-bug pitfalls (hyperlink rPr, connector enum / @name, picture alt, animation remove) are covered in Known Issues C-P-1..7; this table is the design + shell traps.
+Sanity-check cheatsheet — what breaks on the first try. CLI-bug pitfalls (connector enum, animation duration readback) are covered in Known Issues C-P-2/3/5/7; this table is the design + shell traps.
 
 | Pitfall | Correct approach |
 |---|---|
