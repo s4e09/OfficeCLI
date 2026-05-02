@@ -301,7 +301,6 @@ officecli query "$FILE" 'animation'                      # every animation in th
 ```bash
 officecli view "$FILE" html                # prints an HTML preview path; Read it for per-slide visual audit (best structural ground truth)
 officecli view "$FILE" svg --start 3 --end 3   # single slide SVG (charts + gradients do NOT render in SVG)
-officecli watch "$FILE"                     # live preview for the human user — they open it at their discretion
 ```
 
 ## Creating & Editing
@@ -680,13 +679,10 @@ Four checks. Gates 1–2 are schema/token-grep defenses; Gate 3 catches build-or
 ```bash
 FILE="deck.pptx"
 
-# Gate 1 — schema. Whitelist only the benign ChartShapeProperties warnings (gray-area schema; renders fine).
+# Gate 1 — schema check.
 officecli close "$FILE" 2>/dev/null
 VALIDATE_OUT=$(officecli validate "$FILE" 2>&1)
-echo "$VALIDATE_OUT" | grep -q "no errors found" && echo "Gate 1 OK" || {
-  OTHER=$(echo "$VALIDATE_OUT" | grep -v -i "ChartShapeProperties" | grep -i error)
-  [ -z "$OTHER" ] && echo "Gate 1 OK (chart spPr whitelist)" || { echo "REJECT Gate 1:"; echo "$OTHER"; exit 1; }
-}
+echo "$VALIDATE_OUT" | grep -q "no errors found" && echo "Gate 1 OK" || { echo "REJECT Gate 1:"; echo "$VALIDATE_OUT"; exit 1; }
 
 # Gate 2 — token leak via CLI text-layer view. Tokens that must NEVER appear in a delivered deck.
 # NOTE: `[ ]` empty-bracket branch false-positives on legitimate checkbox UI — prefer `☐` (U+2610) in checklists.
@@ -724,7 +720,7 @@ REJECT the delivery if ANY of the above is present; list every instance with its
 
 ### After all gates pass
 
-Open the deck in the target presentation viewer before shipping — chart colors, font substitution, animations, and zoom are runtime features that only render there. For human preview, `officecli watch "$FILE"` and let the human open it.
+Open the deck in the target presentation viewer before shipping — chart colors, font substitution, animations, and zoom are runtime features that only render there.
 
 If a gate fails, fix and **rerun the full Delivery Gate** — one fix commonly creates another problem.
 
