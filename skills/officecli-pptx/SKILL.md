@@ -668,10 +668,6 @@ Color convention: red path = stop/escalate, blue path = standard-action, green t
 
 **Assume there are problems.** First render is almost never correct. If you found zero issues, you were not looking hard enough.
 
-### Pre-flight
-
-`officecli view "$FILE" annotated` — surfaces overflow hints, font/size violations (< 36pt title, < 18pt body), missing pieces. `"Slide has no title"` on `layout=blank` is expected, not a defect. Fix what it shows before running gates.
-
 ### Delivery Gate (any failure = REJECT, do NOT deliver)
 
 Three checks. Gate 1 is the schema defense; Gate 2 catches overflow / format / structure issues; Gate 3 is the only visual-assembly check. **None of Gates 1–2 can see a rendered slide.** Refuse to declare done until every gate prints its OK message.
