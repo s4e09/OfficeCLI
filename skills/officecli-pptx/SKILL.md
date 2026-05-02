@@ -689,19 +689,16 @@ echo "$ISSUES" | grep -qE "^\s*\[[A-Z][0-9]+\]" && { echo "REJECT Gate 2:"; echo
 echo "Delivery Gate 1–2 PASS — proceed to Gate 3 (fresh-eyes visual audit)"
 ```
 
-### Gate 3 — Visual audit via HTML preview (MANDATORY, not optional)
+### Gate 3 — Visual audit via HTML preview (MANDATORY)
 
-You are reading the same deck you wrote. **Gates 1–2 cannot see rendered slides.** This step is the only visual-assembly check. Do not skip.
+Run `officecli view "$FILE" html` and Read the returned HTML path. For every slide:
 
-Run `officecli view "$FILE" html` and Read the returned HTML path. For every slide, answer:
+- **overlap** — text shapes overlap each other / a chart, or a giant decorative number (01/02/03 at 100pt+) collides with a divider title
+- **dark-on-dark** — text on fill brightness < 30% with text brightness < 80% (quiz options, phone numbers, card labels on navy/red/green)
+- **missing arrowheads** — flowchart / decision-tree connectors render as plain lines
+- **order sanity** — slide sequence matches the narrative (cover → agenda → dividers-before-sections → closing)
 
-- **overlap**: do any text shapes overlap each other or a chart? (flag e.g. a title wrapping to 2 lines with its subtitle underneath the wrap)
-- **dark-on-dark**: is any text on a fill where fill brightness < 30% AND text brightness < 80%? (quiz options, phone numbers, labels on navy/red/green cards)
-- **divider overlap**: any giant decorative number (01/02/03 at 100pt+) colliding with the divider title text?
-- **order sanity**: does the slide sequence match the narrative outline (cover → agenda → dividers-before-their-sections → closing)?
-- **missing arrowheads**: do flowchart/decision-tree connectors show direction, or plain lines?
-
-REJECT the delivery if ANY of the above is present; list every instance with its slide number. If none, report "Gate 3 PASS".
+REJECT and list every instance with slide number; else report "Gate 3 PASS".
 
 ### After all gates pass
 
