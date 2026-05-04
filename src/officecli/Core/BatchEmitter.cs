@@ -127,70 +127,82 @@ public static class BatchEmitter
     {
         var root = word.Get("/");
         if (root.Children == null) return;
+        // BUG-R4-T2: header/footer parts carry no `type` key on Get; the
+        // section's `headerRef.default|first|even` (and `footerRef.*`)
+        // entries are the only place the part's role is recorded. Build a
+        // reverse lookup so EmitHeaderFooterPart can emit the right
+        // `type` prop (default/first/even) instead of always emitting
+        // "default" — which on a doc with both default + first headers
+        // throws "Header of type 'default' already exists" on replay.
+        var headerPathToType = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var footerPathToType = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, val) in root.Format)
+        {
+            if (val == null) continue;
+            var s = val.ToString();
+            if (string.IsNullOrEmpty(s)) continue;
+            if (key.StartsWith("headerRef.", StringComparison.OrdinalIgnoreCase))
+            {
+                var t = key["headerRef.".Length..];
+                if (!headerPathToType.ContainsKey(s)) headerPathToType[s] = t;
+            }
+            else if (key.StartsWith("footerRef.", StringComparison.OrdinalIgnoreCase))
+            {
+                var t = key["footerRef.".Length..];
+                if (!footerPathToType.ContainsKey(s)) footerPathToType[s] = t;
+            }
+        }
+
         int hIdx = 0, fIdx = 0;
         foreach (var child in root.Children)
         {
             if (child.Type == "header")
             {
                 hIdx++;
-                EmitHeaderFooterPart(word, child.Path, "header", hIdx, items);
+                var t = headerPathToType.TryGetValue(child.Path, out var ht) ? ht : "default";
+                EmitHeaderFooterPart(word, child.Path, "header", hIdx, items, t);
             }
             else if (child.Type == "footer")
             {
                 fIdx++;
-                EmitHeaderFooterPart(word, child.Path, "footer", fIdx, items);
+                var t = footerPathToType.TryGetValue(child.Path, out var ft) ? ft : "default";
+                EmitHeaderFooterPart(word, child.Path, "footer", fIdx, items, t);
             }
         }
     }
 
     private static void EmitHeaderFooterPart(WordHandler word, string sourcePath, string kind,
-                                             int targetIndex, List<BatchItem> items)
+                                             int targetIndex, List<BatchItem> items,
+                                             string subTypeOverride = "default")
     {
         var partNode = word.Get(sourcePath);
         var paras = (partNode.Children ?? new List<DocumentNode>())
             .Where(c => c.Type == "paragraph" || c.Type == "p")
             .ToList();
-        var subType = partNode.Format.TryGetValue("type", out var t) ? t?.ToString() ?? "default" : "default";
+        // partNode.Format does not expose `type`; the caller resolves the
+        // role (default/first/even) from the section's headerRef.* / footerRef.*
+        // map and passes it via subTypeOverride.
+        var subType = subTypeOverride;
 
-        // Seed the part with the first paragraph's text (AddHeader/AddFooter
-        // create a single auto paragraph and accept text/align/style on it).
-        // Multi-run first paragraphs collapse into a flat text string here —
-        // run-level formatting on the seed paragraph is a v0.5 lossy item.
-        var seedProps = new Dictionary<string, string> { ["type"] = subType };
-        if (paras.Count > 0)
-        {
-            // Get on /header[1] returns paragraph stubs without their run
-            // children — re-Get the first paragraph to surface its runs.
-            var firstPara = word.Get(paras[0].Path);
-            var firstRuns = (firstPara.Children ?? new List<DocumentNode>())
-                .Where(c => c.Type == "run" || c.Type == "r")
-                .ToList();
-            if (firstRuns.Count == 1 && !string.IsNullOrEmpty(firstRuns[0].Text))
-            {
-                seedProps["text"] = firstRuns[0].Text!;
-                var runProps = FilterEmittableProps(firstRuns[0].Format);
-                foreach (var (k, v) in runProps)
-                    if (!seedProps.ContainsKey(k)) seedProps[k] = v;
-            }
-            else if (firstRuns.Count >= 1)
-            {
-                // Multi-run: collapse plain text only, drop per-run formatting.
-                seedProps["text"] = string.Join("", firstRuns.Select(r => r.Text ?? ""));
-            }
-        }
+        // Create the part with just its role (default/first/even). AddHeader/
+        // AddFooter seed an empty auto paragraph; EmitParagraph(autoPresent:
+        // true) on paras[0] then routes through CollapseFieldChains so a
+        // PAGE-field header (the canonical case) round-trips as a typed
+        // `add field` row instead of being baked into static "1" text on the
+        // seed paragraph (BUG-R4-T3). Run-level formatting on multi-run
+        // first paragraphs is preserved by the per-run emit path below.
         items.Add(new BatchItem
         {
             Command = "add",
             Parent = "/",
             Type = kind,
-            Props = seedProps
+            Props = new Dictionary<string, string> { ["type"] = subType }
         });
 
-        // Additional paragraphs (>= 2nd) appended to the part directly.
         var partTargetPath = $"/{kind}[{targetIndex}]";
-        for (int p = 1; p < paras.Count; p++)
+        for (int p = 0; p < paras.Count; p++)
         {
-            EmitParagraph(word, paras[p].Path, partTargetPath, p + 1, items, autoPresent: false);
+            EmitParagraph(word, paras[p].Path, partTargetPath, p + 1, items, autoPresent: p == 0);
         }
     }
 
@@ -409,6 +421,17 @@ public static class BatchEmitter
                 Type = "style",
                 Props = props
             });
+            // BUG-R4-T1: FilterEmittableProps drops the `tabs` scalar (it's a
+            // List<Dict>, not stringable). EmitParagraph compensates by
+            // emitting per-stop `add tab` rows; EmitStyles must do the same
+            // or paragraph-level custom tab stops on a style (Heading TOC
+            // leader tabs, etc.) silently disappear on round-trip.
+            var styleId = props.TryGetValue("id", out var sid) ? sid
+                : props.TryGetValue("styleId", out sid) ? sid : null;
+            if (styleId != null && full.Format.TryGetValue("tabs", out var styleTabs))
+            {
+                EmitTabStops($"/styles/{styleId}", styleTabs, items);
+            }
         }
     }
 
@@ -463,8 +486,24 @@ public static class BatchEmitter
             {
                 case "paragraph":
                 case "p":
-                    pIndex++;
-                    EmitParagraph(word, child.Path, "/body", pIndex, items, autoPresent: false, ctx);
+                    // BUG-R4-FUZZ-1: display-mode equations surface in
+                    // bodyNode.Children as type="paragraph" but the path
+                    // resolver addresses them as /body/oMathPara[N], NOT as
+                    // /body/p[N]. Incrementing pIndex for them would offset
+                    // every subsequent inline-child path (hyperlink/footnote/
+                    // run) by +1 per preceding equation, breaking round-trip.
+                    // Detect the wrapper via path and route to EmitParagraph
+                    // without bumping pIndex — EmitParagraph's equation branch
+                    // re-emits the equation as `add /body --type equation`.
+                    if (child.Path.Contains("/oMathPara[", StringComparison.OrdinalIgnoreCase))
+                    {
+                        EmitParagraph(word, child.Path, "/body", pIndex + 1, items, autoPresent: false, ctx);
+                    }
+                    else
+                    {
+                        pIndex++;
+                        EmitParagraph(word, child.Path, "/body", pIndex, items, autoPresent: false, ctx);
+                    }
                     break;
                 case "table":
                     tblIndex++;
@@ -638,9 +677,20 @@ public static class BatchEmitter
         // re-emitted as `add hyperlink` below.
         bool singleRunIsHyperlink = runs.Count == 1 &&
             (runs[0].Format.ContainsKey("url") || runs[0].Format.ContainsKey("anchor"));
+        // BUG-R4-FUZZ-2: when a paragraph's sole run is a footnote/endnote
+        // reference (rStyle=FootnoteReference / EndnoteReference), collapsing
+        // the run into the paragraph prop bag emits `add p props={rStyle=...}`
+        // and drops the typed `add footnote/endnote` row entirely (Add does
+        // not consume rStyle on a paragraph; the note text is lost). Force
+        // the multi-run path so the dedicated note-emit branch below fires.
+        bool singleRunIsNoteRef = runs.Count == 1 &&
+            runs[0].Format.TryGetValue("rStyle", out var srStyle)
+            && (string.Equals(srStyle?.ToString(), "FootnoteReference", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(srStyle?.ToString(), "EndnoteReference", StringComparison.OrdinalIgnoreCase));
         bool collapseSingleRun = runs.Count <= 1 &&
             !(runs.Count == 1 && runs[0].Type == "picture") &&
             !singleRunIsHyperlink &&
+            !singleRunIsNoteRef &&
             breaks.Count == 0;
         // Pull paragraph-level tab stops out for per-stop `add tab` emit
         // (FilterEmittableProps already drops the `tabs` scalar).
