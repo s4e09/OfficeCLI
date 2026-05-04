@@ -159,13 +159,13 @@
       ],
       "description": "horizontal paragraph alignment applied to every paragraph in the cell (set-only; apply after add).",
       "aliases": [
-        "halign"
+        "alignment"
       ],
       "add": false,
       "set": true,
       "get": true,
       "examples": [
-        "--prop alignment=center"
+        "--prop align=center"
       ],
       "readback": "one of values (from first paragraph)",
       "enforcement": "report"

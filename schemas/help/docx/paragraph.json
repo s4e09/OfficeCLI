@@ -17,7 +17,7 @@
       "/body/p[N]"
     ]
   },
-  "note": "Canonical keys per CLAUDE.md: spaceBefore/spaceAfter/lineSpacing/alignment. Legacy aliases (spacebefore, linespacing, halign) are still accepted on Add/Set but Get normalizes to canonical. effective.* keys (effective.size, effective.bold, effective.color, ...) are read-only inheritance-resolved values derived from the first run's resolution through paragraph style → docDefaults; each carries an effective.X.src pointer to the writing layer (e.g. \"/styles/Heading1\", \"/docDefaults\"). They are suppressed when the paragraph (or its first run) sets the corresponding direct value.",
+  "note": "Canonical keys per CLAUDE.md: spaceBefore/spaceAfter/lineSpacing/align. Legacy aliases (spacebefore, linespacing, halign) are still accepted on Add/Set but Get normalizes to canonical. effective.* keys (effective.size, effective.bold, effective.color, ...) are read-only inheritance-resolved values derived from the first run's resolution through paragraph style → docDefaults; each carries an effective.X.src pointer to the writing layer (e.g. \"/styles/Heading1\", \"/docDefaults\"). They are suppressed when the paragraph (or its first run) sets the corresponding direct value.",
   "children": [
     {
       "element": "run",
@@ -38,13 +38,13 @@
         "distribute"
       ],
       "aliases": [
-        "halign"
+        "alignment"
       ],
       "add": true,
       "set": true,
       "get": true,
       "examples": [
-        "--prop alignment=center"
+        "--prop align=center"
       ],
       "readback": "one of values",
       "enforcement": "strict"

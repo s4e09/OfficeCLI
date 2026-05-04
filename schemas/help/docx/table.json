@@ -75,11 +75,14 @@
         "center",
         "right"
       ],
+      "aliases": [
+        "alignment"
+      ],
       "add": true,
       "set": true,
       "get": true,
       "examples": [
-        "--prop alignment=center"
+        "--prop align=center"
       ],
       "readback": "one of values",
       "enforcement": "report"

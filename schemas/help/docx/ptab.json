@@ -26,13 +26,16 @@
         "center",
         "right"
       ],
+      "aliases": [
+        "alignment"
+      ],
       "add": true,
       "set": true,
       "get": true,
       "required": true,
       "examples": [
-        "--prop alignment=center",
-        "--prop alignment=right"
+        "--prop align=center",
+        "--prop align=right"
       ],
       "readback": "ptab alignment attribute",
       "enforcement": "report"

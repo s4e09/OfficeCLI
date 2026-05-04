@@ -63,11 +63,14 @@
         "distribute"
       ],
       "description": "Horizontal alignment applied to the footnote content paragraph (<w:jc/>).",
+      "aliases": [
+        "alignment"
+      ],
       "add": true,
       "set": true,
       "get": false,
       "examples": [
-        "--prop alignment=right"
+        "--prop align=right"
       ],
       "enforcement": "report"
     },

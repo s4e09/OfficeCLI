@@ -19,7 +19,7 @@ namespace OfficeCli.Help;
 ///
 /// Example:
 ///   docx paragraph     ELEM  ops:[asgqr]  paths:/body/p[@paraId=ID];/body/p[N]
-///   docx paragraph     PROP  alignment    enum    ops:[asg]  values:left|center|...  aliases:halign,align  one of values  ex:--prop alignment=center
+///   docx paragraph     PROP  align        enum    ops:[asg]  values:left|center|...  aliases:alignment  one of values  ex:--prop align=center
 /// </summary>
 internal static class SchemaHelpFlatRenderer
 {
@@ -50,7 +50,7 @@ internal static class SchemaHelpFlatRenderer
         // Tips below intentionally use the literal column tokens (PROP / ELEM)
         // so users can copy-paste them. The leading '#' makes them easy to
         // strip with `grep -v '^#'` if the self-match line is unwanted.
-        sb.AppendLine("# Tips: grep '^docx paragraph'  |  grep '  PROP  '  |  grep alignment  |  grep aliases:halign");
+        sb.AppendLine("# Tips: grep '^docx paragraph'  |  grep '  PROP  '  |  grep align  |  grep aliases:alignment");
         sb.AppendLine();
 
         foreach (var format in SchemaHelpLoader.ListFormats())

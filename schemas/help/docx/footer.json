@@ -18,9 +18,9 @@
   },
   "note": "Mirror of header.json — same surface, stored in FooterParts. Duplicate type per section rejected at Add. A single Add supports at most one text + one field pair. For composite footers like 'Page X of Y' (two fields + literal text), create the footer first, then Add additional runs/fields to its paragraph (/footer[N]/p[1]) one by one — see examples.",
   "examples": [
-    "Simple page-number footer: officecli add file.docx / --type footer --prop field=page --prop alignment=center",
+    "Simple page-number footer: officecli add file.docx / --type footer --prop field=page --prop align=center",
     "'Page X of Y' — must be built in steps after creating the footer:",
-    "  1) officecli add file.docx / --type footer --prop text=\"Page \" --prop alignment=center",
+    "  1) officecli add file.docx / --type footer --prop text=\"Page \" --prop align=center",
     "  2) officecli add file.docx \"/footer[1]/p[1]\" --type field --prop fieldType=page",
     "  3) officecli add file.docx \"/footer[1]/p[1]\" --type run --prop text=\" of \"",
     "  4) officecli add file.docx \"/footer[1]/p[1]\" --type field --prop fieldType=numpages"
@@ -67,11 +67,14 @@
         "both",
         "distribute"
       ],
+      "aliases": [
+        "alignment"
+      ],
       "add": true,
       "set": true,
       "get": true,
       "examples": [
-        "--prop alignment=center"
+        "--prop align=center"
       ],
       "readback": "first-paragraph Justification.Val.InnerText",
       "enforcement": "strict"
