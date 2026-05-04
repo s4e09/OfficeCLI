@@ -32,8 +32,21 @@ public partial class WordHandler
             {
                 var rPr = EnsureRunPropsDefault();
                 var fonts = rPr.GetFirstChild<RunFonts>() ?? rPr.AppendChild(new RunFonts());
-                fonts.Ascii = value;
-                fonts.HighAnsi = value;
+                // BUG-R6-05: empty value means "remove this slot" so dump
+                // can clear blank-template defaults (Times New Roman) when
+                // the source doc had no explicit docDefaults.font.latin.
+                // Without this, dump→batch leaks the blank's TNR into the
+                // round-tripped doc.
+                if (string.IsNullOrEmpty(value))
+                {
+                    fonts.Ascii = null;
+                    fonts.HighAnsi = null;
+                }
+                else
+                {
+                    fonts.Ascii = value;
+                    fonts.HighAnsi = value;
+                }
                 SaveStyles();
                 return true;
             }

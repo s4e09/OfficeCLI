@@ -399,6 +399,17 @@ public static class BatchEmitter
             props.Remove("docDefaults.font");
             props["docDefaults.font.latin"] = bareFont;
         }
+        // BUG-R6-05: BlankDocCreator stamps `Times New Roman` into
+        // docDefaults RunFonts. Source docs that omit the slot (use theme
+        // fonts) round-trip with the blank's TNR baked in. Force an
+        // explicit empty `docDefaults.font.latin=` so the Set path clears
+        // the blank's TNR back to absent. Same for docGrid.type which the
+        // blank sets to `default`.
+        if (!props.ContainsKey("docDefaults.font.latin")
+            && !props.ContainsKey("docDefaults.font"))
+        {
+            props["docDefaults.font.latin"] = "";
+        }
         if (props.Count == 0) return;
         items.Add(new BatchItem
         {
