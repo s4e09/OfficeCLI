@@ -52,6 +52,12 @@ static partial class CommandBuilder
             // dropped the dead options block.
             var output = JsonSerializer.Serialize(items, BatchJsonContext.Default.ListBatchItem);
             var json = result.GetValue(jsonOption);
+            // BUG-R4-FUZZ-3: Unix convention — `--out -` means stdout, not a
+            // file literally named "-". Without this, running `dump --out -`
+            // silently created a `-` file in the cwd (and could pollute the
+            // project tree if invoked from inside it).
+            if (outPath == "-")
+                outPath = null;
             if (outPath != null)
             {
                 File.WriteAllText(outPath, output);
