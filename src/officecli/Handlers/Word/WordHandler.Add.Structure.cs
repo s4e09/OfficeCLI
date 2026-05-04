@@ -791,6 +791,48 @@ public partial class WordHandler
                     key, value);
                 continue;
             }
+            // CONSISTENCY(style-indent): list-family styles round-trip with
+            // leftIndent / hangingIndent / firstLineIndent / rightIndent on the
+            // style definition (BUG BT-5). Mirror SetStylePath's wiring so
+            // dump→batch survives without losing list indents.
+            switch (key.ToLowerInvariant())
+            {
+                case "leftindent":
+                {
+                    var pPrLi = newStyle.StyleParagraphProperties ?? EnsureStyleParagraphProperties(newStyle);
+                    var indLi = pPrLi.Indentation ?? (pPrLi.Indentation = new Indentation());
+                    indLi.Left = SpacingConverter.ParseWordSpacing(value).ToString();
+                    continue;
+                }
+                case "rightindent":
+                {
+                    var pPrRi = newStyle.StyleParagraphProperties ?? EnsureStyleParagraphProperties(newStyle);
+                    var indRi = pPrRi.Indentation ?? (pPrRi.Indentation = new Indentation());
+                    indRi.Right = SpacingConverter.ParseWordSpacing(value).ToString();
+                    continue;
+                }
+                case "firstlineindent":
+                {
+                    var pPrFli = newStyle.StyleParagraphProperties ?? EnsureStyleParagraphProperties(newStyle);
+                    var indFli = pPrFli.Indentation ?? (pPrFli.Indentation = new Indentation());
+                    indFli.FirstLine = SpacingConverter.ParseWordSpacing(value).ToString();
+                    continue;
+                }
+                case "hangingindent":
+                {
+                    var pPrHi = newStyle.StyleParagraphProperties ?? EnsureStyleParagraphProperties(newStyle);
+                    var indHi = pPrHi.Indentation ?? (pPrHi.Indentation = new Indentation());
+                    indHi.Hanging = SpacingConverter.ParseWordSpacing(value).ToString();
+                    continue;
+                }
+                case "pbdr.top" or "pbdr.bottom" or "pbdr.left" or "pbdr.right" or "pbdr.between" or "pbdr.bar" or "pbdr.all" or "pbdr":
+                {
+                    var pPrB = newStyle.StyleParagraphProperties ?? EnsureStyleParagraphProperties(newStyle);
+                    ApplyStyleParagraphBorders(pPrB, key, value);
+                    continue;
+                }
+            }
+
             // Anything still unconsumed is a genuine silent drop — composites
             // (font.eastAsia, ind.firstLine, tabs, numId, ...) that the
             // curated AddStyle does not yet model. Record so the CLI layer

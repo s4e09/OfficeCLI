@@ -1501,6 +1501,42 @@ public partial class WordHandler
                     ApplyStyleParagraphBorders(pPrB, key, value);
                     break;
                 }
+                // CONSISTENCY(style-indent): list-family styles (List, List Paragraph,
+                // List 2/3, List Continue 1/2/3, Intense Quote) carry their indent on
+                // the style definition. Without these cases the BatchEmitter dump emits
+                // leftIndent / hangingIndent / firstLineIndent / rightIndent on /styles
+                // and Set rejects them as UNSUPPORTED — list styles round-trip with
+                // their indent erased (BUG BT-5). StyleUnsupportedHints' "set indent at
+                // paragraph level" hint covered the user-typed-by-hand case but is
+                // wrong for round-trip.
+                case "leftindent" or "leftIndent":
+                {
+                    var pPrLi = style.StyleParagraphProperties ?? EnsureStyleParagraphProperties(style);
+                    var indLi = pPrLi.Indentation ?? (pPrLi.Indentation = new Indentation());
+                    indLi.Left = SpacingConverter.ParseWordSpacing(value).ToString();
+                    break;
+                }
+                case "rightindent" or "rightIndent":
+                {
+                    var pPrRi = style.StyleParagraphProperties ?? EnsureStyleParagraphProperties(style);
+                    var indRi = pPrRi.Indentation ?? (pPrRi.Indentation = new Indentation());
+                    indRi.Right = SpacingConverter.ParseWordSpacing(value).ToString();
+                    break;
+                }
+                case "firstlineindent" or "firstLineIndent":
+                {
+                    var pPrFli = style.StyleParagraphProperties ?? EnsureStyleParagraphProperties(style);
+                    var indFli = pPrFli.Indentation ?? (pPrFli.Indentation = new Indentation());
+                    indFli.FirstLine = SpacingConverter.ParseWordSpacing(value).ToString();
+                    break;
+                }
+                case "hangingindent" or "hangingIndent":
+                {
+                    var pPrHi = style.StyleParagraphProperties ?? EnsureStyleParagraphProperties(style);
+                    var indHi = pPrHi.Indentation ?? (pPrHi.Indentation = new Indentation());
+                    indHi.Hanging = SpacingConverter.ParseWordSpacing(value).ToString();
+                    break;
+                }
                 // Per-script font split. Each w:rFonts attr is independent and
                 // unset attrs fall back through the style chain / docDefaults,
                 // so writing only the requested attr is correct — no need to

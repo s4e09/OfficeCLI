@@ -23,10 +23,8 @@ internal static class StyleUnsupportedHints
         ["leftChars"]      = "char-based indent is not supported on styles",
         ["rightChars"]     = "char-based indent is not supported on styles",
         ["hangingChars"]   = "char-based indent is not supported on styles",
-        ["firstLineIndent"] = "indent attrs on styles are not supported; set indent at paragraph level instead",
-        ["leftIndent"]      = "indent attrs on styles are not supported; set indent at paragraph level instead",
-        ["rightIndent"]     = "indent attrs on styles are not supported; set indent at paragraph level instead",
-        ["hangingIndent"]   = "indent attrs on styles are not supported; set indent at paragraph level instead",
+        // firstLineIndent / leftIndent / rightIndent / hangingIndent are now
+        // wired in WordHandler.Set.Dispatch.cs SetStylePath (Round 3 BT-5).
 
         ["spaceBeforeLines"] = "line-based spacing is not supported; use 'spaceBefore=<twips|pt|cm>' instead",
         ["spaceAfterLines"]  = "line-based spacing is not supported; use 'spaceAfter=<twips|pt|cm>' instead",
