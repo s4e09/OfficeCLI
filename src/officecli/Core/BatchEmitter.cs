@@ -38,10 +38,82 @@ public static class BatchEmitter
         // numId=3, etc.) resolve when the paragraph adds reach them on replay.
         EmitStyles(word, items);
         EmitSection(word, items);
+        EmitHeadersFooters(word, items);
         var paraIdToTargetIdx = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         EmitBody(word, items, paraIdToTargetIdx);
         EmitComments(word, items, paraIdToTargetIdx);
         return items;
+    }
+
+    private static void EmitHeadersFooters(WordHandler word, List<BatchItem> items)
+    {
+        var root = word.Get("/");
+        if (root.Children == null) return;
+        int hIdx = 0, fIdx = 0;
+        foreach (var child in root.Children)
+        {
+            if (child.Type == "header")
+            {
+                hIdx++;
+                EmitHeaderFooterPart(word, child.Path, "header", hIdx, items);
+            }
+            else if (child.Type == "footer")
+            {
+                fIdx++;
+                EmitHeaderFooterPart(word, child.Path, "footer", fIdx, items);
+            }
+        }
+    }
+
+    private static void EmitHeaderFooterPart(WordHandler word, string sourcePath, string kind,
+                                             int targetIndex, List<BatchItem> items)
+    {
+        var partNode = word.Get(sourcePath);
+        var paras = (partNode.Children ?? new List<DocumentNode>())
+            .Where(c => c.Type == "paragraph" || c.Type == "p")
+            .ToList();
+        var subType = partNode.Format.TryGetValue("type", out var t) ? t?.ToString() ?? "default" : "default";
+
+        // Seed the part with the first paragraph's text (AddHeader/AddFooter
+        // create a single auto paragraph and accept text/align/style on it).
+        // Multi-run first paragraphs collapse into a flat text string here —
+        // run-level formatting on the seed paragraph is a v0.5 lossy item.
+        var seedProps = new Dictionary<string, string> { ["type"] = subType };
+        if (paras.Count > 0)
+        {
+            // Get on /header[1] returns paragraph stubs without their run
+            // children — re-Get the first paragraph to surface its runs.
+            var firstPara = word.Get(paras[0].Path);
+            var firstRuns = (firstPara.Children ?? new List<DocumentNode>())
+                .Where(c => c.Type == "run" || c.Type == "r")
+                .ToList();
+            if (firstRuns.Count == 1 && !string.IsNullOrEmpty(firstRuns[0].Text))
+            {
+                seedProps["text"] = firstRuns[0].Text!;
+                var runProps = FilterEmittableProps(firstRuns[0].Format);
+                foreach (var (k, v) in runProps)
+                    if (!seedProps.ContainsKey(k)) seedProps[k] = v;
+            }
+            else if (firstRuns.Count >= 1)
+            {
+                // Multi-run: collapse plain text only, drop per-run formatting.
+                seedProps["text"] = string.Join("", firstRuns.Select(r => r.Text ?? ""));
+            }
+        }
+        items.Add(new BatchItem
+        {
+            Command = "add",
+            Parent = "/",
+            Type = kind,
+            Props = seedProps
+        });
+
+        // Additional paragraphs (>= 2nd) appended to the part directly.
+        var partTargetPath = $"/{kind}[{targetIndex}]";
+        for (int p = 1; p < paras.Count; p++)
+        {
+            EmitParagraph(word, paras[p].Path, partTargetPath, p + 1, items, autoPresent: false);
+        }
     }
 
     private static void EmitComments(WordHandler word, List<BatchItem> items,
