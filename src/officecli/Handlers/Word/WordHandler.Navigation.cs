@@ -1262,6 +1262,66 @@ public partial class WordHandler
                 // didn't consume. Symmetric with the Set-side TryCreateTypedChild
                 // fallback in SetElementParagraph (WordHandler.Set.Element.cs).
                 FillUnknownChildProps(pProps, node);
+
+                // CONSISTENCY(add-set-symmetry): inline section break.
+                // A paragraph carrying <w:sectPr> inside its <w:pPr> is the
+                // OOXML representation of a mid-document section break (the
+                // last paragraph before the break holds the section's
+                // properties). AddSection on /body produces exactly this
+                // shape, but Get used to expose nothing — leaving the
+                // paragraph indistinguishable from a regular empty para.
+                // Surface it as `sectionBreak` (Add prop name match) plus
+                // companion section-property keys readers expect.
+                var inlineSectPr = pProps.GetFirstChild<SectionProperties>();
+                if (inlineSectPr != null)
+                {
+                    var sectMark = inlineSectPr.GetFirstChild<SectionType>()?.Val?.InnerText;
+                    node.Format["sectionBreak"] = sectMark ?? "nextPage";
+
+                    // Per-section page layout when overridden on this break.
+                    var pgSz = inlineSectPr.GetFirstChild<PageSize>();
+                    if (pgSz?.Width?.Value != null)
+                        node.Format["sectionBreak.pageWidth"] = FormatTwipsToCm(pgSz.Width.Value);
+                    if (pgSz?.Height?.Value != null)
+                        node.Format["sectionBreak.pageHeight"] = FormatTwipsToCm(pgSz.Height.Value);
+                    if (pgSz?.Orient?.Value != null)
+                        node.Format["sectionBreak.orientation"] = pgSz.Orient.InnerText;
+
+                    var pgMar = inlineSectPr.GetFirstChild<PageMargin>();
+                    if (pgMar != null)
+                    {
+                        if (pgMar.Top?.Value != null)
+                            node.Format["sectionBreak.marginTop"] = FormatTwipsToCm((uint)Math.Abs(pgMar.Top.Value));
+                        if (pgMar.Bottom?.Value != null)
+                            node.Format["sectionBreak.marginBottom"] = FormatTwipsToCm((uint)Math.Abs(pgMar.Bottom.Value));
+                        if (pgMar.Left?.Value != null)
+                            node.Format["sectionBreak.marginLeft"] = FormatTwipsToCm(pgMar.Left.Value);
+                        if (pgMar.Right?.Value != null)
+                            node.Format["sectionBreak.marginRight"] = FormatTwipsToCm(pgMar.Right.Value);
+                    }
+
+                    var pgNum = inlineSectPr.GetFirstChild<PageNumberType>();
+                    if (pgNum?.Start?.Value != null)
+                        node.Format["sectionBreak.pageStart"] = pgNum.Start.Value;
+                    if (pgNum?.Format?.Value != null)
+                        node.Format["sectionBreak.pageNumFmt"] = pgNum.Format.InnerText;
+
+                    if (inlineSectPr.GetFirstChild<TitlePage>() != null)
+                        node.Format["sectionBreak.titlePage"] = true;
+
+                    var lnNum = inlineSectPr.GetFirstChild<LineNumberType>();
+                    if (lnNum != null)
+                    {
+                        node.Format["sectionBreak.lineNumbers"] = lnNum.Restart?.InnerText switch
+                        {
+                            "newPage" => "restartPage",
+                            "newSection" => "restartSection",
+                            _ => "continuous"
+                        };
+                        if (lnNum.CountBy?.Value is short cb && cb > 1)
+                            node.Format["sectionBreak.lineNumberCountBy"] = cb;
+                    }
+                }
             }
 
             // First-run formatting on the paragraph node (like PPTX does for shapes).

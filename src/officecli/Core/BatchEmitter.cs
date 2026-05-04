@@ -408,6 +408,37 @@ public static class BatchEmitter
     {
         var pNode = word.Get(sourcePath);
 
+        // Inline section break: a paragraph carrying <w:sectPr> is the
+        // OOXML representation of a mid-document section boundary.
+        // AddSection on /body produces this same shape, so we emit
+        // `add /body --type section` (which creates a fresh break paragraph)
+        // rather than emitting a regular `add p`. The companion
+        // sectionBreak.* keys map back to AddSection's prop vocabulary.
+        if (parentPath == "/body" &&
+            pNode.Format.TryGetValue("sectionBreak", out var breakKind) && breakKind != null)
+        {
+            var sectProps = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["type"] = breakKind.ToString() ?? "nextPage"
+            };
+            foreach (var (k, v) in pNode.Format)
+            {
+                if (!k.StartsWith("sectionBreak.", StringComparison.OrdinalIgnoreCase)) continue;
+                if (v == null) continue;
+                var keyTail = k["sectionBreak.".Length..];
+                var s = v switch { bool b => b ? "true" : "false", _ => v.ToString() ?? "" };
+                if (s.Length > 0) sectProps[keyTail] = s;
+            }
+            items.Add(new BatchItem
+            {
+                Command = "add",
+                Parent = "/body",
+                Type = "section",
+                Props = sectProps
+            });
+            return;
+        }
+
         // Track source paraId -> target index so comments anchored on this
         // paragraph can be retargeted on replay (paraIds regenerate in the
         // target document, so positional indices are the stable handle).
