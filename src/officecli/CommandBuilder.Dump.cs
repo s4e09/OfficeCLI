@@ -59,10 +59,28 @@ static partial class CommandBuilder
                 outPath = null;
             if (outPath != null)
             {
+                // The on-disk file is the canonical batch wire form (bare
+                // JSON array) so it can feed `batch --input <file>`
+                // unchanged — wrapping it in an envelope would break
+                // batch consumption.
                 File.WriteAllText(outPath, output);
                 if (json)
-                    Console.WriteLine(OutputFormatter.WrapEnvelope(
-                        "\"" + outPath.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\""));
+                {
+                    // BUG-R6-01: previously stdout returned
+                    //   {"success": true, "data": "/tmp/out.json"}
+                    // which was indistinguishable in shape from the
+                    // no-out form (data is array). Make the file mode's
+                    // envelope unambiguous by surfacing structured
+                    // metadata under `data` instead of a bare path
+                    // string. Callers can detect "data has outputFile" to
+                    // disambiguate.
+                    var meta = new System.Text.Json.Nodes.JsonObject
+                    {
+                        ["outputFile"] = outPath,
+                        ["itemCount"] = items.Count
+                    };
+                    Console.WriteLine(OutputFormatter.WrapEnvelope(meta.ToJsonString()));
+                }
                 else
                     Console.WriteLine(outPath);
             }
