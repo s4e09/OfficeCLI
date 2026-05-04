@@ -184,8 +184,13 @@ public partial class WordHandler
                 if (!string.IsNullOrEmpty(cellText))
                     cellPara.AppendChild(new Run(new Text(cellText) { Space = SpaceProcessingModeValues.Preserve }));
                 var cell = new TableCell(cellPara);
-                if (colWidthArr != null && c < colWidthArr.Length)
-                    cell.PrependChild(new TableCellProperties(new TableCellWidth { Width = colWidthArr[c].ToString(), Type = TableWidthUnitValues.Dxa }));
+                // BUG-R6-06 / BUG-R6-01: do NOT stamp an explicit
+                // <w:tcW> on every cell when the user supplied colWidths
+                // — w:tblGrid/w:gridCol already encodes the column
+                // widths, and per-cell tcW makes dump→batch→dump
+                // non-idempotent (each round-trip emits N×M extra
+                // `set width=…` commands). Cells without a tcW inherit
+                // the column width from tblGrid as the schema intends.
                 row.AppendChild(cell);
             }
             table.AppendChild(row);
