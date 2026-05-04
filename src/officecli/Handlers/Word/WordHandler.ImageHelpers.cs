@@ -222,6 +222,11 @@ public partial class WordHandler
         }
         else if (anchorEl != null)
         {
+            // Surface anchor=true so dump→batch round-trip recreates a
+            // floating picture. AddPicture's wrapImpliesAnchor heuristic
+            // is false for wrap=none, so without this explicit flag the
+            // replay produces an inline picture (BUG-R6-1).
+            node.Format["anchor"] = true;
             node.Format["wrap"] = DetectWrapType(anchorEl);
             if (anchorEl.BehindDoc?.Value == true)
                 node.Format["behindText"] = true;
