@@ -73,6 +73,53 @@ public partial class WordHandler
             children.Add(new DocumentNode { Path = "/numbering", Type = "numbering" });
         }
 
+        // CONSISTENCY(footnotes-container): mirror /footnotes/footnote[N] enumeration
+        // (Navigation.cs:785) — user entries only (id > 0), excluding separator/
+        // continuation system rows so child counts match what `query footnote` returns.
+        if (mainPart?.FootnotesPart?.Footnotes != null)
+        {
+            int fnCount = mainPart.FootnotesPart.Footnotes.Elements<Footnote>()
+                .Count(f => f.Id?.Value > 0);
+            if (fnCount > 0)
+            {
+                children.Add(new DocumentNode
+                {
+                    Path = "/footnotes",
+                    Type = "footnotes",
+                    ChildCount = fnCount
+                });
+            }
+        }
+
+        if (mainPart?.EndnotesPart?.Endnotes != null)
+        {
+            int enCount = mainPart.EndnotesPart.Endnotes.Elements<Endnote>()
+                .Count(e => e.Id?.Value > 0);
+            if (enCount > 0)
+            {
+                children.Add(new DocumentNode
+                {
+                    Path = "/endnotes",
+                    Type = "endnotes",
+                    ChildCount = enCount
+                });
+            }
+        }
+
+        if (mainPart?.WordprocessingCommentsPart?.Comments != null)
+        {
+            int cCount = mainPart.WordprocessingCommentsPart.Comments.Elements<Comment>().Count();
+            if (cCount > 0)
+            {
+                children.Add(new DocumentNode
+                {
+                    Path = "/comments",
+                    Type = "comments",
+                    ChildCount = cCount
+                });
+            }
+        }
+
         // Core document properties
         var props = _doc.PackageProperties;
         if (props.Title != null) node.Format["title"] = props.Title;
