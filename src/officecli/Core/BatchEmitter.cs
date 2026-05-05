@@ -882,6 +882,22 @@ public static class BatchEmitter
         }
 
         var props = FilterEmittableProps(pNode.Format);
+        // BUG-DUMP26-01: numId/numLevel that came from style inheritance
+        // (ResolveNumPrFromStyle, no direct w:numPr on the paragraph) must
+        // not ride on `add p` — the style already supplies them, and emitting
+        // them would semantically promote inherited→explicit on replay.
+        // Mirrors the round-1 first-run hoist precedent for run-character
+        // props inherited from styles.
+        bool numInherited = pNode.Format.TryGetValue("numInherited", out var niVal)
+            && string.Equals(niVal?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+        if (numInherited)
+        {
+            props.Remove("numId");
+            props.Remove("numLevel");
+            props.Remove("numFmt");
+            props.Remove("listStyle");
+            props.Remove("start");
+        }
         // When a paragraph carries numId, the abstractNum/num pair is already
         // in /numbering (raw-set wholesale by EmitNumberingRaw). Forwarding
         // numFmt/listStyle/start to AddParagraph triggers ad-hoc
@@ -2171,6 +2187,12 @@ public static class BatchEmitter
         // propagated to synthetic field nodes) by Navigation. Consumed by the
         // field-emit branch only; never replayed as a Set/Add property.
         "_hyperlinkParent",
+        // BUG-DUMP26-01: Navigation stamps this flag when numId/numLevel come
+        // from ResolveNumPrFromStyle (paragraph inherits numbering through its
+        // style). EmitParagraph consumes the flag to drop the inherited
+        // numId/numLevel/numFmt/listStyle/start before they ride on `add p`.
+        // Drop the flag itself from any emitted prop bag.
+        "numInherited",
         // BUG-019: lineSpacing alone cannot distinguish AtLeast from Exact —
         // SpacingConverter.FormatWordLineSpacing serializes both as "Npt".
         // Set/AddParagraph now accept `lineRule` explicitly so it must flow

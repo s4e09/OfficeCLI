@@ -1435,6 +1435,12 @@ public partial class WordHandler
                         var (inhId, inhLvl) = inherited.Value;
                         node.Format["numId"] = inhId.ToString();
                         node.Format["numLevel"] = inhLvl.ToString();
+                        // BUG-DUMP26-01: flag style-inherited values so BatchEmitter
+                        // can suppress them on `add p` — they're already covered by
+                        // the paragraph's style and emitting them would semantically
+                        // promote inherited→explicit on round-trip. Mirrors the
+                        // round-1 first-run hoist precedent.
+                        node.Format["numInherited"] = "true";
                         var numFmt = GetNumberingFormat(inhId, inhLvl);
                         node.Format["numFmt"] = numFmt;
                         node.Format["listStyle"] = numFmt.ToLowerInvariant() == "bullet" ? "bullet" : "ordered";
