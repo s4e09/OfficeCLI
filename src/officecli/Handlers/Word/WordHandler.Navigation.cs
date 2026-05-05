@@ -785,11 +785,28 @@ public partial class WordHandler
                 // counted via the /body/oMathPara[N] path instead, so the
                 // /body/p[N] enumeration skips them to match HTML-preview
                 // data-path attribution (which also skips them).
+                // BUG-DUMP8-01/02: w:customXml body wrappers are non-structural —
+                // recursively flatten so paragraphs/tables nested inside one
+                // (or several) levels of CustomXmlBlock surface in the same
+                // /body/p[N] / /body/tbl[N] enumeration. Mirrors the listing
+                // logic in WalkBodyChild for `get /body`; without this, path
+                // resolution diverged from listing and `get /body/p[1]` threw
+                // "Path not found" on customXml-wrapped paragraphs.
+                var flat = new List<OpenXmlElement>();
+                void CollectBodyChildren(OpenXmlElement el)
+                {
+                    foreach (var c in el.ChildElements)
+                    {
+                        if (c is CustomXmlBlock cx) CollectBodyChildren(cx);
+                        else flat.Add(c);
+                    }
+                }
+                CollectBodyChildren(body2);
                 children = seg.Name.ToLowerInvariant() == "p"
-                    ? body2.Elements<Paragraph>()
+                    ? flat.OfType<Paragraph>()
                         .Where(p => !IsOMathParaWrapperParagraph(p))
                         .Cast<OpenXmlElement>()
-                    : body2.Elements<Table>().Cast<OpenXmlElement>();
+                    : flat.OfType<Table>().Cast<OpenXmlElement>();
             }
             else if (current is Body body3 && seg.Name == "oMathPara")
             {
