@@ -1689,11 +1689,55 @@ public partial class WordHandler
 
             if (depth > 0)
             {
+                // BUG-DUMP13-02: interleave typed Runs and inline M.OfficeMath
+                // equations in DOM order so paragraphs like `r1 / m:oMath / r2`
+                // emit r1, equation, r2 (not r1, r2, equation). Previously
+                // GetAllRuns appended every run first and the inline-equation
+                // loop below appended all equations afterwards as a separate
+                // group, so DOM order was lost on dump round-trip.
+                //
+                // We compute a DOM-position index per element via a single
+                // descendant walk (Descendants() yields document order) and
+                // use it to sort only the run+equation slice, leaving other
+                // categories (sdt/bookmark/field/etc.) in their original
+                // append order.
                 int runIdx = 0;
-                foreach (var run in GetAllRuns(para))
+                int inlineEqIdx = 0;
+                var descendantPos = new Dictionary<OpenXmlElement, int>(ReferenceEqualityComparer.Instance);
+                int dpi = 0;
+                foreach (var d in para.Descendants())
+                    descendantPos[d] = dpi++;
+
+                var runs = GetAllRuns(para);
+                // BUG-DUMP9-04: m:oMath nested inside w:hyperlink is a
+                // grandchild of the paragraph and was silently dropped.
+                // BUG-DUMP8-03: include m:oMath nested inside w:ins/w:del
+                // change-track wrappers — they are paragraph grandchildren,
+                // not direct children, and were silently dropped on dump.
+                var inlineEqsAll = para.Elements<M.OfficeMath>()
+                    .Concat(para.Elements<InsertedRun>().SelectMany(ins => ins.Elements<M.OfficeMath>()))
+                    .Concat(para.Elements<DeletedRun>().SelectMany(del => del.Elements<M.OfficeMath>()))
+                    .Concat(para.Elements<Hyperlink>().SelectMany(hl => hl.Elements<M.OfficeMath>()))
+                    .ToList();
+
+                // Merge runs and inline equations by DOM position, then emit
+                // in that interleaved order.
+                var ordered = runs.Select(r => (pos: descendantPos.TryGetValue(r, out var p) ? p : int.MaxValue, kind: "run", el: (OpenXmlElement)r))
+                    .Concat(inlineEqsAll.Select(e => (pos: descendantPos.TryGetValue(e, out var p) ? p : int.MaxValue, kind: "eq", el: (OpenXmlElement)e)))
+                    .OrderBy(t => t.pos)
+                    .ToList();
+                foreach (var entry in ordered)
                 {
-                    node.Children.Add(ElementToNode(run, $"{path}/r[{runIdx + 1}]", depth - 1));
-                    runIdx++;
+                    if (entry.kind == "run")
+                    {
+                        node.Children.Add(ElementToNode(entry.el, $"{path}/r[{runIdx + 1}]", depth - 1));
+                        runIdx++;
+                    }
+                    else
+                    {
+                        node.Children.Add(ElementToNode(entry.el, $"{path}/equation[{inlineEqIdx + 1}]", depth - 1));
+                        inlineEqIdx++;
+                    }
                 }
                 // BUG-DUMP5-06/07: <w:ruby> and <w:smartTag> aren't registered
                 // as typed paragraph children in the OpenXml SDK schema set we
@@ -1794,29 +1838,12 @@ public partial class WordHandler
                     node.Children.Add(ElementToNode(sdtR, $"{path}/sdt[{sdtRunIdx + 1}]", depth - 1));
                     sdtRunIdx++;
                 }
-                // BUG-DUMP7-03: surface inline <m:oMath> children as typed
-                // `equation` nodes (mode=inline) so BatchEmitter can re-emit
-                // `add equation mode=inline`. Without this, GetAllRuns
-                // ignored the OfficeMath element entirely and the paragraph
-                // surfaced empty — dump emitted just `add p` and the formula
-                // was silently dropped. Block-level oMathPara is already
-                // handled at the body level via the LocalName=="oMathPara"
-                // branch below.
-                // BUG-DUMP8-03: include m:oMath nested inside w:ins/w:del
-                // change-track wrappers — they are paragraph grandchildren,
-                // not direct children, and were silently dropped on dump.
-                int inlineEqIdx = 0;
-                // BUG-DUMP9-04: m:oMath nested inside w:hyperlink is a
-                // grandchild of the paragraph and was silently dropped.
-                var inlineEqs = para.Elements<M.OfficeMath>()
-                    .Concat(para.Elements<InsertedRun>().SelectMany(ins => ins.Elements<M.OfficeMath>()))
-                    .Concat(para.Elements<DeletedRun>().SelectMany(del => del.Elements<M.OfficeMath>()))
-                    .Concat(para.Elements<Hyperlink>().SelectMany(hl => hl.Elements<M.OfficeMath>()));
-                foreach (var inlineEq in inlineEqs)
-                {
-                    node.Children.Add(ElementToNode(inlineEq, $"{path}/equation[{inlineEqIdx + 1}]", depth - 1));
-                    inlineEqIdx++;
-                }
+                // BUG-DUMP7-03 / BUG-DUMP8-03 / BUG-DUMP9-04: inline <m:oMath>
+                // children (including those nested inside w:ins/w:del/w:hyperlink
+                // wrappers) are now interleaved with runs at the top of this
+                // block (BUG-DUMP13-02) so DOM order is preserved. The
+                // `inlineEqIdx` counter declared there carries forward into the
+                // block-level oMathPara branch below.
                 // BUG-DUMP12-02: surface block-level <m:oMathPara> children of a
                 // mixed-content paragraph (paragraph that ALSO has ordinary
                 // runs/hyperlinks/etc) as display equation nodes. The pure-wrapper
