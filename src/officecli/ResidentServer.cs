@@ -564,12 +564,16 @@ public class ResidentServer : IDisposable
                 int jsonExitCode = 0;
                 if (stderr.Contains("UNSUPPORTED"))
                     jsonExitCode = 2;
-                else if (!EnvelopeSuccess(envelope) || batchFailure || validateFailure)
+                else if (!EnvelopeSuccess(envelope) || batchFailure || validateFailure || stderr.Contains("VALIDATION:"))
                     jsonExitCode = 1;
                 return MakeResponse(jsonExitCode, envelope, "");
             }
 
-            int exitCode = stderr.Contains("UNSUPPORTED") ? 2 : ((batchFailure || validateFailure) ? 1 : 0);
+            // BUG-DUMP12-01: surface stderr "VALIDATION:" token (emitted by
+            // ExecuteRawSet / ExecuteAddPart when the SDK validator gains new
+            // errors) as exit 1 so callers can detect rejected raw mutations.
+            int exitCode = stderr.Contains("UNSUPPORTED") ? 2
+                : ((batchFailure || validateFailure || stderr.Contains("VALIDATION:")) ? 1 : 0);
             return MakeResponse(exitCode, stdout, stderr);
         }
         catch (Exception ex)
@@ -1454,12 +1458,16 @@ public class ResidentServer : IDisposable
         var newErrors = errorsAfter.Where(e => !errorsBefore.Contains(e.Description)).ToList();
         if (newErrors.Count > 0)
         {
-            Console.WriteLine($"VALIDATION: {newErrors.Count} new error(s) introduced:");
+            // BUG-DUMP12-01: emit VALIDATION report to stderr (not stdout) so the
+            // ProcessRequest exit-code logic — which checks stderr for failure
+            // tokens — promotes the request to a non-zero exit code. Writing to
+            // stdout also corrupted batch --json output (BUG-R5-01 rationale).
+            Console.Error.WriteLine($"VALIDATION: {newErrors.Count} new error(s) introduced:");
             foreach (var err in newErrors)
             {
-                Console.WriteLine($"  [{err.ErrorType}] {err.Description}");
-                if (err.Path != null) Console.WriteLine($"    Path: {err.Path}");
-                if (err.Part != null) Console.WriteLine($"    Part: {err.Part}");
+                Console.Error.WriteLine($"  [{err.ErrorType}] {err.Description}");
+                if (err.Path != null) Console.Error.WriteLine($"    Path: {err.Path}");
+                if (err.Part != null) Console.Error.WriteLine($"    Part: {err.Part}");
             }
         }
     }
@@ -1476,12 +1484,15 @@ public class ResidentServer : IDisposable
         var newErrors = errorsAfter.Where(e => !errorsBefore.Contains(e.Description)).ToList();
         if (newErrors.Count > 0)
         {
-            Console.WriteLine($"VALIDATION: {newErrors.Count} new error(s) introduced:");
+            // BUG-DUMP12-01: route VALIDATION report to stderr — see ExecuteRawSet
+            // for rationale (mirrors CommandBuilder.ReportNewErrors and lets the
+            // ProcessRequest exit-code logic promote the request to exit 1).
+            Console.Error.WriteLine($"VALIDATION: {newErrors.Count} new error(s) introduced:");
             foreach (var err in newErrors)
             {
-                Console.WriteLine($"  [{err.ErrorType}] {err.Description}");
-                if (err.Path != null) Console.WriteLine($"    Path: {err.Path}");
-                if (err.Part != null) Console.WriteLine($"    Part: {err.Part}");
+                Console.Error.WriteLine($"  [{err.ErrorType}] {err.Description}");
+                if (err.Path != null) Console.Error.WriteLine($"    Path: {err.Path}");
+                if (err.Part != null) Console.Error.WriteLine($"    Part: {err.Part}");
             }
         }
     }
