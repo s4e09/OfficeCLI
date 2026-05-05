@@ -1050,6 +1050,36 @@ public partial class WordHandler
             var fnBidi = fnEl.Descendants<Paragraph>().FirstOrDefault()?.ParagraphProperties?.GetFirstChild<BiDi>();
             if (fnBidi != null)
                 node.Format["direction"] = TryReadOnOff(fnBidi.Val) == true ? "rtl" : "ltr";
+            // BUG-DUMP8-05/06: Paragraph branch surfaces inline w:sym (as
+            // sym= run children) and m:oMath (as equation children) but the
+            // Footnote branch returned early after flat text/format, so
+            // sym and oMath inside footnote bodies were silently dropped.
+            // Walk descendant runs/equations and surface them as children
+            // on the footnote node, mirroring the paragraph walker's keys.
+            if (depth > 0)
+            {
+                int fnSymIdx = 0;
+                foreach (var symRun in fnEl.Descendants<Run>())
+                {
+                    var symEl = symRun.GetFirstChild<SymbolChar>();
+                    if (symEl?.Char?.Value == null) continue;
+                    var symFontVal = symEl.Font?.Value ?? "";
+                    var symNode = new DocumentNode
+                    {
+                        Type = "run",
+                        Path = $"{path}/r[{fnSymIdx + 1}]",
+                    };
+                    symNode.Format["sym"] = $"{symFontVal}:{symEl.Char.Value}";
+                    node.Children.Add(symNode);
+                    fnSymIdx++;
+                }
+                int fnEqIdx = 0;
+                foreach (var fnEq in fnEl.Descendants<M.OfficeMath>())
+                {
+                    node.Children.Add(ElementToNode(fnEq, $"{path}/equation[{fnEqIdx + 1}]", depth - 1));
+                    fnEqIdx++;
+                }
+            }
             return node;
         }
 
@@ -1062,6 +1092,32 @@ public partial class WordHandler
             var enBidi = enEl.Descendants<Paragraph>().FirstOrDefault()?.ParagraphProperties?.GetFirstChild<BiDi>();
             if (enBidi != null)
                 node.Format["direction"] = TryReadOnOff(enBidi.Val) == true ? "rtl" : "ltr";
+            // CONSISTENCY with Footnote: surface inline w:sym / m:oMath
+            // descendants so dump round-trips them through batch.
+            if (depth > 0)
+            {
+                int enSymIdx = 0;
+                foreach (var symRun in enEl.Descendants<Run>())
+                {
+                    var symEl = symRun.GetFirstChild<SymbolChar>();
+                    if (symEl?.Char?.Value == null) continue;
+                    var symFontVal = symEl.Font?.Value ?? "";
+                    var symNode = new DocumentNode
+                    {
+                        Type = "run",
+                        Path = $"{path}/r[{enSymIdx + 1}]",
+                    };
+                    symNode.Format["sym"] = $"{symFontVal}:{symEl.Char.Value}";
+                    node.Children.Add(symNode);
+                    enSymIdx++;
+                }
+                int enEqIdx = 0;
+                foreach (var enEq in enEl.Descendants<M.OfficeMath>())
+                {
+                    node.Children.Add(ElementToNode(enEq, $"{path}/equation[{enEqIdx + 1}]", depth - 1));
+                    enEqIdx++;
+                }
+            }
             return node;
         }
 

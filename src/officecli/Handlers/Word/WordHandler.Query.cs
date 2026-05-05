@@ -398,16 +398,12 @@ public partial class WordHandler
                 .Elements<Footnote>().FirstOrDefault(f => f.Id?.Value == fnId);
             if (fn == null)
                 throw new ArgumentException($"Footnote {fnId} not found");
-            var fnNode = new DocumentNode { Path = $"/footnote[@footnoteId={fnId}]", Type = "footnote" };
-            fnNode.Text = GetFootnoteText(fn);
-            if (fn.Id?.Value != null) fnNode.Format["id"] = fn.Id.Value;
-            if (fn.Type?.Value != null) fnNode.Format["type"] = fn.Type.InnerText;
-            // R20-wbt-1: surface direction from the first content paragraph's
-            // pPr.BiDi so direction=rtl applied via Add/Set round-trips through Get.
-            var fnBidi = fn.Descendants<Paragraph>().FirstOrDefault()?.ParagraphProperties?.GetFirstChild<BiDi>();
-            if (fnBidi != null)
-                fnNode.Format["direction"] = TryReadOnOff(fnBidi.Val) == true ? "rtl" : "ltr";
-            return fnNode;
+            // BUG-DUMP8-05/06: delegate to ElementToNode so the Footnote
+            // branch's child walker (sym runs, inline equations) populates
+            // Children. Without this, the local node was hand-built and
+            // returned with empty Children, dropping w:sym and m:oMath
+            // inside the footnote body on dump round-trip.
+            return ElementToNode(fn, $"/footnote[@footnoteId={fnId}]", depth);
         }
         var enMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/endnote\[(?:@endnoteId=)?(\d+)\]$",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
@@ -418,14 +414,10 @@ public partial class WordHandler
                 .Elements<Endnote>().FirstOrDefault(e => e.Id?.Value == enId);
             if (en == null)
                 throw new ArgumentException($"Endnote {enId} not found");
-            var enNode = new DocumentNode { Path = $"/endnote[@endnoteId={enId}]", Type = "endnote" };
-            enNode.Text = GetFootnoteText(en);
-            if (en.Id?.Value != null) enNode.Format["id"] = en.Id.Value;
-            if (en.Type?.Value != null) enNode.Format["type"] = en.Type.InnerText;
-            var enBidi = en.Descendants<Paragraph>().FirstOrDefault()?.ParagraphProperties?.GetFirstChild<BiDi>();
-            if (enBidi != null)
-                enNode.Format["direction"] = TryReadOnOff(enBidi.Val) == true ? "rtl" : "ltr";
-            return enNode;
+            // CONSISTENCY: mirror Footnote — delegate to ElementToNode so
+            // the Endnote branch (and any future child surfacing) is the
+            // single source of truth.
+            return ElementToNode(en, $"/endnote[@endnoteId={enId}]", depth);
         }
 
         // TOC paths: /toc[N], /toc (= first), /tableofcontents (long alias).
