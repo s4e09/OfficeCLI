@@ -550,6 +550,18 @@ public partial class WordHandler
             "styleref" => $" STYLEREF \"{styleRefName}\" ",
             "docproperty" => $" DOCPROPERTY \"{docPropertyName}\" ",
             "if" => BuildIfFieldInstruction(properties),
+            // CONSISTENCY(field-add-symmetry): BatchEmitter.BuildFieldAddProps
+            // emits HYPERLINK fields as fieldType=HYPERLINK + url/anchor (+ text),
+            // never as a raw `instr`. Without a hyperlink case the default arm
+            // throws `Unknown field type 'hyperlink'` and (under the new
+            // continue-on-error default) the link is silently dropped on
+            // dump→batch round-trips of complex-field HYPERLINK chains.
+            "hyperlink" => properties.TryGetValue("anchor", out var hAnchor) && !string.IsNullOrEmpty(hAnchor)
+                ? $" HYPERLINK \\l \"{hAnchor}\" "
+                : (properties.TryGetValue("url", out var hUrl) && !string.IsNullOrEmpty(hUrl)
+                    ? $" HYPERLINK \"{hUrl}\" "
+                    : throw new ArgumentException(
+                        "HYPERLINK field requires either 'url' or 'anchor' property.")),
             // CONSISTENCY(canonical-keys): field.json declares `instr` as
             // the canonical raw-instruction key with `instruction` and
             // `code` as aliases. Help docs and AI prompts use `instr=`
@@ -752,6 +764,7 @@ public partial class WordHandler
         ["createdate"] = new[] { "format" },
         ["savedate"] = new[] { "format" },
         ["printdate"] = new[] { "format" },
+        ["hyperlink"] = new[] { "url", "anchor" },
     };
 
     // Universal props every fieldType accepts: routing keys, run rPr,
