@@ -1694,17 +1694,29 @@ public partial class WordHandler
                 }
             }
 
-            if (run.Parent is Hyperlink hlParent && hlParent.Id?.Value != null)
+            if (run.Parent is Hyperlink hlParent)
             {
-                try
+                if (hlParent.Id?.Value != null)
                 {
-                    var rel = ResolveHyperlinkRelationship(hlParent, hlParent.Id.Value);
-                    // CONSISTENCY(docx-hyperlink-canonical-url): schema docx/hyperlink.json
-                    // declares `url` as the canonical key; `link` is accepted as an input
-                    // alias by Add/Set but Get normalizes output to `url`.
-                    if (rel != null) node.Format["url"] = rel.Uri.ToString();
+                    try
+                    {
+                        var rel = ResolveHyperlinkRelationship(hlParent, hlParent.Id.Value);
+                        // CONSISTENCY(docx-hyperlink-canonical-url): schema docx/hyperlink.json
+                        // declares `url` as the canonical key; `link` is accepted as an input
+                        // alias by Add/Set but Get normalizes output to `url`.
+                        if (rel != null) node.Format["url"] = rel.Uri.ToString();
+                    }
+                    catch { }
                 }
-                catch { }
+                // CONSISTENCY(internal-anchor-hyperlink): runs inside an
+                // internal anchor hyperlink (w:hyperlink[@w:anchor]) had no
+                // r:id, so `anchor` was never surfaced on the run. The
+                // BatchEmitter hyperlink branch keys off Format["anchor"]/
+                // ["url"] to emit `add hyperlink`; without anchor the run
+                // was demoted to a plain `add r` and the link was lost on
+                // dump→batch round-trip.
+                if (hlParent.Anchor?.Value != null)
+                    node.Format["anchor"] = hlParent.Anchor.Value;
             }
 
             // Populate effective.* properties from style inheritance.
