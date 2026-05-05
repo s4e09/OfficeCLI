@@ -845,7 +845,17 @@ public static class BatchEmitter
              || runs[0].Format.ContainsKey("textOutline")
              || runs[0].Format.ContainsKey("textFill")
              || runs[0].Format.ContainsKey("w14glow")
-             || runs[0].Format.ContainsKey("w14reflection"));
+             || runs[0].Format.ContainsKey("w14reflection")
+             // BUG-DUMP5-09: ligatures / numForm / numSpacing are run-level
+             // OpenType properties (FillUnknownChildProps surfaces them as
+             // bare keys). AddParagraph's ApplyRunFormatting fallback has
+             // no case for them — collapsing the single run would route
+             // them onto the paragraph prop bag and `add p ligatures=…`
+             // surfaces as UNSUPPORTED on replay. Force the multi-run
+             // path so the keys ride along on `add r`.
+             || runs[0].Format.ContainsKey("ligatures")
+             || runs[0].Format.ContainsKey("numForm")
+             || runs[0].Format.ContainsKey("numSpacing"));
         bool singleRunIsNoteRef = runs.Count == 1 &&
             runs[0].Format.TryGetValue("rStyle", out var srStyle)
             && (string.Equals(srStyle?.ToString(), "FootnoteReference", StringComparison.OrdinalIgnoreCase)
