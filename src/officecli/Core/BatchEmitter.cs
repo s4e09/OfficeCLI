@@ -1258,10 +1258,26 @@ public static class BatchEmitter
                 // return "" for minimal m:oMath; Navigation falls back to
                 // element.InnerText, which can also be empty.
                 eqProps["formula"] = run.Text ?? "";
+                // BUG-DUMP15-04: m:oMath inside w:hyperlink surfaces from
+                // Navigation with a hyperlink-scoped path (.../p[N]/hyperlink[K]/equation[M]).
+                // Strip the trailing /equation[M] segment so the emitted
+                // BatchItem.Parent places the equation INSIDE the hyperlink
+                // on replay, rather than next to it under the paragraph.
+                var eqParent = paraTargetPath;
+                if (!string.IsNullOrEmpty(run.Path))
+                {
+                    var idxEq = run.Path.LastIndexOf("/equation[", StringComparison.Ordinal);
+                    if (idxEq > 0)
+                    {
+                        var derived = run.Path.Substring(0, idxEq);
+                        if (derived.Contains("/hyperlink["))
+                            eqParent = derived;
+                    }
+                }
                 items.Add(new BatchItem
                 {
                     Command = "add",
-                    Parent = paraTargetPath,
+                    Parent = eqParent,
                     Type = "equation",
                     Props = eqProps
                 });

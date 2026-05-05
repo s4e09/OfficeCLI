@@ -940,6 +940,21 @@ public partial class WordHandler
             resultPath = $"{parentPath}/oMath[{mathCount}]";
             newElement = inlinePara;
         }
+        else if (mode == "inline" && parent is Hyperlink inlineHl)
+        {
+            // BUG-DUMP15-04: m:oMath nested inside w:hyperlink dump→batch
+            // round-trip. AddEquation accepts a hyperlink parent so the
+            // emitter can replay the equation INSIDE the hyperlink rather
+            // than alongside it.
+            var mathElement = FormulaParser.Parse(formula);
+            if (mathElement is M.OfficeMath oMathInline)
+                inlineHl.AppendChild(oMathInline);
+            else
+                inlineHl.AppendChild(new M.OfficeMath(mathElement.CloneNode(true)));
+            var mathCount = inlineHl.Elements<M.OfficeMath>().Count();
+            resultPath = $"{parentPath}/equation[{mathCount}]";
+            newElement = inlineHl;
+        }
         else if (mode == "inline" && (parent is Body || parent is SdtBlock))
         {
             // Inline math under Body: wrap in a w:p (Body cannot host m:oMath directly)

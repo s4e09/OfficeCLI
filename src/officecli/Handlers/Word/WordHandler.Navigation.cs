@@ -1719,6 +1719,13 @@ public partial class WordHandler
                     .Concat(para.Elements<DeletedRun>().SelectMany(del => del.Elements<M.OfficeMath>()))
                     .Concat(para.Elements<Hyperlink>().SelectMany(hl => hl.Elements<M.OfficeMath>()))
                     .ToList();
+                // BUG-DUMP15-04: paragraph hyperlink children for hyperlink-
+                // scoped equation paths. m:oMath inside w:hyperlink must
+                // surface as /…/p[N]/hyperlink[K]/equation[M] so dump→batch
+                // replays the equation INSIDE the hyperlink rather than
+                // alongside it. Index hyperlinks by their position among
+                // the paragraph's direct Hyperlink children.
+                var paraHyperlinks = para.Elements<Hyperlink>().ToList();
 
                 // Merge runs and inline equations by DOM position, then emit
                 // in that interleaved order.
@@ -1749,8 +1756,24 @@ public partial class WordHandler
                     }
                     else if (entry.kind == "eq")
                     {
-                        node.Children.Add(ElementToNode(entry.el, $"{path}/equation[{inlineEqIdx + 1}]", depth - 1));
-                        inlineEqIdx++;
+                        // BUG-DUMP15-04: equations whose immediate parent is
+                        // <w:hyperlink> get a hyperlink-scoped path so the
+                        // emitter can place the equation INSIDE the hyperlink
+                        // on replay.
+                        string eqPath;
+                        if (entry.el.Parent is Hyperlink eqHl)
+                        {
+                            int hlIdx = paraHyperlinks.IndexOf(eqHl);
+                            int hlEqIdx = eqHl.Elements<M.OfficeMath>()
+                                .ToList().IndexOf((M.OfficeMath)entry.el);
+                            eqPath = $"{path}/hyperlink[{hlIdx + 1}]/equation[{hlEqIdx + 1}]";
+                        }
+                        else
+                        {
+                            eqPath = $"{path}/equation[{inlineEqIdx + 1}]";
+                            inlineEqIdx++;
+                        }
+                        node.Children.Add(ElementToNode(entry.el, eqPath, depth - 1));
                     }
                     else
                     {
