@@ -51,6 +51,9 @@ internal static class TypedAttributeFallback
         ["shading"]   = "shd",
         ["underline"] = "u",
         ["border"]    = "pBdr",
+        // BUG-DUMP22-09: floating-table position. Get emits tblp.* dotted
+        // keys; AddTable's dotted-key fallback writes them into <w:tblpPr/>.
+        ["tblp"]      = "tblpPr",
     };
 
     /// <summary>

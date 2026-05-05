@@ -2548,6 +2548,42 @@ public partial class WordHandler
                 // BatchEmitter's shading-fold collapses these into a single
                 // semicolon-encoded `shading=VAL;FILL[;COLOR]` value, which
                 // AddTable consumes via the existing "shading" case.
+                // BUG-DUMP22-09: floating-table position (<w:tblpPr/>) and
+                // overlap (<w:tblOverlap/>) — both were silently dropped on
+                // dump, leaving floating tables stuck inline on round-trip.
+                // Surface tblpPr's six attrs as tblp.* dotted keys (using the
+                // OOXML attribute local names verbatim) plus tblOverlap as a
+                // dotted sibling so AddTable's TypedAttributeFallback can
+                // re-create the elements verbatim. CONSISTENCY(canonical-keys):
+                // dotted-segment-as-element-prefix matches ind.firstLine and
+                // pBdr.top patterns.
+                var tblpPr = tp.GetFirstChild<TablePositionProperties>();
+                if (tblpPr != null)
+                {
+                    if (tblpPr.HorizontalAnchor?.HasValue == true)
+                        node.Format["tblp.horzAnchor"] = tblpPr.HorizontalAnchor.InnerText;
+                    if (tblpPr.VerticalAnchor?.HasValue == true)
+                        node.Format["tblp.vertAnchor"] = tblpPr.VerticalAnchor.InnerText;
+                    if (tblpPr.TablePositionX?.HasValue == true)
+                        node.Format["tblp.tblpX"] = tblpPr.TablePositionX.Value!;
+                    if (tblpPr.TablePositionY?.HasValue == true)
+                        node.Format["tblp.tblpY"] = tblpPr.TablePositionY.Value!;
+                    if (tblpPr.TablePositionXAlignment?.HasValue == true)
+                        node.Format["tblp.tblpXSpec"] = tblpPr.TablePositionXAlignment.InnerText;
+                    if (tblpPr.TablePositionYAlignment?.HasValue == true)
+                        node.Format["tblp.tblpYSpec"] = tblpPr.TablePositionYAlignment.InnerText;
+                    if (tblpPr.LeftFromText?.HasValue == true)
+                        node.Format["tblp.leftFromText"] = tblpPr.LeftFromText.Value!;
+                    if (tblpPr.RightFromText?.HasValue == true)
+                        node.Format["tblp.rightFromText"] = tblpPr.RightFromText.Value!;
+                    if (tblpPr.TopFromText?.HasValue == true)
+                        node.Format["tblp.topFromText"] = tblpPr.TopFromText.Value!;
+                    if (tblpPr.BottomFromText?.HasValue == true)
+                        node.Format["tblp.bottomFromText"] = tblpPr.BottomFromText.Value!;
+                }
+                var tblOverlap = tp.GetFirstChild<TableOverlap>();
+                if (tblOverlap?.Val?.HasValue == true)
+                    node.Format["tblOverlap.val"] = tblOverlap.Val.InnerText;
                 if (tp.Shading != null)
                 {
                     var tShdVal = tp.Shading.Val?.InnerText;
