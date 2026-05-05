@@ -1722,10 +1722,24 @@ public partial class WordHandler
 
                 // Merge runs and inline equations by DOM position, then emit
                 // in that interleaved order.
+                // BUG-DUMP15-02: bare <w:fldChar>/<w:instrText> direct children
+                // of <w:p> (not wrapped in a <w:r>) are parsed as
+                // OpenXmlUnknownElement and silently dropped from the children
+                // list, which left CollapseFieldChains nothing to stitch and
+                // dump→batch round-trips lost the entire HYPERLINK chain.
+                // Surface them as synthetic fieldChar/instrText nodes so the
+                // emitter can collapse them into a `field` row.
+                const string wNs2 = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+                var bareFieldUnknowns = para.Elements<DocumentFormat.OpenXml.OpenXmlUnknownElement>()
+                    .Where(u => u.NamespaceUri == wNs2
+                        && (u.LocalName == "fldChar" || u.LocalName == "instrText"))
+                    .ToList();
                 var ordered = runs.Select(r => (pos: descendantPos.TryGetValue(r, out var p) ? p : int.MaxValue, kind: "run", el: (OpenXmlElement)r))
                     .Concat(inlineEqsAll.Select(e => (pos: descendantPos.TryGetValue(e, out var p) ? p : int.MaxValue, kind: "eq", el: (OpenXmlElement)e)))
+                    .Concat(bareFieldUnknowns.Select(u => (pos: descendantPos.TryGetValue(u, out var p) ? p : int.MaxValue, kind: u.LocalName == "fldChar" ? "fieldChar" : "instrText", el: (OpenXmlElement)u)))
                     .OrderBy(t => t.pos)
                     .ToList();
+                int bareFieldIdx = 0;
                 foreach (var entry in ordered)
                 {
                     if (entry.kind == "run")
@@ -1733,10 +1747,36 @@ public partial class WordHandler
                         node.Children.Add(ElementToNode(entry.el, $"{path}/r[{runIdx + 1}]", depth - 1));
                         runIdx++;
                     }
-                    else
+                    else if (entry.kind == "eq")
                     {
                         node.Children.Add(ElementToNode(entry.el, $"{path}/equation[{inlineEqIdx + 1}]", depth - 1));
                         inlineEqIdx++;
+                    }
+                    else
+                    {
+                        // BUG-DUMP15-02: synthesize fieldChar/instrText nodes
+                        // for bare unknown elements so CollapseFieldChains can
+                        // stitch the field. Mirrors the Run-based shape.
+                        var u = (DocumentFormat.OpenXml.OpenXmlUnknownElement)entry.el;
+                        var bn = new DocumentNode
+                        {
+                            Type = entry.kind,
+                            Path = $"{path}/r[{runIdx + 1}]",
+                        };
+                        runIdx++;
+                        if (entry.kind == "fieldChar")
+                        {
+                            var fct = u.GetAttribute("fldCharType", wNs2).Value;
+                            if (!string.IsNullOrEmpty(fct))
+                                bn.Format["fieldCharType"] = fct;
+                        }
+                        else // instrText
+                        {
+                            bn.Format["instruction"] = u.InnerText;
+                            bn.Text = u.InnerText;
+                        }
+                        node.Children.Add(bn);
+                        bareFieldIdx++;
                     }
                 }
                 // BUG-DUMP5-06/07: <w:ruby> and <w:smartTag> aren't registered

@@ -1818,15 +1818,24 @@ public static class BatchEmitter
             }
             case "HYPERLINK":
             {
-                // Either `\l "anchor"` or a URL as the first arg.
-                var anchorMatch = System.Text.RegularExpressions.Regex.Match(rest, "\\\\l\\s+\"([^\"]+)\"");
-                if (anchorMatch.Success) props["anchor"] = anchorMatch.Groups[1].Value;
-                else
+                // BUG-DUMP15-02: HYPERLINK may carry any combination of a base
+                // URL, `\l "anchor"`, and `\o "tooltip"`. The previous code
+                // checked `\l` first and returned only the anchor, dropping
+                // the URL entirely; `\o` was never parsed. Parse all three
+                // independently so dump→batch round-trips preserve them.
+                // The first non-switch token (if any) is the base URL.
+                var restStr = rest ?? "";
+                if (!System.Text.RegularExpressions.Regex.IsMatch(restStr.TrimStart(), @"^\\"))
                 {
-                    var url = ExtractFirstArg(rest);
-                    if (string.IsNullOrEmpty(url)) return null;
-                    props["url"] = url;
+                    var url = ExtractFirstArg(restStr);
+                    if (!string.IsNullOrEmpty(url)) props["url"] = url;
                 }
+                var anchorMatch = System.Text.RegularExpressions.Regex.Match(restStr, "\\\\l\\s+\"([^\"]+)\"");
+                if (anchorMatch.Success) props["anchor"] = anchorMatch.Groups[1].Value;
+                var tooltipMatch = System.Text.RegularExpressions.Regex.Match(restStr, "\\\\o\\s+\"([^\"]+)\"");
+                if (tooltipMatch.Success) props["tooltip"] = tooltipMatch.Groups[1].Value;
+                if (!props.ContainsKey("url") && !props.ContainsKey("anchor"))
+                    return null;
                 break;
             }
             default:

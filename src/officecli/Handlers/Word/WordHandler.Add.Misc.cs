@@ -623,12 +623,7 @@ public partial class WordHandler
             // throws `Unknown field type 'hyperlink'` and (under the new
             // continue-on-error default) the link is silently dropped on
             // dump→batch round-trips of complex-field HYPERLINK chains.
-            "hyperlink" => properties.TryGetValue("anchor", out var hAnchor) && !string.IsNullOrEmpty(hAnchor)
-                ? $" HYPERLINK \\l \"{hAnchor}\" "
-                : (properties.TryGetValue("url", out var hUrl) && !string.IsNullOrEmpty(hUrl)
-                    ? $" HYPERLINK \"{hUrl}\" "
-                    : throw new ArgumentException(
-                        "HYPERLINK field requires either 'url' or 'anchor' property.")),
+            "hyperlink" => BuildHyperlinkFieldInstruction(properties),
             // CONSISTENCY(canonical-keys): field.json declares `instr` as
             // the canonical raw-instruction key with `instruction` and
             // `code` as aliases. Help docs and AI prompts use `instr=`
@@ -879,6 +874,26 @@ public partial class WordHandler
                 $"Warning: prop '{key}' is not applicable to field type '{effectiveType}' — silently ignored. " +
                 $"Applicable to '{effectiveType}': {(typeProps.Length > 0 ? string.Join(", ", typeProps) : "none beyond universal")}.");
         }
+    }
+
+    // BUG-DUMP15-02: HYPERLINK fields may carry any combination of base URL,
+    // `\l "anchor"`, and `\o "tooltip"`. Reconstruct the full instruction
+    // from whichever props are present so dump→batch round-trips do not
+    // silently drop URL or tooltip.
+    private static string BuildHyperlinkFieldInstruction(Dictionary<string, string> properties)
+    {
+        properties.TryGetValue("url", out var hUrl);
+        properties.TryGetValue("anchor", out var hAnchor);
+        properties.TryGetValue("tooltip", out var hTooltip);
+        if (string.IsNullOrEmpty(hUrl) && string.IsNullOrEmpty(hAnchor))
+            throw new ArgumentException(
+                "HYPERLINK field requires either 'url' or 'anchor' property.");
+        var sb = new System.Text.StringBuilder(" HYPERLINK");
+        if (!string.IsNullOrEmpty(hUrl)) sb.Append($" \"{hUrl}\"");
+        if (!string.IsNullOrEmpty(hAnchor)) sb.Append($" \\l \"{hAnchor}\"");
+        if (!string.IsNullOrEmpty(hTooltip)) sb.Append($" \\o \"{hTooltip}\"");
+        sb.Append(' ');
+        return sb.ToString();
     }
 
     private static string BuildIfFieldInstruction(Dictionary<string, string> properties)
