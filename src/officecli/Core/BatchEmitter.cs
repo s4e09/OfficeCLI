@@ -699,6 +699,13 @@ public static class BatchEmitter
         var breaks = (pNode.Children ?? new List<DocumentNode>())
             .Where(c => c.Type == "break")
             .ToList();
+        // CONSISTENCY(bookmark-roundtrip): bookmarks are paragraph-level
+        // children (BookmarkStart) that Navigation surfaces as type="bookmark"
+        // with name/id in Format. Without an emit branch they were silently
+        // stripped, breaking REF/HYPERLINK targets on dump→batch round-trips.
+        var bookmarks = (pNode.Children ?? new List<DocumentNode>())
+            .Where(c => c.Type == "bookmark")
+            .ToList();
 
         // Single-run / no-run paragraph: collapse run formatting into the
         // paragraph's prop bag (the schema-reflection layer accepts run-level
@@ -755,7 +762,8 @@ public static class BatchEmitter
             !singleRunIsNoteRef &&
             !singleRunHasW14 &&
             !singleRunIsField &&
-            breaks.Count == 0;
+            breaks.Count == 0 &&
+            bookmarks.Count == 0;
         // Pull paragraph-level tab stops out for per-stop `add tab` emit
         // (FilterEmittableProps already drops the `tabs` scalar).
         pNode.Format.TryGetValue("tabs", out var pTabs);
@@ -841,6 +849,29 @@ public static class BatchEmitter
 
         var paraTargetPath = $"{parentPath}/p[{targetIndex}]";
         EmitTabStops(paraTargetPath, pTabs, items);
+
+        // CONSISTENCY(bookmark-roundtrip): emit `add bookmark` for each
+        // bookmarkStart child. Get surfaces these as type="bookmark" with
+        // name in Format; AddBookmark consumes name/id and rebuilds the
+        // BookmarkStart/BookmarkEnd pair. Without this, every bookmark in
+        // the source document was silently dropped on dump.
+        foreach (var bm in bookmarks)
+        {
+            var bmProps = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (bm.Format.TryGetValue("name", out var bmName) && bmName != null)
+            {
+                var s = bmName.ToString();
+                if (!string.IsNullOrEmpty(s)) bmProps["name"] = s;
+            }
+            if (bmProps.Count == 0) continue; // skip unnamed/anonymous bookmarks
+            items.Add(new BatchItem
+            {
+                Command = "add",
+                Parent = paraTargetPath,
+                Type = "bookmark",
+                Props = bmProps
+            });
+        }
 
         // Emit any break runs (page/column/textWrapping/line) the paragraph
         // carries. Without this, a break-only paragraph (the OOXML idiom

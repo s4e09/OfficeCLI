@@ -1449,6 +1449,16 @@ public partial class WordHandler
                     node.Children.Add(ElementToNode(run, $"{path}/r[{runIdx + 1}]", depth - 1));
                     runIdx++;
                 }
+                // CONSISTENCY(bookmark-roundtrip): surface BookmarkStart
+                // children so BatchEmitter can re-emit `add bookmark` rows.
+                // Without this, dump silently dropped every bookmark on a
+                // paragraph, breaking REF/HYPERLINK targets.
+                int bmIdx = 0;
+                foreach (var bm in para.Elements<BookmarkStart>())
+                {
+                    node.Children.Add(ElementToNode(bm, $"{path}/bookmark[{bmIdx + 1}]", depth - 1));
+                    bmIdx++;
+                }
             }
         }
         else if (element is Run run)
