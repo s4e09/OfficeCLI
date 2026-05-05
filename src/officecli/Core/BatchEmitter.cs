@@ -898,7 +898,11 @@ public static class BatchEmitter
                 // BUG-DUMP7-03: inline <m:oMath> children surface as type=equation.
                 // Without inclusion the inline equation was dropped from the runs
                 // pipeline and `add equation mode=inline` was never emitted.
-                || c.Type == "equation")
+                || c.Type == "equation"
+                // BUG-DUMP14-02: <w:r><w:tab/></w:r> surfaces as type="tab"
+                // with empty Text. Without inclusion the tab-only run was
+                // dropped from the runs pipeline and round-trip lost the tab.
+                || c.Type == "tab")
             .ToList();
         var breaks = runs.Where(c => c.Type == "break").ToList();
         // CONSISTENCY(bookmark-roundtrip): bookmarks are paragraph-level
@@ -1197,6 +1201,24 @@ public static class BatchEmitter
                 continue;
             }
 
+
+            // BUG-DUMP14-02: tab-only run (<w:r><w:tab/></w:r>) surfaces as
+            // type="tab" with empty Text. AddText splits "\t" into TabChar,
+            // so emit `add r text="\t"` to round-trip the tab character.
+            if (run.Type == "tab")
+            {
+                items.Add(new BatchItem
+                {
+                    Command = "add",
+                    Parent = paraTargetPath,
+                    Type = "r",
+                    Props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        ["text"] = "\t"
+                    }
+                });
+                continue;
+            }
 
             // Positional tab — Navigation surfaces ptab as its own run type
             // with align/relativeTo/leader on Format. Without an explicit
