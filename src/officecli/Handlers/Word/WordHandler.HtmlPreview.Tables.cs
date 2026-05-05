@@ -185,11 +185,20 @@ public partial class WordHandler
         {
             var row = rows[rowIdx];
             var isHeader = row.TableRowProperties?.GetFirstChild<TableHeader>() != null;
-            // Row height
+            // Row height. trHeight has hRule = auto / atLeast / exact. CSS treats
+            // tr.height as min-height (atLeast semantics), so for hRule="exact"
+            // we additionally constrain the cell with max-height + overflow:hidden
+            // to match Word's content-clipping behavior.
             var trHeight = row.TableRowProperties?.GetFirstChild<TableRowHeight>();
             var trStyle = "";
+            double? exactRowHeightPt = null;
             if (trHeight?.Val?.Value is uint hVal && hVal > 0)
-                trStyle = $" style=\"height:{hVal / 20.0:0.#}pt\"";
+            {
+                var heightPt = hVal / 20.0;
+                trStyle = $" style=\"height:{heightPt:0.#}pt\"";
+                if (trHeight.HeightType?.Value == HeightRuleValues.Exact)
+                    exactRowHeightPt = heightPt;
+            }
             // #7b00: mark tblHeader rows so the JS paginator can clone them
             // onto every continuation page when a long table spans pages.
             var hdrMarker = isHeader ? " data-tbl-header=\"1\"" : "";
@@ -207,7 +216,7 @@ public partial class WordHandler
                 var tag = isHeader ? "th" : "td";
                 var condTypes = GetConditionalTypes(tblLook, rowIdx, colIdx, totalRows, totalCols);
                 var cellStyle = GetTableCellInlineCss(cell, tableBordersNone, tblBorders, condFormats, condTypes,
-                    rowIdx, colIdx, totalRows, totalCols);
+                    rowIdx, colIdx, totalRows, totalCols, exactRowHeightPt);
 
                 // Check if conditional format overrides font-size (needs class for CSS override)
                 bool hasTsf = cellStyle.Contains("__TSF__");
@@ -243,6 +252,22 @@ public partial class WordHandler
 
                 sb.Append($"<{tag}{attrs}>");
 
+                // hRule="exact": browsers ignore max-height on <td> (table layout
+                // forces cells to contain their content), so wrap content in an
+                // inner div with fixed height + overflow:hidden. The wrap also
+                // takes over vertical alignment via flex (the td's vertical-align
+                // applies to the wrap as a whole, not to content within it).
+                bool exactWrap = exactRowHeightPt.HasValue;
+                if (exactWrap)
+                {
+                    var vAlign = cell.TableCellProperties?.TableCellVerticalAlignment?.Val?.Value;
+                    string justify;
+                    if (vAlign == TableVerticalAlignmentValues.Center) justify = "center";
+                    else if (vAlign == TableVerticalAlignmentValues.Bottom) justify = "flex-end";
+                    else justify = "flex-start";
+                    sb.Append($"<div style=\"height:{exactRowHeightPt:0.#}pt;max-height:{exactRowHeightPt:0.#}pt;overflow:hidden;display:flex;flex-direction:column;justify-content:{justify}\">");
+                }
+
                 // Render cell content — every paragraph (including empty ones)
                 // goes through the same path as body paragraphs: <div> wrapper
                 // with inline pPr CSS plus an &nbsp; placeholder for empties so
@@ -269,6 +294,7 @@ public partial class WordHandler
                 foreach (var nestedTable in cell.Elements<Table>())
                     RenderTableHtml(sb, nestedTable);
 
+                if (exactWrap) sb.Append("</div>");
                 sb.AppendLine($"</{tag}>");
                 colIdx += gridSpan ?? 1;
             }

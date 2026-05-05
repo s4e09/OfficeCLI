@@ -1461,7 +1461,8 @@ public partial class WordHandler
 
     private string GetTableCellInlineCss(TableCell cell, bool tableBordersNone, TableBorders? tblBorders = null,
         Dictionary<string, TableConditionalFormat>? condFormats = null, List<string>? condTypes = null,
-        int rowIdx = 0, int colIdx = 0, int totalRows = 1, int totalCols = 1)
+        int rowIdx = 0, int colIdx = 0, int totalRows = 1, int totalCols = 1,
+        double? exactRowHeightPt = null)
     {
         var parts = new List<string>();
         var tcPr = cell.TableCellProperties;
@@ -1628,6 +1629,15 @@ public partial class WordHandler
             var padLeft = leftVal != null ? $"{Units.TwipsToPt(leftVal):0.#}pt" : "5.4pt";
             var padRight = rightVal != null ? $"{Units.TwipsToPt(rightVal):0.#}pt" : "5.4pt";
             parts.Add($"padding:{padTop:0.#}pt {padRight} {padBot:0.#}pt {padLeft}");
+        }
+
+        // hRule="exact": constrain cell to fixed height with overflow clipping.
+        // Browsers ignore max-height on <tr>, so this MUST live on the cell.
+        if (exactRowHeightPt is double exH)
+        {
+            parts.Add($"height:{exH:0.#}pt");
+            parts.Add($"max-height:{exH:0.#}pt");
+            parts.Add("overflow:hidden");
         }
 
         return string.Join(";", parts);
