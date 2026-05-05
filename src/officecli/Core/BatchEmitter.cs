@@ -1518,12 +1518,11 @@ public static class BatchEmitter
         // for them, cause double-application. Drop the aliases so the
         // dump bag stays minimal.
         "styleId", "styleName",
-        // CONSISTENCY(line-rule-inferred): style/paragraph Get emits `lineRule`
-        // alongside `lineSpacing`, but lineSpacing already encodes the rule
-        // (e.g. "1.5x" => Auto, "18pt" => Exact via SpacingConverter). Set has
-        // no `lineRule` case, so emitting it produces "UNSUPPORTED" warnings
-        // (104+ on a typical real-world doc). Drop it from dump.
-        "lineRule",
+        // BUG-019: lineSpacing alone cannot distinguish AtLeast from Exact —
+        // SpacingConverter.FormatWordLineSpacing serializes both as "Npt".
+        // Set/AddParagraph now accept `lineRule` explicitly so it must flow
+        // through dump for AtLeast spacing to round-trip without silent
+        // downgrade to Exact (which clips tall glyphs).
     };
 
     // Serialize the tabs list (List<Dictionary<string,object?>>) to the

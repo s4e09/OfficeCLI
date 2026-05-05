@@ -687,6 +687,12 @@ public partial class WordHandler
                 spacingLine.Line = lsTwips.ToString();
                 spacingLine.LineRule = lsIsMultiplier ? LineSpacingRuleValues.Auto : LineSpacingRuleValues.Exact;
                 return true;
+            case "linerule":
+                // BUG-019: explicit override needed to distinguish AtLeast
+                // from Exact — both serialize as "Npt" via SpacingConverter.
+                var spacingRule = pProps.SpacingBetweenLines ?? (pProps.SpacingBetweenLines = new SpacingBetweenLines());
+                spacingRule.LineRule = ParseLineRule(value);
+                return true;
             case "numId" or "numid":
                 var numPr = pProps.NumberingProperties ?? (pProps.NumberingProperties = new NumberingProperties());
                 var numIdVal = ParseHelpers.SafeParseInt(value, "numId");

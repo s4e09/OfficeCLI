@@ -1455,6 +1455,15 @@ public partial class WordHandler
                         : new DocumentFormat.OpenXml.EnumValue<LineSpacingRuleValues>(LineSpacingRuleValues.Exact);
                     break;
                 }
+                case "linerule" or "lineRule":
+                {
+                    // BUG-019: explicit override needed — lineSpacing alone
+                    // cannot distinguish AtLeast from Exact.
+                    var pPr5 = style.StyleParagraphProperties ?? EnsureStyleParagraphProperties(style);
+                    var sp5 = pPr5.SpacingBetweenLines ?? (pPr5.SpacingBetweenLines = new SpacingBetweenLines());
+                    sp5.LineRule = ParseLineRule(value);
+                    break;
+                }
                 case "contextualspacing" or "contextualSpacing":
                 {
                     var pPrCs = style.StyleParagraphProperties ?? EnsureStyleParagraphProperties(style);

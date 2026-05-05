@@ -207,6 +207,16 @@ public partial class WordHandler
             spacing.Line = twips.ToString();
             spacing.LineRule = isMultiplier ? LineSpacingRuleValues.Auto : LineSpacingRuleValues.Exact;
         }
+        // BUG-019: lineSpacing alone cannot distinguish AtLeast from Exact —
+        // both serialize as "Npt" via SpacingConverter. Accept an explicit
+        // `lineRule` prop (auto/exact/atLeast) so dump→batch round-trips
+        // preserve the rule. Without this, AtLeast spacing silently
+        // downgraded to Exact, producing glyph clipping on tall content.
+        if (properties.TryGetValue("lineRule", out var pLineRule) || properties.TryGetValue("linerule", out pLineRule))
+        {
+            var spacing = pProps.SpacingBetweenLines ?? (pProps.SpacingBetweenLines = new SpacingBetweenLines());
+            spacing.LineRule = ParseLineRule(pLineRule);
+        }
         // Numbering properties. Parallel branches so `ilvl` alone still
         // emits <w:ilvl> (matching `set --prop ilvl=N` behaviour); both
         // inputs are range-checked so schema-invalid values never reach XML.

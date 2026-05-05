@@ -602,6 +602,14 @@ public partial class WordHandler
                 : new DocumentFormat.OpenXml.EnumValue<LineSpacingRuleValues>(LineSpacingRuleValues.Exact);
             hasPPr = true;
         }
+        // BUG-019: explicit lineRule override (auto/exact/atLeast) — needed
+        // because lineSpacing alone serializes AtLeast and Exact identically.
+        if (properties.TryGetValue("lineRule", out var sLineRule) || properties.TryGetValue("linerule", out sLineRule))
+        {
+            var sp = stylePPr.SpacingBetweenLines ?? (stylePPr.SpacingBetweenLines = new SpacingBetweenLines());
+            sp.LineRule = ParseLineRule(sLineRule);
+            hasPPr = true;
+        }
         // Reading direction: <w:bidi/> on style pPr (mirrors AddParagraph).
         // Without this, `add /styles --prop direction=rtl` either fell through
         // to the dotted-key probe (which writes <w:rtl/> on rPr but skips

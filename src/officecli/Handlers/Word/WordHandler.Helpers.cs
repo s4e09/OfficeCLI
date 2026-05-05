@@ -127,6 +127,24 @@ public partial class WordHandler
     }
 
     /// <summary>
+    /// Parse a lineRule prop value (auto / exact / atLeast) into the OOXML
+    /// enum. BUG-019 — needed to distinguish AtLeast from Exact since
+    /// SpacingConverter.FormatWordLineSpacing serializes both as "Npt".
+    /// </summary>
+    internal static LineSpacingRuleValues ParseLineRule(string value)
+    {
+        var v = (value ?? "").Trim().ToLowerInvariant();
+        return v switch
+        {
+            "auto" => LineSpacingRuleValues.Auto,
+            "exact" => LineSpacingRuleValues.Exact,
+            "atleast" => LineSpacingRuleValues.AtLeast,
+            _ => throw new ArgumentException(
+                $"Invalid lineRule '{value}'. Expected: auto, exact, or atLeast."),
+        };
+    }
+
+    /// <summary>
     /// Read a w:val OnOff attribute defensively. Returns null when the
     /// attribute is absent OR when the stored text is not a valid OnOff
     /// token (e.g. <c>&lt;w:bidi w:val="garbage"/&gt;</c>). Default-on
