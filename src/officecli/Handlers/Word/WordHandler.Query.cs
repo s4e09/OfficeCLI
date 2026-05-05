@@ -521,6 +521,17 @@ public partial class WordHandler
                 chartNode.Format["id"] = chartInfo.DocProperties.Id.Value;
             if (chartInfo.DocProperties?.Name?.Value != null)
                 chartNode.Format["name"] = chartInfo.DocProperties.Name.Value;
+            // BUG-R7-06: width/height live on the wp:extent of the inline
+            // wrapper, not on the chart space itself. Schema declares both as
+            // [add/set/get] and Set actually mutates the extent — but Get
+            // never exposed them. dump→batch round-trip therefore always
+            // dropped frame dimensions and replay used the 15×10cm default.
+            // pptx already returns them; this aligns docx with that contract.
+            var inlineExtent = chartInfo.Inline?.Extent;
+            if (inlineExtent?.Cx?.HasValue == true)
+                chartNode.Format["width"] = $"{inlineExtent.Cx.Value / 360000.0:F1}cm";
+            if (inlineExtent?.Cy?.HasValue == true)
+                chartNode.Format["height"] = $"{inlineExtent.Cy.Value / 360000.0:F1}cm";
 
             if (chartInfo.IsExtended)
             {
