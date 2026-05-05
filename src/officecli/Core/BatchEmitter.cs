@@ -1847,13 +1847,15 @@ public static class BatchEmitter
                 paddingFolded = top;
                 paddingFoldable = true;
             }
-            else if (top != null || bot != null || left != null || right != null)
-            {
-                // Asymmetric — drop sub-keys without folding (AddTable cannot
-                // express per-side padding). Mark foldable=true so the loop
-                // below skips the sub-keys.
-                paddingFoldable = true;
-            }
+            // BUG-DUMP5-05: when sides differ we leave paddingFoldable=false
+            // so the per-side `padding.top/bottom/left/right` keys flow
+            // through the main loop unmodified. `Set tc` consumes per-side
+            // padding directly (see WordHandler.Set.Element.cs); only
+            // AddTable lacks per-side support, but tables only carry uniform
+            // default cell margins on Add — asymmetric tcMar surfaces solely
+            // from per-cell `set tc` rows where per-side keys round-trip
+            // cleanly. Previously this branch dropped them entirely as
+            // UNSUPPORTED, silently losing every asymmetric per-cell margin.
         }
 
         foreach (var (key, val) in raw)
