@@ -490,10 +490,21 @@ internal static partial class ChartHelper
                 {
                     var colorVal = ReadColorFromFill(serColor);
                     if (colorVal != null) seriesNode.Format["color"] = colorVal;
-                    // Alpha/transparency
+                    // Alpha/transparency: schema declares both keys.
+                    // - transparency is the percent-input mirror used on Add/Set
+                    //   (100000 - alpha) / 1000 → 0..100 percent.
+                    // - alpha is the raw OOXML units (0..100000 where 100000 =
+                    //   opaque), schema-declared get:true and previously
+                    //   not surfaced — meant Get readback hid the underlying
+                    //   value when users set color with an alpha channel
+                    //   (e.g. color=80FF0000).
                     var alphaEl = serColor.Descendants<Drawing.Alpha>().FirstOrDefault();
                     if (alphaEl?.Val?.HasValue == true)
-                        seriesNode.Format["transparency"] = 100000 - (int)alphaEl.Val.Value;
+                    {
+                        var alphaUnits = (int)alphaEl.Val.Value;
+                        seriesNode.Format["alpha"] = alphaUnits;
+                        seriesNode.Format["transparency"] = 100000 - alphaUnits;
+                    }
                 }
                 // Gradient
                 var gradFill = serSpPr?.GetFirstChild<Drawing.GradientFill>();
