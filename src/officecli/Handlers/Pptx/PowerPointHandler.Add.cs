@@ -19,11 +19,17 @@ public partial class PowerPointHandler
         // CONSISTENCY(prop-key-case): property keys are case-insensitive
         // ("SRC"/"src"/"Src" all resolve the same). Normalize once at the
         // dispatch entry so every AddXxx helper can rely on TryGetValue("src").
-        properties = properties == null
-            ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            : properties.Comparer == StringComparer.OrdinalIgnoreCase
-                ? properties
-                : new Dictionary<string, string>(properties, StringComparer.OrdinalIgnoreCase);
+        properties = properties switch
+        {
+            null => new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+            // Preserve TrackingPropertyDictionary so handler-as-truth read
+            // tracking survives the entry normalization. The tracking
+            // comparer wraps OrdinalIgnoreCase so case-insensitive lookup
+            // works as intended.
+            OfficeCli.Core.TrackingPropertyDictionary => properties,
+            var p when p.Comparer == StringComparer.OrdinalIgnoreCase => p,
+            _ => new Dictionary<string, string>(properties, StringComparer.OrdinalIgnoreCase),
+        };
 
         parentPath = NormalizePptxPathSegmentCasing(parentPath);
         parentPath = NormalizeCellPath(parentPath);

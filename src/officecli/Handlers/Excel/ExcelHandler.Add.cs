@@ -19,8 +19,12 @@ public partial class ExcelHandler
     public string Add(string parentPath, string type, InsertPosition? position, Dictionary<string, string> properties)
     {
         var index = position?.Index;
-        // Normalize to case-insensitive lookup so camelCase keys (e.g. minColor) match lowercase lookups
-        if (properties != null && properties.Comparer != StringComparer.OrdinalIgnoreCase)
+        // Normalize to case-insensitive lookup so camelCase keys (e.g. minColor) match lowercase lookups.
+        // Preserve TrackingPropertyDictionary so handler-as-truth read
+        // tracking survives — its comparer wraps OrdinalIgnoreCase already.
+        if (properties != null
+            && properties is not OfficeCli.Core.TrackingPropertyDictionary
+            && properties.Comparer != StringComparer.OrdinalIgnoreCase)
             properties = new Dictionary<string, string>(properties, StringComparer.OrdinalIgnoreCase);
         properties ??= new Dictionary<string, string>();
 

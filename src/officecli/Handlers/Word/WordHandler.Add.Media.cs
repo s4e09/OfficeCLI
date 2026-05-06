@@ -39,11 +39,11 @@ public partial class WordHandler
             }
         }
 
-        // Parse chart data
-        var chartType = properties.FirstOrDefault(kv =>
-            kv.Key.Equals("charttype", StringComparison.OrdinalIgnoreCase)
-            || kv.Key.Equals("type", StringComparison.OrdinalIgnoreCase)).Value
-            ?? "column";
+        // Parse chart data. Use TryGetValue(case-insensitive) so reads
+        // are recorded by TrackingPropertyDictionary.
+        string chartType = "column";
+        if (properties.TryGetValue("charttype", out var ctVal) || properties.TryGetValue("type", out ctVal))
+            chartType = ctVal;
         var chartTitle = properties.GetValueOrDefault("title");
         var categories = Core.ChartHelper.ParseCategories(properties);
         var seriesData = Core.ChartHelper.ParseSeriesData(properties);

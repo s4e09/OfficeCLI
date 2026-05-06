@@ -172,34 +172,21 @@ static partial class CommandBuilder
                 // stay in sync.
                 var properties = ParsePropsArray(props);
 
-                // BUG(add-lies): Add previously accepted any --prop key and
-                // silently ignored unknown ones, so a typo like
-                // "bogusProp=xxx" looked successful. Schema-based pre-check
-                // catches unknowns before the handler call and reports them
-                // via the existing UNSUPPORTED channel (stderr + exit code 2
-                // + JSON warning). CONSISTENCY(schema-prop-validation): same
-                // validator is reused in ResidentServer.ExecuteAdd.
-                var fmt = SchemaHelpLoader.FormatForExtension(file.Extension);
-                var schemaUnsupported = fmt != null
-                    ? SchemaHelpLoader.ValidateProperties(fmt, type!, "add", properties)
-                    : Array.Empty<string>();
-
-                // CONSISTENCY(no-double-unsupported): drop schema-flagged keys
-                // before handing off to handler.Add so downstream helpers
-                // (e.g. PivotTableHelper.WarnUnknownPivotProperties) don't
-                // emit a second UNSUPPORTED line with slightly different
-                // phrasing. The CLI layer is now the single reporter for
-                // CLI-initiated Adds; direct handler callers still see the
-                // helper's warning since they don't go through this path.
-                if (schemaUnsupported.Count > 0)
-                {
-                    foreach (var u in schemaUnsupported)
-                        properties.Remove(u);
-                }
-
+                // ARCHITECTURE(handler-as-truth): the handler is the single
+                // source of truth for "is this prop supported". We pass the
+                // user's full prop dict through a TrackingPropertyDictionary
+                // that records which keys the handler actually reads. Any
+                // input key the handler never touches is reported as
+                // unsupported_property afterwards. Replaces the old schema-
+                // pre-filter that stripped legitimate aliases the handler
+                // genuinely understood but the schema hadn't enumerated yet.
+                // CONSISTENCY(schema-prop-validation): same approach mirrored
+                // in ResidentServer.ExecuteAdd.
+                var tracking = new OfficeCli.Core.TrackingPropertyDictionary(properties);
                 using var handler = DocumentHandlerFactory.Open(file.FullName, editable: true);
                 var oldCount = (handler as OfficeCli.Handlers.PowerPointHandler)?.GetSlideCount() ?? 0;
-                var resultPath = handler.Add(parentPath, type!, position, properties);
+                var resultPath = handler.Add(parentPath, type!, position, tracking);
+                var unsupported = tracking.UnusedKeys.ToList();
                 var message = $"Added {type!.ToLowerInvariant()} at {resultPath}";
                 var spatialLine = GetPptSpatialLine(handler, resultPath);
                 var overlapNames = spatialLine != null ? CheckPositionOverlap(handler, resultPath) : new();
@@ -234,7 +221,7 @@ static partial class CommandBuilder
                     OfficeCli.Handlers.PowerPointHandler => "pptx",
                     _ => null,
                 };
-                foreach (var u in schemaUnsupported)
+                foreach (var u in unsupported)
                 {
                     var suggestion = SuggestPropertyScoped(u, addSuggestionScope);
                     addWarnings.Add(new OfficeCli.Core.CliWarning
@@ -262,13 +249,13 @@ static partial class CommandBuilder
                         if (w.Code == "unsupported_property") continue; // emitted as UNSUPPORTED line below
                         Console.Error.WriteLine($"  WARNING: {w.Message}");
                     }
-                    if (schemaUnsupported.Count > 0)
-                        Console.Error.WriteLine(FormatUnsupported(schemaUnsupported, addSuggestionScope));
+                    if (unsupported.Count > 0)
+                        Console.Error.WriteLine(FormatUnsupported(unsupported, addSuggestionScope));
                 }
                 if (parentPath == "/") NotifyWatchRoot(handler, file.FullName, oldCount);
                 else NotifyWatch(handler, file.FullName, parentPath);
 
-                if (schemaUnsupported.Count > 0) return 2;
+                if (unsupported.Count > 0) return 2;
             }
 
             return hadWarnings ? 2 : 0;

@@ -26,20 +26,19 @@ public partial class ExcelHandler
         var chartWorksheet = FindWorksheet(chartSheetName)
             ?? throw new ArgumentException($"Sheet not found: {chartSheetName}");
 
-        // Parse chart data
-        var chartType = properties.FirstOrDefault(kv =>
-            kv.Key.Equals("charttype", StringComparison.OrdinalIgnoreCase)
-            || kv.Key.Equals("type", StringComparison.OrdinalIgnoreCase)).Value
-            ?? "column";
+        // Parse chart data. Use TryGetValue(case-insensitive) so reads
+        // are recorded by TrackingPropertyDictionary in handler-as-truth path.
+        string chartType = "column";
+        if (properties.TryGetValue("charttype", out var ctVal) || properties.TryGetValue("type", out ctVal))
+            chartType = ctVal;
         var chartTitle = properties.GetValueOrDefault("title");
 
         // Support dataRange: read cell data from worksheet and build series with cell references
         string[]? categories;
         List<(string name, double[] values)> seriesData;
-        var dataRangeStr = properties.FirstOrDefault(kv =>
-            kv.Key.Equals("datarange", StringComparison.OrdinalIgnoreCase)
-            || kv.Key.Equals("dataRange", StringComparison.OrdinalIgnoreCase)
-            || kv.Key.Equals("range", StringComparison.OrdinalIgnoreCase)).Value;
+        string? dataRangeStr = null;
+        if (properties.TryGetValue("datarange", out var dr) || properties.TryGetValue("range", out dr))
+            dataRangeStr = dr;
         if (!string.IsNullOrEmpty(dataRangeStr))
         {
             (seriesData, categories) = ParseDataRangeForChart(dataRangeStr, chartSheetName, properties);

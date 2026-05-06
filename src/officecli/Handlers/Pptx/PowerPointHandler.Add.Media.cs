@@ -354,11 +354,11 @@ public partial class PowerPointHandler
                 var chartShapeTree = GetSlide(chartSlidePart).CommonSlideData?.ShapeTree
                     ?? throw new InvalidOperationException("Slide has no shape tree");
 
-                // Parse chart data
-                var chartType = properties.FirstOrDefault(kv =>
-                    kv.Key.Equals("charttype", StringComparison.OrdinalIgnoreCase)
-                    || kv.Key.Equals("type", StringComparison.OrdinalIgnoreCase)).Value
-                    ?? "column";
+                // Parse chart data. Use TryGetValue(case-insensitive) instead
+                // of LINQ FirstOrDefault to play well with TrackingPropertyDictionary.
+                string chartType = "column";
+                if (properties.TryGetValue("charttype", out var ct) || properties.TryGetValue("type", out ct))
+                    chartType = ct;
                 var chartTitle = properties.GetValueOrDefault("title");
                 var categories = ChartHelper.ParseCategories(properties);
                 var seriesData = ChartHelper.ParseSeriesData(properties);
