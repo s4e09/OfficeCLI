@@ -21,6 +21,20 @@
     "_shared/run.docx-pptx"
   ],
   "properties": {
+    "baseline": {
+      "type": "string",
+      "description": "vertical alignment in % of font height. Accepts 'super' (≡ +30), 'sub' (≡ -25), 'none'/'false'/'0', or a signed number. Get readback is the numeric percentage.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop baseline=super",
+        "--prop baseline=sub",
+        "--prop baseline=-25"
+      ],
+      "readback": "signed number (e.g. 30, -25, 0)",
+      "enforcement": "strict"
+    },
     "cap": {
       "type": "enum",
       "values": [
@@ -52,6 +66,28 @@
       "get": true,
       "readback": "font name",
       "enforcement": "report"
+    },
+    "subscript": {
+      "type": "bool",
+      "description": "vertical alignment = subscript (sugar for baseline=sub). Mutually exclusive with superscript. Get readback uses canonical 'baseline' (not surfaced as 'subscript').",
+      "add": true,
+      "set": true,
+      "get": false,
+      "examples": [
+        "--prop subscript=true"
+      ],
+      "enforcement": "strict"
+    },
+    "superscript": {
+      "type": "bool",
+      "description": "vertical alignment = superscript (sugar for baseline=super). Mutually exclusive with subscript. Get readback uses canonical 'baseline' (not surfaced as 'superscript').",
+      "add": true,
+      "set": true,
+      "get": false,
+      "examples": [
+        "--prop superscript=true"
+      ],
+      "enforcement": "strict"
     }
   }
 }
