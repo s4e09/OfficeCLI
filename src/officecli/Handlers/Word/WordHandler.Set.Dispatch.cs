@@ -1111,7 +1111,9 @@ public partial class WordHandler
                         break;
                     case "font":
                         var rpFont = level.NumberingSymbolRunProperties ?? level.AppendChild(new NumberingSymbolRunProperties());
-                        var rf = rpFont.GetFirstChild<RunFonts>() ?? rpFont.AppendChild(new RunFonts());
+                        var rfExisting = rpFont.GetFirstChild<RunFonts>();
+                        var rf = rfExisting;
+                        if (rf == null) { rf = new RunFonts(); InsertLvlRPrChildInOrder(rpFont, rf); }
                         rf.Ascii = value;
                         rf.HighAnsi = value;
                         rf.EastAsia = value;
@@ -1120,20 +1122,20 @@ public partial class WordHandler
                         var rpSize = level.NumberingSymbolRunProperties ?? level.AppendChild(new NumberingSymbolRunProperties());
                         var halfPt = (int)Math.Round(ParseFontSize(value) * 2, MidpointRounding.AwayFromZero);
                         var fs = rpSize.GetFirstChild<FontSize>();
-                        if (fs == null) rpSize.AppendChild(new FontSize { Val = halfPt.ToString() });
+                        if (fs == null) InsertLvlRPrChildInOrder(rpSize, new FontSize { Val = halfPt.ToString() });
                         else fs.Val = halfPt.ToString();
                         break;
                     case "color":
                         var rpColor = level.NumberingSymbolRunProperties ?? level.AppendChild(new NumberingSymbolRunProperties());
                         var c = rpColor.GetFirstChild<Color>();
-                        if (c == null) rpColor.AppendChild(new Color { Val = SanitizeHex(value) });
+                        if (c == null) InsertLvlRPrChildInOrder(rpColor, new Color { Val = SanitizeHex(value) });
                         else c.Val = SanitizeHex(value);
                         break;
                     case "bold":
                         var rpBold = level.NumberingSymbolRunProperties ?? level.AppendChild(new NumberingSymbolRunProperties());
                         if (IsTruthy(value))
                         {
-                            if (rpBold.GetFirstChild<Bold>() == null) rpBold.AppendChild(new Bold());
+                            if (rpBold.GetFirstChild<Bold>() == null) InsertLvlRPrChildInOrder(rpBold, new Bold());
                         }
                         else rpBold.GetFirstChild<Bold>()?.Remove();
                         break;
@@ -1141,7 +1143,7 @@ public partial class WordHandler
                         var rpItal = level.NumberingSymbolRunProperties ?? level.AppendChild(new NumberingSymbolRunProperties());
                         if (IsTruthy(value))
                         {
-                            if (rpItal.GetFirstChild<Italic>() == null) rpItal.AppendChild(new Italic());
+                            if (rpItal.GetFirstChild<Italic>() == null) InsertLvlRPrChildInOrder(rpItal, new Italic());
                         }
                         else rpItal.GetFirstChild<Italic>()?.Remove();
                         break;
@@ -1300,6 +1302,31 @@ public partial class WordHandler
         }
         if (anchor != null) level.InsertBefore(child, anchor);
         else level.AppendChild(child);
+    }
+
+    // CT_RPr schema order subset for NumberingSymbolRunProperties children
+    // emitted by the level-rPr Set/Add paths. Lower rank = appears earlier.
+    private static int LvlRPrChildOrder(OpenXmlElement c) => c switch
+    {
+        RunFonts => 1,
+        Bold => 2,
+        Italic => 3,
+        Color => 4,
+        FontSize => 5,
+        Underline => 6,
+        _ => int.MaxValue,
+    };
+
+    private static void InsertLvlRPrChildInOrder(NumberingSymbolRunProperties rpr, OpenXmlElement child)
+    {
+        var newOrd = LvlRPrChildOrder(child);
+        OpenXmlElement? anchor = null;
+        foreach (var c in rpr.ChildElements)
+        {
+            if (LvlRPrChildOrder(c) > newOrd) { anchor = c; break; }
+        }
+        if (anchor != null) rpr.InsertBefore(child, anchor);
+        else rpr.AppendChild(child);
     }
 
     /// <summary>

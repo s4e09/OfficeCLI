@@ -1220,23 +1220,24 @@ public partial class WordHandler
             if (hasRpr)
             {
                 var nspr = new NumberingSymbolRunProperties();
+                // CT_RPr schema order: rFonts → b → i → color → sz.
                 if (properties.TryGetValue(prefix + "font", out var fontRaw) && !string.IsNullOrEmpty(fontRaw))
                 {
                     nspr.AppendChild(new RunFonts { Ascii = fontRaw, HighAnsi = fontRaw, EastAsia = fontRaw });
+                }
+                if (properties.TryGetValue(prefix + "bold", out var boldRaw) && IsTruthy(boldRaw))
+                    nspr.AppendChild(new Bold());
+                if (properties.TryGetValue(prefix + "italic", out var italRaw) && IsTruthy(italRaw))
+                    nspr.AppendChild(new Italic());
+                if (properties.TryGetValue(prefix + "color", out var colorRaw) && !string.IsNullOrEmpty(colorRaw))
+                {
+                    nspr.AppendChild(new Color { Val = SanitizeHex(colorRaw) });
                 }
                 if (properties.TryGetValue(prefix + "size", out var sizeRaw) && !string.IsNullOrEmpty(sizeRaw))
                 {
                     var halfPt = (int)Math.Round(ParseFontSize(sizeRaw) * 2, MidpointRounding.AwayFromZero);
                     nspr.AppendChild(new FontSize { Val = halfPt.ToString() });
                 }
-                if (properties.TryGetValue(prefix + "color", out var colorRaw) && !string.IsNullOrEmpty(colorRaw))
-                {
-                    nspr.AppendChild(new Color { Val = SanitizeHex(colorRaw) });
-                }
-                if (properties.TryGetValue(prefix + "bold", out var boldRaw) && IsTruthy(boldRaw))
-                    nspr.AppendChild(new Bold());
-                if (properties.TryGetValue(prefix + "italic", out var italRaw) && IsTruthy(italRaw))
-                    nspr.AppendChild(new Italic());
                 level.AppendChild(nspr);
             }
 
@@ -1413,6 +1414,7 @@ public partial class WordHandler
         // (NumberingSymbolRunProperties is the lvl-level rPr container).
         NumberingSymbolRunProperties? rPr = null;
         NumberingSymbolRunProperties EnsureRPr() => rPr ??= new NumberingSymbolRunProperties();
+        // CT_RPr schema order: rFonts → b → i → color → sz.
         if (properties.TryGetValue("font", out var lvlFontRaw) && !string.IsNullOrEmpty(lvlFontRaw))
         {
             var rp = EnsureRPr();
@@ -1421,17 +1423,6 @@ public partial class WordHandler
             rf.HighAnsi = lvlFontRaw;
             rf.EastAsia = lvlFontRaw;
         }
-        if (properties.TryGetValue("size", out var lvlSizeRaw) && !string.IsNullOrEmpty(lvlSizeRaw))
-        {
-            var rp = EnsureRPr();
-            var halfPt = (int)Math.Round(ParseFontSize(lvlSizeRaw) * 2, MidpointRounding.AwayFromZero);
-            rp.AppendChild(new FontSize { Val = halfPt.ToString() });
-        }
-        if (properties.TryGetValue("color", out var lvlColorRaw) && !string.IsNullOrEmpty(lvlColorRaw))
-        {
-            var rp = EnsureRPr();
-            rp.AppendChild(new Color { Val = SanitizeHex(lvlColorRaw) });
-        }
         if (properties.TryGetValue("bold", out var lvlBoldRaw) && IsTruthy(lvlBoldRaw))
         {
             EnsureRPr().AppendChild(new Bold());
@@ -1439,6 +1430,17 @@ public partial class WordHandler
         if (properties.TryGetValue("italic", out var lvlItalRaw) && IsTruthy(lvlItalRaw))
         {
             EnsureRPr().AppendChild(new Italic());
+        }
+        if (properties.TryGetValue("color", out var lvlColorRaw) && !string.IsNullOrEmpty(lvlColorRaw))
+        {
+            var rp = EnsureRPr();
+            rp.AppendChild(new Color { Val = SanitizeHex(lvlColorRaw) });
+        }
+        if (properties.TryGetValue("size", out var lvlSizeRaw) && !string.IsNullOrEmpty(lvlSizeRaw))
+        {
+            var rp = EnsureRPr();
+            var halfPt = (int)Math.Round(ParseFontSize(lvlSizeRaw) * 2, MidpointRounding.AwayFromZero);
+            rp.AppendChild(new FontSize { Val = halfPt.ToString() });
         }
         if (properties.TryGetValue("underline", out var lvlUnderRaw) && !string.IsNullOrEmpty(lvlUnderRaw))
         {
