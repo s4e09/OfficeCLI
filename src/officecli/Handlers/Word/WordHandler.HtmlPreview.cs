@@ -1096,7 +1096,12 @@ public partial class WordHandler
             sizePt = hp / 2.0;
         if (sizePt == 0 && defaultRPr?.FontSize?.Val?.Value is string nsz && int.TryParse(nsz, out var nhp))
             sizePt = nhp / 2.0;
-        if (sizePt == 0) sizePt = 10.0; // OOXML spec default: 20 half-points = 10pt
+        // OOXML §17.7.4.5 says default is 20 half-points (10pt) but Word ignores
+        // the spec when neither rPrDefault nor Normal carries a size — it pulls
+        // from Normal.dotm's Calibri 11pt baseline. Mirror Word so docs without
+        // an explicit size (typical of synthetic / minimal docs) don't render
+        // ~9% smaller and shift every line height.
+        if (sizePt == 0) sizePt = 11.0;
 
         // Line spacing: docDefaults pPrDefault → Normal style pPr → fallback
         double lineH = 0;
@@ -2038,15 +2043,14 @@ public partial class WordHandler
                     if (!string.IsNullOrEmpty(pStyle))
                         sb.Append($" style=\"{pStyle}\"");
                     sb.Append(">");
-                    bool hasVisibleContent = runs.Count > 0 || mathElements.Count > 0
-                                             || !string.IsNullOrWhiteSpace(text);
+                    // Use rendered-output length as the source of truth: a
+                    // paragraph might have <w:r> with empty <w:t> (counts as
+                    // a run but produces zero visible content). Anything that
+                    // emits nothing collapses the line box in the browser, so
+                    // a placeholder &nbsp; is needed to preserve line-height.
+                    var lenBefore = sb.Length;
                     RenderParagraphContentHtml(sb, para);
-                    // Empty paragraphs need a placeholder character so the line
-                    // box forms and renders the resolved line-height. Word and
-                    // LibreOffice apply pPr to empty paragraphs identically to
-                    // non-empty ones — the &nbsp; here is purely a line-box
-                    // necessity, not a Word-semantic special case.
-                    if (!hasVisibleContent) sb.Append("&nbsp;");
+                    if (sb.Length == lenBefore) sb.Append("&nbsp;");
                     sb.AppendLine("</p>");
                     AppendW14ReflectionBlock(sb, para, "p", pStyle);
                 }
