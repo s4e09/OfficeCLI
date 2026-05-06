@@ -399,6 +399,26 @@
       "readback": "\"<N>x\" or \"<N>pt\"",
       "enforcement": "report"
     },
+    "lineRule": {
+      "type": "enum",
+      "description": "line spacing rule paired with lineSpacing. 'auto' = multiplier, 'exact' = exact fixed height, 'atLeast' = minimum height (lines may grow to fit tall content). Applied to the style's pPr.",
+      "values": [
+        "auto",
+        "exact",
+        "atLeast"
+      ],
+      "aliases": [
+        "linerule"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop lineSpacing=14pt --prop lineRule=atLeast"
+      ],
+      "readback": "auto | exact | atLeast",
+      "enforcement": "report"
+    },
     "contextualSpacing": {
       "type": "bool",
       "description": "suppress spacing between paragraphs of the same style.",
