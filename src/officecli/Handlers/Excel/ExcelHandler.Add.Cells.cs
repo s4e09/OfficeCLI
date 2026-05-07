@@ -662,16 +662,15 @@ public partial class ExcelHandler
 
         var insertColIdx = ColumnNameToIndex(insertColName);
 
-        // Shift existing columns right if needed
-        var colSheetData = GetSheet(colWorksheet).GetFirstChild<SheetData>();
-        bool colNeedsShift = colSheetData != null && colSheetData.Elements<Row>()
-            .Any(r => r.Elements<Cell>().Any(c =>
-            {
-                if (c.CellReference?.Value == null) return false;
-                var (col, _) = ParseCellReference(c.CellReference.Value);
-                return ColumnNameToIndex(col) >= insertColIdx;
-            }));
-        if (colNeedsShift)
+        // Shift existing data and metadata right, except when this is an
+        // idempotent re-add of an already-existing single-column <col> entry —
+        // in that case the user just wants to mutate width/hidden in place,
+        // and shifting would push the matching <col> away from insertColIdx,
+        // making the subsequent existingCol lookup miss and append a duplicate.
+        var preExistingExactCol = GetSheet(colWorksheet).GetFirstChild<Columns>()
+            ?.Elements<Column>()
+            .FirstOrDefault(c => c.Min?.Value == (uint)insertColIdx && c.Max?.Value == (uint)insertColIdx);
+        if (preExistingExactCol == null)
         {
             ShiftColumnsRight(colWorksheet, insertColIdx);
             DeleteCalcChainIfPresent();

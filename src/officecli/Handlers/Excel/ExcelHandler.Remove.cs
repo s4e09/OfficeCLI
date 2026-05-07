@@ -781,6 +781,36 @@ public partial class ExcelHandler
             if (shifted != null) af.Reference = shifted;
         }
 
+        // Hyperlinks (per-cell anchor refs)
+        var hyperlinks = ws.GetFirstChild<Hyperlinks>();
+        if (hyperlinks != null)
+        {
+            foreach (var hl in hyperlinks.Elements<Hyperlink>())
+            {
+                if (hl.Reference?.Value == null) continue;
+                var shifted = ShiftRowInRefDown(hl.Reference.Value, insertRow);
+                if (shifted != null) hl.Reference = shifted;
+            }
+        }
+
+        // Tables (table.ref + autoFilter.ref inside table parts)
+        foreach (var tablePart in worksheet.TableDefinitionParts)
+        {
+            var tbl = tablePart.Table;
+            if (tbl == null) continue;
+            if (tbl.Reference?.Value != null)
+            {
+                var shifted = ShiftRowInRefDown(tbl.Reference.Value, insertRow);
+                if (shifted != null) tbl.Reference = shifted;
+            }
+            if (tbl.AutoFilter?.Reference?.Value != null)
+            {
+                var shifted = ShiftRowInRefDown(tbl.AutoFilter.Reference.Value, insertRow);
+                if (shifted != null) tbl.AutoFilter.Reference = shifted;
+            }
+            tbl.Save();
+        }
+
         // Named ranges
         ShiftNamedRangeRowsDown(worksheet, insertRow);
     }
@@ -837,6 +867,71 @@ public partial class ExcelHandler
                 var shifted = ShiftColInRefRight(mc.Reference?.Value, insertColIdx);
                 if (shifted != null) mc.Reference = shifted;
             }
+        }
+
+        // Conditional formatting sqref — parity with ShiftRowsDown
+        foreach (var cf in ws.Elements<ConditionalFormatting>().ToList())
+        {
+            if (cf.SequenceOfReferences?.HasValue != true) continue;
+            var newRefs = cf.SequenceOfReferences.Items
+                .Select(r => ShiftColInRefRight(r.Value, insertColIdx) ?? r.Value).ToList();
+            cf.SequenceOfReferences = new ListValue<StringValue>(newRefs.Select(r => new StringValue(r)));
+        }
+
+        // Data validations sqref — parity with ShiftRowsDown
+        var dvs = ws.GetFirstChild<DataValidations>();
+        if (dvs != null)
+        {
+            foreach (var dv in dvs.Elements<DataValidation>().ToList())
+            {
+                if (dv.SequenceOfReferences?.HasValue != true) continue;
+                var newRefs = dv.SequenceOfReferences.Items
+                    .Select(r => ShiftColInRefRight(r.Value, insertColIdx) ?? r.Value).ToList();
+                dv.SequenceOfReferences = new ListValue<StringValue>(newRefs.Select(r => new StringValue(r)));
+            }
+        }
+
+        // AutoFilter — parity with ShiftRowsDown
+        var af = ws.GetFirstChild<AutoFilter>();
+        if (af?.Reference?.Value != null)
+        {
+            var shifted = ShiftColInRefRight(af.Reference.Value, insertColIdx);
+            if (shifted != null) af.Reference = shifted;
+        }
+
+        // Hyperlinks (per-cell anchor refs)
+        var hyperlinks = ws.GetFirstChild<Hyperlinks>();
+        if (hyperlinks != null)
+        {
+            foreach (var hl in hyperlinks.Elements<Hyperlink>())
+            {
+                if (hl.Reference?.Value == null) continue;
+                var shifted = ShiftColInRefRight(hl.Reference.Value, insertColIdx);
+                if (shifted != null) hl.Reference = shifted;
+            }
+        }
+
+        // Tables (table.ref + autoFilter.ref inside table parts).
+        // NOTE: shifting <tableColumn> entries themselves is intentionally not
+        // done here — inserting INTO a table is an Excel-UI-only concept; the
+        // current contract is "insert before the table.ref starts" (table moves
+        // as a whole) or "insert after table.ref ends" (table unchanged).
+        // Inserting in the middle of a table is undefined and not validated.
+        foreach (var tablePart in worksheet.TableDefinitionParts)
+        {
+            var tbl = tablePart.Table;
+            if (tbl == null) continue;
+            if (tbl.Reference?.Value != null)
+            {
+                var shifted = ShiftColInRefRight(tbl.Reference.Value, insertColIdx);
+                if (shifted != null) tbl.Reference = shifted;
+            }
+            if (tbl.AutoFilter?.Reference?.Value != null)
+            {
+                var shifted = ShiftColInRefRight(tbl.AutoFilter.Reference.Value, insertColIdx);
+                if (shifted != null) tbl.AutoFilter.Reference = shifted;
+            }
+            tbl.Save();
         }
 
         // Named ranges
