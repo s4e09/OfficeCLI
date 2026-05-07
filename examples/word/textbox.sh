@@ -58,14 +58,15 @@ officecli raw-set "$OUT" /document --xpath "//w:body/w:sectPr" --action insertbe
       </mc:Choice>
       <mc:Fallback>
         <w:pict>
-          <v:shapetype id="_x0000_t202" coordsize="21600,21600" path="m,l,21600r21600,l21600,xe">
+          <v:shapetype id="_x0000_t202" coordsize="21600,21600" o:spt="202" path="m,l,21600r21600,l21600,xe">
             <v:stroke joinstyle="miter"/>
-            <v:path gradientshapeok="t"/>
+            <v:path gradientshapeok="t" o:connecttype="rect"/>
           </v:shapetype>
-          <v:shape id="TextBox1" type="#_x0000_t202" style="width:425.2pt;height:94.5pt;mso-wrap-style:square" fillcolor="#E6F3FF" strokecolor="#0070C0" strokeweight="2pt">
+          <v:shape id="TextBox1" o:spid="_x0000_s1026" type="#_x0000_t202" style="position:absolute;margin-left:0;margin-top:0;width:425.2pt;height:94.5pt;z-index:251659264;mso-wrap-style:square;mso-position-horizontal:absolute;mso-position-horizontal-relative:text;mso-position-vertical:absolute;mso-position-vertical-relative:text;v-text-anchor:top" fillcolor="#E6F3FF" strokecolor="#0070C0" strokeweight="2pt">
             <v:textbox><w:txbxContent>
               <w:p><w:r><w:t>Basic Textbox (VML fallback)</w:t></w:r></w:p>
             </w:txbxContent></v:textbox>
+            <w10:wrap type="topAndBottom"/>
           </v:shape>
         </w:pict>
       </mc:Fallback>
