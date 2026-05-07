@@ -3,7 +3,7 @@
 # Each slide demonstrates a different category of animations
 set -e
 
-OUT="$(dirname "$0")/gen-animations-pptx.pptx"
+OUT="$(dirname "$0")/animations.pptx"
 rm -f "$OUT"
 officecli create "$OUT"
 officecli open "$OUT"
