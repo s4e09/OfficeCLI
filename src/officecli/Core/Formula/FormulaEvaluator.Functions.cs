@@ -24,8 +24,8 @@ internal partial class FormulaEvaluator
             "SUMPRODUCT" => EvalSumProduct(args),
             "AVERAGE" => nums() is { Length: > 0 } a ? FR(a.Average()) : null,
             "COUNT" => FR(nums().Length),
-            "COUNTA" => FR(args.Sum(a => a is RangeData rd ? rd.ToFlatResults().Count(c => c != null && !c.IsError && c.AsString() != "")
-                : a is FormulaResult r && !r.IsError && r.AsString() != "" ? 1 : a is double[] arr ? arr.Length : 0)),
+            "COUNTA" => FR(args.Sum(a => AsRangeData(a) is { } rd ? rd.ToFlatResults().Count(c => c != null && !c.IsError && c.AsString() != "")
+                : a is FormulaResult r && !r.IsError && !r.IsRange && r.AsString() != "" ? 1 : a is double[] arr ? arr.Length : 0)),
             "COUNTBLANK" => FR(0),
             "MIN" => nums() is { Length: > 0 } mn ? FR(mn.Min()) : FR(0),
             "MAX" => nums() is { Length: > 0 } mx ? FR(mx.Max()) : FR(0),
@@ -326,7 +326,7 @@ internal partial class FormulaEvaluator
     private FormulaResult? EvalIndex(List<object> args)
     {
         if (args.Count < 2) return null;
-        if (args[0] is RangeData rd)
+        if (AsRangeData(args[0]) is { } rd)
         {
             var rowIdx = args[1] is FormulaResult r ? (int)r.AsNumber() : 0;
             var colIdx = args.Count > 2 && args[2] is FormulaResult c ? (int)c.AsNumber() : 1;
@@ -638,6 +638,16 @@ internal partial class FormulaEvaluator
 
     // Helper: extract double[] from RangeData or double[]
     private static double[]? AsDoubles(object? a) => a is RangeData rd ? rd.ToDoubleArray() : a is double[] arr ? arr : null;
+
+    // Helper: accept a RangeData directly OR a FormulaResult.Area wrapping one.
+    // OFFSET / INDIRECT return Area-typed FormulaResult for multi-cell results,
+    // so any function that iterates cells must accept both forms.
+    private static RangeData? AsRangeData(object? a)
+    {
+        if (a is RangeData rd) return rd;
+        if (a is FormulaResult fr && fr.IsRange) return fr.RangeValue;
+        return null;
+    }
 
     // Helper: extract FormulaResult?[] from RangeData (preserves string values for criteria matching)
     private static FormulaResult?[]? AsResults(object? a) => a is RangeData rd ? rd.ToFlatResults() : null;
