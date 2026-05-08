@@ -418,7 +418,22 @@ public partial class ExcelHandler
             return colNode;
         }
 
-        // Row path: /Sheet1/row[N]
+        // Row path: /Sheet1/row[N] or /Sheet1/row[last()]
+        // CONSISTENCY(path-stability): mirrors sheet[last()] support in ResolveSheetName
+        // and Word's p[last()] — resolve last() to the highest RowIndex present.
+        var rowLastMatch = Regex.Match(cellRef, @"^row\[last\(\)\]$", RegexOptions.IgnoreCase);
+        if (rowLastMatch.Success)
+        {
+            var lastRowIdx = data.Elements<Row>()
+                .Select(r => r.RowIndex?.Value ?? 0u)
+                .Where(i => i > 0)
+                .DefaultIfEmpty(0u)
+                .Max();
+            if (lastRowIdx == 0)
+                return new DocumentNode { Path = path, Type = "row", Text = "(empty)" };
+            cellRef = $"row[{lastRowIdx}]";
+            path = $"/{sheetNameFromPath}/row[{lastRowIdx}]";
+        }
         var rowMatch = Regex.Match(cellRef, @"^row\[(\d+)\]$");
         if (rowMatch.Success)
         {
@@ -929,9 +944,17 @@ public partial class ExcelHandler
         var results = new List<DocumentNode>();
 
         // Handle Excel-native direct cell ref: Sheet1!A1 or Sheet1!A1:D10
+        // For ranges (containing ':'), expand the "range" container node into its
+        // individual cell children so Query returns a flat list consistent with all
+        // other Query branches. Single-cell refs return a one-element list.
         var nativeCellRef = Regex.Match(selector, @"^([^/!]+)!([A-Z]+\d+(:[A-Z]+\d+)?)$", RegexOptions.IgnoreCase);
         if (nativeCellRef.Success)
-            return [Get($"/{nativeCellRef.Groups[1].Value}/{nativeCellRef.Groups[2].Value}")];
+        {
+            var node = Get($"/{nativeCellRef.Groups[1].Value}/{nativeCellRef.Groups[2].Value}");
+            if (node.Type == "range" && node.Children.Count > 0)
+                return node.Children;
+            return [node];
+        }
 
         // CONSISTENCY(excel-sheet-separator-warn): Detect the PPT-style `>`
         // separator form (e.g. `Sheet1>ole`) that users familiar with the

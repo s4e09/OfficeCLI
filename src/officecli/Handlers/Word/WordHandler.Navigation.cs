@@ -1067,6 +1067,19 @@ public partial class WordHandler
                     _ => false,
                 });
             }
+            else if (seg.StringIndex != null && seg.StringIndex.StartsWith("@", StringComparison.Ordinal))
+            {
+                // Unrecognized attribute predicate — throw rather than silently returning
+                // the first element. ValidateAndNormalizePredicate accepts any @ident=value
+                // syntactically, but not every attribute maps to a Word OOXML concept.
+                // Comment on the gap: expand the dispatch chain above when a new attribute
+                // needs to be addressable (e.g. @bookmarkId=, @w14:paraId=).
+                var eq = seg.StringIndex.IndexOf('=');
+                var attrName = eq > 0 ? seg.StringIndex[1..eq] : seg.StringIndex[1..];
+                throw new ArgumentException(
+                    $"Attribute predicate '@{attrName}' is not a recognized Word path attribute. " +
+                    $"Supported attributes: @paraId, @textId, @commentId, @sdtId, @id, @name.");
+            }
             else
                 next = childList.FirstOrDefault();
 
