@@ -248,14 +248,26 @@ internal partial class FormulaEvaluator
             }
 
             // Quoted sheet reference: 'Sheet Name'!CellRef or 'Sheet Name'!Range
+            // ECMA-376 §18.17: an inner apostrophe inside a quoted sheet identifier
+            // is escaped as '' (two consecutive apostrophes). The closing quote is
+            // a single apostrophe NOT followed by another apostrophe.
             if (ch == '\'')
             {
                 var si = i + 1;
-                var ei = formula.IndexOf('\'', si);
-                if (ei > si && ei + 1 < formula.Length && formula[ei + 1] == '!')
+                var ei = si;
+                while (ei < formula.Length)
                 {
-                    var sheetName = formula[si..ei];
-                    i = ei + 2; // skip '!'
+                    if (formula[ei] == '\'')
+                    {
+                        if (ei + 1 < formula.Length && formula[ei + 1] == '\'') { ei += 2; continue; }
+                        break;
+                    }
+                    ei++;
+                }
+                if (ei < formula.Length && ei > si && ei + 1 < formula.Length && formula[ei + 1] == '!')
+                {
+                    var sheetName = formula[si..ei].Replace("''", "'");
+                    i = ei + 2; // skip closing ' and '!'
                     var refStart = i;
                     while (i < formula.Length && (char.IsLetterOrDigit(formula[i]) || formula[i] == '$' || formula[i] == ':')) i++;
                     var refPart = StripDollar(formula[refStart..i]);

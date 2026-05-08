@@ -838,7 +838,13 @@ public partial class ExcelHandler
                         //   'Sheet With Spaces'!A1  (name with spaces or special chars)
                         static bool NeedsQuoting(string n) =>
                             n.Any(c => char.IsWhiteSpace(c) || c is '\'' or '[' or ']' or ':' or '*' or '?' or '/' or '\\');
-                        static string FormulaRef(string n) => NeedsQuoting(n) ? $"'{n}'" : n;
+                        // BUG R4-B: ECMA-376 §18.17 requires inner apostrophes to be
+                        // doubled inside a quoted sheet identifier — e.g. "Bob's Sheet"
+                        // serializes as 'Bob''s Sheet'!A1. Without escaping, the
+                        // resulting formula text is parser-ambiguous (Excel can read
+                        // it but a strict tokenizer treats the lone apostrophe as the
+                        // closing quote and corrupts the reference).
+                        static string FormulaRef(string n) => NeedsQuoting(n) ? $"'{n.Replace("'", "''")}'" : n;
 
                         var oldRef = FormulaRef(oldName) + "!";
                         var newRef = FormulaRef(value) + "!";
