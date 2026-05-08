@@ -576,6 +576,24 @@ public partial class PowerPointHandler
                 return rowNode;
             }
 
+            // CONSISTENCY(table-col-get): mirror xlsx `get col[A]` — pptx
+            // GridColumn carries Width directly, surface it as a unit-qualified
+            // length. Schema: schemas/help/pptx/table-column.json declares
+            // get: true; this implements it (was previously throwing).
+            if (tSubType.Equals("col", StringComparison.OrdinalIgnoreCase))
+            {
+                var tbl = tTables[tTableIdx - 1].Descendants<Drawing.Table>().First();
+                var gridCols = tbl.TableGrid?.Elements<Drawing.GridColumn>().ToList()
+                    ?? new List<Drawing.GridColumn>();
+                if (tSubIdx < 1 || tSubIdx > gridCols.Count)
+                    throw new ArgumentException($"Column {tSubIdx} not found (total: {gridCols.Count})");
+                var colNode = new DocumentNode { Path = path, Type = "col" };
+                var gc = gridCols[tSubIdx - 1];
+                if (gc.Width?.HasValue == true)
+                    colNode.Format["width"] = FormatEmu(gc.Width.Value);
+                return colNode;
+            }
+
             throw new ArgumentException($"Unknown table sub-element: {tSubType}");
         }
 
