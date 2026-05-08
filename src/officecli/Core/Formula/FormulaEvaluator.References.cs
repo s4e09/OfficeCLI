@@ -1,6 +1,7 @@
 // Copyright 2025 OfficeCli (officecli.ai)
 // SPDX-License-Identifier: Apache-2.0
 
+using System.Globalization;
 using System.Text.RegularExpressions;
 
 namespace OfficeCli.Core;
@@ -119,17 +120,36 @@ internal partial class FormulaEvaluator
     /// (multi-cell). Outer functions like SUM/AVERAGE consume the Area through
     /// the IsRange handling in helpers.
     /// </summary>
+    private const int ExcelMaxRow = 1048576;
+    private const int ExcelMaxCol = 16384;
+
+    /// <summary>Coerce a FormulaResult to a number, accepting numeric strings ("1", "2.5").</summary>
+    private static double CoerceToNumber(FormulaResult? r)
+    {
+        if (r == null) return 0;
+        if (r.IsString && double.TryParse(r.StringValue, NumberStyles.Any, CultureInfo.InvariantCulture, out var v))
+            return v;
+        return r.AsNumber();
+    }
+
     private FormulaResult? EvalOffset(List<object> args)
     {
         if (args.Count < 3 || args.Count > 5) return FormulaResult.Error("#VALUE!");
         if (args[0] is not RefArg baseRef) return FormulaResult.Error("#VALUE!");
 
-        int rowOffset = (int)((args[1] as FormulaResult)?.AsNumber() ?? 0);
-        int colOffset = (int)((args[2] as FormulaResult)?.AsNumber() ?? 0);
+        // Bug 1: propagate any error in row/col/height/width before consuming.
+        for (int i = 1; i < args.Count; i++)
+        {
+            if (args[i] is FormulaResult fr && fr.IsError) return fr;
+        }
+
+        // Bug 7: numeric strings coerce to numbers.
+        int rowOffset = (int)CoerceToNumber(args[1] as FormulaResult);
+        int colOffset = (int)CoerceToNumber(args[2] as FormulaResult);
         int height = baseRef.Height;
         int width = baseRef.Width;
-        if (args.Count >= 4 && args[3] is FormulaResult hArg) height = (int)hArg.AsNumber();
-        if (args.Count >= 5 && args[4] is FormulaResult wArg) width = (int)wArg.AsNumber();
+        if (args.Count >= 4 && args[3] is FormulaResult hArg) height = (int)CoerceToNumber(hArg);
+        if (args.Count >= 5 && args[4] is FormulaResult wArg) width = (int)CoerceToNumber(wArg);
         if (height == 0 || width == 0) return FormulaResult.Error("#REF!");
 
         var newRow = baseRef.Row + rowOffset;
