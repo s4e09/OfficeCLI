@@ -477,7 +477,11 @@ internal partial class FormulaEvaluator
         {
             while (true)
             {
-                if (argIdx == 0 && name == "OFFSET" && TryParseRefArg(t, ref p) is { } refArg)
+                // Empty arg (immediate comma or close-paren after a comma) — Excel
+                // treats omitted args as 0 for numeric-arg functions like OFFSET.
+                if (p < t.Count && (t[p].Type == TT.Comma || t[p].Type == TT.RParen))
+                { args.Add(FormulaResult.Number(0)); }
+                else if (argIdx == 0 && name == "OFFSET" && TryParseRefArg(t, ref p) is { } refArg)
                 { args.Add(refArg); }
                 else if (p < t.Count && t[p].Type is TT.Range or TT.SheetRange) { args.Add(Expand2DRange(t[p].Value)); p++; }
                 else { var expr = ParseExpression(t, ref p); if (expr == null) return null; args.Add(expr); }
