@@ -45,6 +45,13 @@ internal record FormulaResult
 
     public string ToCellValueText()
     {
+        // R3 BUG-5: errors must surface as their sentinel ("#REF!", "#VALUE!",
+        // …) — not as the empty StringValue fallback which suppresses the
+        // <v> write on the cell and leaves only the formula text. The Set
+        // path also gates on IsError separately and writes t="e", so this
+        // branch is the safety net for any caller (HtmlPreview, view) that
+        // formats the value text directly.
+        if (IsError) return ErrorValue!;
         // An Area placed into a single cell collapses to its top-left.
         // Excel does implicit-intersect; top-left is the simplest deterministic
         // choice (and matches FirstCell()).
