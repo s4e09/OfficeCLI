@@ -73,7 +73,14 @@ internal partial class FormulaEvaluator
     /// </summary>
     private RefArg? ParseRefString(string s)
     {
-        s = s.Trim();
+        // R3 BUG A: only trim ASCII space + tab. .Trim() (no args) strips ALL
+        // Unicode whitespace including NBSP (U+00A0) — Excel does NOT trim NBSP
+        // from INDIRECT's argument; an NBSP-padded ref must yield #REF!. We
+        // keep ASCII-space lenience because Round 1 chose that as a deliberate
+        // ergonomic deviation (`INDIRECT(" A1 ")` already worked and tests
+        // depend on it); NBSP and other Unicode whitespace fall through to
+        // IsCellRef, fail to match, and surface as #REF! naturally.
+        s = s.Trim(' ', '\t');
         if (string.IsNullOrEmpty(s)) return null;
         string? sheet = null;
         var bang = s.IndexOf('!');
