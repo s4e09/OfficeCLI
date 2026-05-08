@@ -298,6 +298,126 @@ public static class FormulaRefShifter
     }
 
     /// <summary>
+    /// Shift relative cell references in a formula by a (deltaCol, deltaRow)
+    /// vector. Models Excel's "copy formula" semantics: refs without a $
+    /// marker shift by the delta, refs with $ stay absolute. Used when a
+    /// row or column is copied to a new position — the cloned formulas keep
+    /// their relative spatial relationships but their literal text needs to
+    /// reflect the new anchor cell.
+    ///
+    /// <para>Sheet-scope, string-literal, and structured-ref skip rules are
+    /// identical to <see cref="Shift"/>. A ref whose absolute resulting row
+    /// or column would be &lt;= 0 collapses to <c>#REF!</c>.</para>
+    /// </summary>
+    public static string ApplyCopyDelta(
+        string formula,
+        string currentSheet,
+        string modifiedSheet,
+        int deltaCol,
+        int deltaRow)
+    {
+        if (string.IsNullOrEmpty(formula) || (deltaCol == 0 && deltaRow == 0)) return formula;
+
+        var sb = new StringBuilder(formula.Length);
+        int i = 0;
+        while (i < formula.Length)
+        {
+            char ch = formula[i];
+            if (ch == '"')
+            {
+                sb.Append(ch); i++;
+                while (i < formula.Length)
+                {
+                    sb.Append(formula[i]);
+                    if (formula[i] == '"')
+                    {
+                        if (i + 1 < formula.Length && formula[i + 1] == '"')
+                        { sb.Append(formula[i + 1]); i += 2; continue; }
+                        i++; break;
+                    }
+                    i++;
+                }
+            }
+            else if (ch == '[')
+            {
+                int depth = 0;
+                while (i < formula.Length)
+                {
+                    char c = formula[i];
+                    sb.Append(c);
+                    if (c == '[') depth++;
+                    else if (c == ']') { depth--; if (depth == 0) { i++; break; } }
+                    i++;
+                }
+            }
+            else
+            {
+                int start = i;
+                while (i < formula.Length && formula[i] != '"' && formula[i] != '[') i++;
+                sb.Append(DeltaShiftRefsInChunk(
+                    formula.AsSpan(start, i - start).ToString(),
+                    currentSheet, modifiedSheet, deltaCol, deltaRow));
+            }
+        }
+        return sb.ToString();
+    }
+
+    private static string DeltaShiftRefsInChunk(
+        string chunk, string currentSheet, string modifiedSheet,
+        int deltaCol, int deltaRow)
+    {
+        return CellRefPattern.Replace(chunk, m =>
+        {
+            var sheetGroup = m.Groups["sheet"].Value;
+            string targetSheet = string.IsNullOrEmpty(sheetGroup)
+                ? currentSheet
+                : (sheetGroup.StartsWith('\'') && sheetGroup.EndsWith('\'')
+                    ? sheetGroup[1..^1].Replace("''", "'")
+                    : sheetGroup);
+            if (!targetSheet.Equals(modifiedSheet, StringComparison.OrdinalIgnoreCase))
+                return m.Value;
+
+            string c1 = m.Groups["c1"].Value;
+            string r1 = m.Groups["r1"].Value;
+            string c2 = m.Groups["c2"].Value;
+            string r2 = m.Groups["r2"].Value;
+            bool isRange = !string.IsNullOrEmpty(c2);
+            string sheetPrefix = string.IsNullOrEmpty(sheetGroup) ? "" : sheetGroup + "!";
+
+            string? newC1 = DeltaShiftCol(c1, deltaCol);
+            string? newR1 = DeltaShiftRow(r1, deltaRow);
+            if (newC1 == null || newR1 == null) return "#REF!";
+
+            if (!isRange) return $"{sheetPrefix}{newC1}{newR1}";
+
+            string? newC2 = DeltaShiftCol(c2, deltaCol);
+            string? newR2 = DeltaShiftRow(r2, deltaRow);
+            if (newC2 == null || newR2 == null) return "#REF!";
+            return $"{sheetPrefix}{newC1}{newR1}:{newC2}{newR2}";
+        });
+    }
+
+    private static string? DeltaShiftCol(string colPart, int delta)
+    {
+        bool abs = colPart.StartsWith('$');
+        if (abs || delta == 0) return colPart;
+        int idx = ColumnLettersToIndex(colPart);
+        int newIdx = idx + delta;
+        if (newIdx < 1) return null;
+        return IndexToColumnLetters(newIdx);
+    }
+
+    private static string? DeltaShiftRow(string rowPart, int delta)
+    {
+        bool abs = rowPart.StartsWith('$');
+        if (abs || delta == 0) return rowPart;
+        int num = int.Parse(rowPart);
+        int newNum = num + delta;
+        if (newNum < 1) return null;
+        return newNum.ToString();
+    }
+
+    /// <summary>
     /// Returns the formula text rewritten so that any references targeting
     /// <paramref name="modifiedSheet"/> at or past <paramref name="insertIdx"/>
     /// are shifted by 1 in <paramref name="direction"/>. Refs targeting other

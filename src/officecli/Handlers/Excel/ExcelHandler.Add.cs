@@ -942,6 +942,8 @@ public partial class ExcelHandler
             }
 
             clone.RowIndex = newRowIndex;
+            int copyDeltaRow = (int)newRowIndex - (int)rowIdx;
+            string targetSheetName = tgtSegments[0];
             foreach (var c in clone.Elements<Cell>())
             {
                 var oldRef = c.CellReference?.Value;
@@ -949,6 +951,17 @@ public partial class ExcelHandler
                 var m = Regex.Match(oldRef, @"^([A-Z]+)\d+$", RegexOptions.IgnoreCase);
                 if (m.Success)
                     c.CellReference = $"{m.Groups[1].Value.ToUpperInvariant()}{newRowIndex}";
+
+                // Apply copy-delta to formulas inside cloned cells so that
+                // relative refs follow the new anchor row. Excel UI does this
+                // automatically for "Insert Copied Cells" / paste. Refs to
+                // other sheets are left untouched (sheet-scope guard).
+                if (c.CellFormula != null && !string.IsNullOrEmpty(c.CellFormula.Text) && copyDeltaRow != 0)
+                {
+                    c.CellFormula.Text = Core.FormulaRefShifter.ApplyCopyDelta(
+                        c.CellFormula.Text, targetSheetName, sheetName,
+                        deltaCol: 0, deltaRow: copyDeltaRow);
+                }
             }
 
             // mergeCells live in the sheet-level <mergeCells> container, not
@@ -995,7 +1008,157 @@ public partial class ExcelHandler
             return $"{targetParentPath}/row[{newRowIndex}]";
         }
 
-        throw new ArgumentException($"Copy not supported for: {elementRef}. Supported: row[N]");
+        // Copy col[L] — mirror of the row case. Snapshot cells from the
+        // source column before any shift; resolve target col from anchor or
+        // index; ShiftColumnsRight at the target col (handles all displacement
+        // for cellRef + col metadata + mergeCells + CF/DV/autoFilter +
+        // hyperlinks + tables + namedRanges + cross-sheet formula refs); then
+        // insert the snapshotted cells at the target col with delta-shifted
+        // formulas. Single-col merges fully contained in the source column
+        // are replicated at the target column.
+        var colMatch = Regex.Match(elementRef, @"^col\[([A-Za-z]+)\]$", RegexOptions.IgnoreCase);
+        if (colMatch.Success)
+        {
+            var srcColLetter = colMatch.Groups[1].Value.ToUpperInvariant();
+            var srcColIdx = ColumnNameToIndex(srcColLetter);
+
+            // Resolve target col index. With no position → append after
+            // the last used column.
+            int targetColIdx;
+            if (position?.Index.HasValue == true)
+            {
+                targetColIdx = position.Index.Value > 0 ? position.Index.Value : 1;
+            }
+            else if (position?.Before != null || position?.After != null)
+            {
+                int FindAnchorColIdx(string anchorPath)
+                {
+                    var aSegs = anchorPath.TrimStart('/').Split('/', 2);
+                    if (aSegs.Length < 2)
+                        throw new ArgumentException(
+                            $"Anchor must be a col path like /{tgtSegments[0]}/col[L], got: {anchorPath}");
+                    if (!aSegs[0].Equals(tgtSegments[0], StringComparison.OrdinalIgnoreCase))
+                        throw new ArgumentException(
+                            $"Anchor sheet '{aSegs[0]}' must match target sheet '{tgtSegments[0]}'");
+                    var am = Regex.Match(aSegs[1], @"^col\[([A-Za-z]+)\]$", RegexOptions.IgnoreCase);
+                    if (!am.Success)
+                        throw new ArgumentException(
+                            $"Anchor must be a col path like /{tgtSegments[0]}/col[L], got: {anchorPath}");
+                    return ColumnNameToIndex(am.Groups[1].Value.ToUpperInvariant());
+                }
+                if (position.Before != null) targetColIdx = FindAnchorColIdx(position.Before);
+                else targetColIdx = FindAnchorColIdx(position.After!) + 1;
+            }
+            else
+            {
+                int maxCol = 0;
+                foreach (var r in sheetData.Elements<Row>())
+                    foreach (var c in r.Elements<Cell>())
+                        if (c.CellReference?.Value != null)
+                            maxCol = Math.Max(maxCol, ColumnNameToIndex(ParseCellReference(c.CellReference.Value).Column));
+                targetColIdx = maxCol + 1;
+            }
+
+            // Snapshot source col cells (clones) BEFORE any shift, keyed by
+            // row number so we can recreate them at the target col.
+            var srcCellClones = new List<(uint Row, Cell Clone)>();
+            foreach (var r in sheetData.Elements<Row>())
+            {
+                var cell = r.Elements<Cell>().FirstOrDefault(c =>
+                {
+                    if (c.CellReference?.Value == null) return false;
+                    return ParseCellReference(c.CellReference.Value).Column
+                        .Equals(srcColLetter, StringComparison.OrdinalIgnoreCase);
+                });
+                if (cell != null && r.RowIndex?.Value != null)
+                    srcCellClones.Add((r.RowIndex.Value, (Cell)cell.CloneNode(true)));
+            }
+
+            // Snapshot single-col merges fully contained in the source col.
+            var srcSingleColMerges = new List<(uint StartRow, uint EndRow)>();
+            var srcMergeCells = GetSheet(worksheet).GetFirstChild<MergeCells>();
+            if (srcMergeCells != null)
+            {
+                foreach (var mc in srcMergeCells.Elements<MergeCell>())
+                {
+                    var refStr = mc.Reference?.Value;
+                    if (string.IsNullOrEmpty(refStr)) continue;
+                    var parts = refStr.Split(':');
+                    if (parts.Length != 2) continue;
+                    var (sCol, sRow) = ParseCellReference(parts[0]);
+                    var (eCol, eRow) = ParseCellReference(parts[1]);
+                    if (sCol.Equals(srcColLetter, StringComparison.OrdinalIgnoreCase)
+                        && eCol.Equals(srcColLetter, StringComparison.OrdinalIgnoreCase))
+                    {
+                        srcSingleColMerges.Add(((uint)sRow, (uint)eRow));
+                    }
+                }
+            }
+
+            // Make room at target col. ShiftColumnsRight handles all
+            // sheet-wide displacement (cellRef, col meta, mergeCells, CF/DV,
+            // autoFilter, hyperlinks, tables, namedRanges, formulas).
+            ShiftColumnsRight(tgtWorksheet, targetColIdx);
+
+            // Account for the source col having been shifted right by 1 if
+            // it was at or after the target.
+            int effectiveSrcColIdx = srcColIdx >= targetColIdx ? srcColIdx + 1 : srcColIdx;
+            int copyDeltaCol = targetColIdx - effectiveSrcColIdx;
+
+            // Insert snapshotted cell clones into the target col.
+            var tgtSheetData = GetSheet(tgtWorksheet).GetFirstChild<SheetData>()!;
+            string targetColLetter = IndexToColumnName(targetColIdx);
+            foreach (var (srcRowNum, clone) in srcCellClones)
+            {
+                clone.CellReference = $"{targetColLetter}{srcRowNum}";
+
+                // Delta-shift formulas inside the clone: relative refs follow
+                // the new anchor column.
+                if (clone.CellFormula != null && !string.IsNullOrEmpty(clone.CellFormula.Text) && copyDeltaCol != 0)
+                {
+                    clone.CellFormula.Text = Core.FormulaRefShifter.ApplyCopyDelta(
+                        clone.CellFormula.Text, tgtSegments[0], sheetName,
+                        deltaCol: copyDeltaCol, deltaRow: 0);
+                }
+
+                var targetRow = tgtSheetData.Elements<Row>()
+                    .FirstOrDefault(r => r.RowIndex?.Value == srcRowNum);
+                if (targetRow == null)
+                {
+                    // Materialize the row in correct ascending order.
+                    targetRow = new Row { RowIndex = srcRowNum };
+                    var afterRow = tgtSheetData.Elements<Row>()
+                        .LastOrDefault(r => (r.RowIndex?.Value ?? 0) < srcRowNum);
+                    if (afterRow != null) afterRow.InsertAfterSelf(targetRow);
+                    else tgtSheetData.InsertAt(targetRow, 0);
+                }
+                // Insert clone at the correct in-row position (ascending col).
+                var afterCell = targetRow.Elements<Cell>()
+                    .LastOrDefault(c => c.CellReference?.Value != null
+                        && ColumnNameToIndex(ParseCellReference(c.CellReference.Value).Column) < targetColIdx);
+                if (afterCell != null) afterCell.InsertAfterSelf(clone);
+                else targetRow.InsertAt(clone, 0);
+            }
+
+            // Replicate single-col merges at the target col.
+            if (srcSingleColMerges.Count > 0)
+            {
+                var tgtSheetEl = GetSheet(tgtWorksheet);
+                var tgtMergeCells = tgtSheetEl.GetFirstChild<MergeCells>()
+                    ?? tgtSheetEl.AppendChild(new MergeCells());
+                foreach (var (sRow, eRow) in srcSingleColMerges)
+                    tgtMergeCells.AppendChild(new MergeCell {
+                        Reference = $"{targetColLetter}{sRow}:{targetColLetter}{eRow}"
+                    });
+                tgtMergeCells.Count = (uint)tgtMergeCells.Elements<MergeCell>().Count();
+            }
+
+            DeleteCalcChainIfPresent();
+            SaveWorksheet(tgtWorksheet);
+            return $"{targetParentPath}/col[{targetColLetter}]";
+        }
+
+        throw new ArgumentException($"Copy not supported for: {elementRef}. Supported: row[N], col[L]");
     }
 
     public (string RelId, string PartPath) AddPart(string parentPartPath, string partType, Dictionary<string, string>? properties = null)
