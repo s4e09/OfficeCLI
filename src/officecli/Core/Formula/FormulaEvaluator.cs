@@ -594,6 +594,11 @@ internal partial class FormulaEvaluator
                     return FormulaResult.Str(cached);
                 }
                 if (cell.DataType?.Value == CellValues.Boolean) return FormulaResult.Bool(cached == "1");
+                // BUG R4-4: error-typed cells (DataType=Error, e.g. cached "#REF!"
+                // written by `Set value=#REF! type=error`) must propagate as an
+                // Error FormulaResult so downstream formulas like =A1+1 return
+                // #REF! instead of coercing the cached string to a number.
+                if (cell.DataType?.Value == CellValues.Error) return FormulaResult.Error(cached);
                 if (cell.DataType?.Value == CellValues.String || cell.DataType?.Value == CellValues.InlineString) return FormulaResult.Str(cached);
                 return double.TryParse(cached, NumberStyles.Any, CultureInfo.InvariantCulture, out var v) ? FormulaResult.Number(v) : FormulaResult.Str(cached);
             }
