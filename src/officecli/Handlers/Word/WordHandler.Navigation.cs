@@ -446,6 +446,23 @@ public partial class WordHandler
         if (anchorIdx < 0)
             throw new ArgumentException($"Anchor element is not a child of {parentPath}: {anchorPath}");
 
+        // CONSISTENCY(table-row-anchor): when inserting into a <w:tbl>, the
+        // body's child list also contains tblPr / tblGrid / tblPrEx, but
+        // AddRow indexes against parent.Elements<TableRow>() — using the
+        // ChildElements offset there would push past the tail and silently
+        // AppendChild. Translate the anchor's position into row-only space
+        // so the AddRow contract (index = row-only index) holds.
+        if (parent is Table tbl && anchor is TableRow trAnchor)
+        {
+            var rows = tbl.Elements<TableRow>().ToList();
+            var rowIdx = rows.IndexOf(trAnchor);
+            if (rowIdx < 0)
+                throw new ArgumentException($"Anchor row is not a row of {parentPath}: {anchorPath}");
+            if (position.After != null)
+                return rowIdx + 1 >= rows.Count ? null : rowIdx + 1;
+            return rowIdx;
+        }
+
         if (position.After != null)
         {
             // Insert after anchor: if last child, return null (append)
