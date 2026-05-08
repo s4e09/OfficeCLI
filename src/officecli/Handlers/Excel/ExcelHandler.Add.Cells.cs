@@ -606,11 +606,16 @@ public partial class ExcelHandler
             throw new ArgumentException(
                 "Unsupported cell property: " + string.Join("; ", cellHintMessages));
 
-        // Apply style properties if any
+        // Apply style properties if any. Use TryGetValue per key so the
+        // TrackingPropertyDictionary comparer marks each style key as
+        // accessed — bare foreach over the upcast Dictionary<,> base type
+        // bypasses the recording GetEnumerator override and leaves
+        // legitimately-consumed keys (bold, align, color, ...) reported
+        // as UNSUPPORTED while their values silently take effect.
         var cellStyleProps = new Dictionary<string, string>();
-        foreach (var (key, val) in properties)
+        foreach (var key in properties.Keys.ToList())
         {
-            if (ExcelStyleManager.IsStyleKey(key))
+            if (ExcelStyleManager.IsStyleKey(key) && properties.TryGetValue(key, out var val))
                 cellStyleProps[key] = val;
         }
         if (cellStyleProps.Count > 0)
