@@ -870,17 +870,17 @@ public partial class ExcelHandler
     {
         var ws = GetSheet(worksheet);
         var sheetData = ws.GetFirstChild<SheetData>();
+        var sheetName = GetWorksheets().FirstOrDefault(w => w.Part == worksheet).Name ?? "";
 
+        // 1. SheetData cellRef rewrite (axis-direction-specific reverse iter,
+        //    stays in caller — walker doesn't handle row renumber).
         if (sheetData != null)
         {
-            // Row indices change after a shift — cached positions are stale
             InvalidateRowIndex(sheetData);
-            // Process in reverse order to avoid collision
             foreach (var row in sheetData.Elements<Row>().OrderByDescending(r => r.RowIndex?.Value ?? 0).ToList())
             {
                 var rowIdx = (int)(row.RowIndex?.Value ?? 0);
                 if (rowIdx < insertRow) continue;
-
                 foreach (var cell in row.Elements<Cell>())
                 {
                     if (cell.CellReference?.Value != null)
@@ -893,81 +893,12 @@ public partial class ExcelHandler
             }
         }
 
-        RewriteFormulaRefsInSheet(worksheet, Core.FormulaShiftDirection.RowsDown, insertRow);
-
-        // Merge cells
-        var mergeCells = ws.GetFirstChild<MergeCells>();
-        if (mergeCells != null)
-        {
-            foreach (var mc in mergeCells.Elements<MergeCell>().ToList())
-            {
-                var shifted = ShiftRowInRefDown(mc.Reference?.Value, insertRow);
-                if (shifted != null) mc.Reference = shifted;
-            }
-        }
-
-        // Conditional formatting sqref
-        foreach (var cf in ws.Elements<ConditionalFormatting>().ToList())
-        {
-            if (cf.SequenceOfReferences?.HasValue != true) continue;
-            var newRefs = cf.SequenceOfReferences.Items
-                .Select(r => ShiftRowInRefDown(r.Value, insertRow) ?? r.Value).ToList();
-            cf.SequenceOfReferences = new ListValue<StringValue>(newRefs.Select(r => new StringValue(r)));
-        }
-
-        // Data validations sqref
-        var dvs = ws.GetFirstChild<DataValidations>();
-        if (dvs != null)
-        {
-            foreach (var dv in dvs.Elements<DataValidation>().ToList())
-            {
-                if (dv.SequenceOfReferences?.HasValue != true) continue;
-                var newRefs = dv.SequenceOfReferences.Items
-                    .Select(r => ShiftRowInRefDown(r.Value, insertRow) ?? r.Value).ToList();
-                dv.SequenceOfReferences = new ListValue<StringValue>(newRefs.Select(r => new StringValue(r)));
-            }
-        }
-
-        // AutoFilter
-        var af = ws.GetFirstChild<AutoFilter>();
-        if (af?.Reference?.Value != null)
-        {
-            var shifted = ShiftRowInRefDown(af.Reference.Value, insertRow);
-            if (shifted != null) af.Reference = shifted;
-        }
-
-        // Hyperlinks (per-cell anchor refs)
-        var hyperlinks = ws.GetFirstChild<Hyperlinks>();
-        if (hyperlinks != null)
-        {
-            foreach (var hl in hyperlinks.Elements<Hyperlink>())
-            {
-                if (hl.Reference?.Value == null) continue;
-                var shifted = ShiftRowInRefDown(hl.Reference.Value, insertRow);
-                if (shifted != null) hl.Reference = shifted;
-            }
-        }
-
-        // Tables (table.ref + autoFilter.ref inside table parts)
-        foreach (var tablePart in worksheet.TableDefinitionParts)
-        {
-            var tbl = tablePart.Table;
-            if (tbl == null) continue;
-            if (tbl.Reference?.Value != null)
-            {
-                var shifted = ShiftRowInRefDown(tbl.Reference.Value, insertRow);
-                if (shifted != null) tbl.Reference = shifted;
-            }
-            if (tbl.AutoFilter?.Reference?.Value != null)
-            {
-                var shifted = ShiftRowInRefDown(tbl.AutoFilter.Reference.Value, insertRow);
-                if (shifted != null) tbl.AutoFilter.Reference = shifted;
-            }
-            tbl.Save();
-        }
-
-        // Named ranges
-        ShiftNamedRangeRowsDown(worksheet, insertRow);
+        // 2. All sheet-level range-bearing structures + formulas + namedRanges.
+        ApplySheetRangeMutations(
+            worksheet, sheetName,
+            refMapper: r => ShiftRowInRefDown(r, insertRow),
+            formulaTextMapper: f => Core.FormulaRefShifter.Shift(
+                f, sheetName, sheetName, Core.FormulaShiftDirection.RowsDown, insertRow));
     }
 
     /// <summary>
@@ -977,7 +908,10 @@ public partial class ExcelHandler
     {
         var ws = GetSheet(worksheet);
         var sheetData = ws.GetFirstChild<SheetData>();
+        var sheetName = GetWorksheets().FirstOrDefault(w => w.Part == worksheet).Name ?? "";
 
+        // 1. SheetData cellRef rewrite (col-shift, no reverse iter needed
+        //    because we go by colIdx not row order).
         if (sheetData != null)
         {
             foreach (var row in sheetData.Elements<Row>())
@@ -993,9 +927,7 @@ public partial class ExcelHandler
             }
         }
 
-        RewriteFormulaRefsInSheet(worksheet, Core.FormulaShiftDirection.ColumnsRight, insertColIdx);
-
-        // Column width/style definitions
+        // 2. <Columns> width/style (col-only, op-asymmetric — kept out of walker).
         var columns = ws.GetFirstChild<Columns>();
         if (columns != null)
         {
@@ -1003,96 +935,17 @@ public partial class ExcelHandler
             {
                 var min = (int)(col.Min?.Value ?? 0);
                 var max = (int)(col.Max?.Value ?? 0);
-                if (min >= insertColIdx)
-                {
-                    col.Min = (uint)(min + 1);
-                    col.Max = (uint)(max + 1);
-                }
-                else if (max >= insertColIdx)
-                {
-                    col.Max = (uint)(max + 1);
-                }
+                if (min >= insertColIdx) { col.Min = (uint)(min + 1); col.Max = (uint)(max + 1); }
+                else if (max >= insertColIdx) col.Max = (uint)(max + 1);
             }
         }
 
-        // Merge cells
-        var mergeCells = ws.GetFirstChild<MergeCells>();
-        if (mergeCells != null)
-        {
-            foreach (var mc in mergeCells.Elements<MergeCell>().ToList())
-            {
-                var shifted = ShiftColInRefRight(mc.Reference?.Value, insertColIdx);
-                if (shifted != null) mc.Reference = shifted;
-            }
-        }
-
-        // Conditional formatting sqref — parity with ShiftRowsDown
-        foreach (var cf in ws.Elements<ConditionalFormatting>().ToList())
-        {
-            if (cf.SequenceOfReferences?.HasValue != true) continue;
-            var newRefs = cf.SequenceOfReferences.Items
-                .Select(r => ShiftColInRefRight(r.Value, insertColIdx) ?? r.Value).ToList();
-            cf.SequenceOfReferences = new ListValue<StringValue>(newRefs.Select(r => new StringValue(r)));
-        }
-
-        // Data validations sqref — parity with ShiftRowsDown
-        var dvs = ws.GetFirstChild<DataValidations>();
-        if (dvs != null)
-        {
-            foreach (var dv in dvs.Elements<DataValidation>().ToList())
-            {
-                if (dv.SequenceOfReferences?.HasValue != true) continue;
-                var newRefs = dv.SequenceOfReferences.Items
-                    .Select(r => ShiftColInRefRight(r.Value, insertColIdx) ?? r.Value).ToList();
-                dv.SequenceOfReferences = new ListValue<StringValue>(newRefs.Select(r => new StringValue(r)));
-            }
-        }
-
-        // AutoFilter — parity with ShiftRowsDown
-        var af = ws.GetFirstChild<AutoFilter>();
-        if (af?.Reference?.Value != null)
-        {
-            var shifted = ShiftColInRefRight(af.Reference.Value, insertColIdx);
-            if (shifted != null) af.Reference = shifted;
-        }
-
-        // Hyperlinks (per-cell anchor refs)
-        var hyperlinks = ws.GetFirstChild<Hyperlinks>();
-        if (hyperlinks != null)
-        {
-            foreach (var hl in hyperlinks.Elements<Hyperlink>())
-            {
-                if (hl.Reference?.Value == null) continue;
-                var shifted = ShiftColInRefRight(hl.Reference.Value, insertColIdx);
-                if (shifted != null) hl.Reference = shifted;
-            }
-        }
-
-        // Tables (table.ref + autoFilter.ref inside table parts).
-        // NOTE: shifting <tableColumn> entries themselves is intentionally not
-        // done here — inserting INTO a table is an Excel-UI-only concept; the
-        // current contract is "insert before the table.ref starts" (table moves
-        // as a whole) or "insert after table.ref ends" (table unchanged).
-        // Inserting in the middle of a table is undefined and not validated.
-        foreach (var tablePart in worksheet.TableDefinitionParts)
-        {
-            var tbl = tablePart.Table;
-            if (tbl == null) continue;
-            if (tbl.Reference?.Value != null)
-            {
-                var shifted = ShiftColInRefRight(tbl.Reference.Value, insertColIdx);
-                if (shifted != null) tbl.Reference = shifted;
-            }
-            if (tbl.AutoFilter?.Reference?.Value != null)
-            {
-                var shifted = ShiftColInRefRight(tbl.AutoFilter.Reference.Value, insertColIdx);
-                if (shifted != null) tbl.AutoFilter.Reference = shifted;
-            }
-            tbl.Save();
-        }
-
-        // Named ranges
-        ShiftNamedRangeColsRight(worksheet, insertColIdx);
+        // 3. All sheet-level range-bearing structures + formulas + namedRanges.
+        ApplySheetRangeMutations(
+            worksheet, sheetName,
+            refMapper: r => ShiftColInRefRight(r, insertColIdx),
+            formulaTextMapper: f => Core.FormulaRefShifter.Shift(
+                f, sheetName, sheetName, Core.FormulaShiftDirection.ColumnsRight, insertColIdx));
     }
 
     private static string? ShiftRowInRefDown(string? refStr, int insertRow)
@@ -1112,62 +965,9 @@ public partial class ExcelHandler
         return string.Join(":", shifted);
     }
 
-    /// <summary>
-    /// Rewrite cell-ref tokens inside every CellFormula in the worksheet so
-    /// that formulas continue to point at the same cells after a column or
-    /// row insert. Also rewrites the <c>ref</c> attribute on shared/array
-    /// formula entries (which uses A1 range syntax).
-    ///
-    /// Out of scope (Path-A limitations): cross-workbook refs, R1C1 notation,
-    /// whole-column / whole-row refs (A:A / 1:1), structured refs
-    /// (Table1[Col1]). Cached <c>&lt;v&gt;</c> values are not invalidated —
-    /// after this rewrite they are usually still consistent because the cell
-    /// the formula references has only moved (its value is unchanged), and
-    /// fullCalcOnLoad on the workbook ensures Excel recalculates on open if
-    /// any divergence remains.
-    /// </summary>
-    private void RewriteFormulaRefsInSheet(
-        WorksheetPart worksheet,
-        Core.FormulaShiftDirection direction,
-        int insertIdx)
-    {
-        var ws = GetSheet(worksheet);
-        var sheetData = ws.GetFirstChild<SheetData>();
-        if (sheetData == null) return;
-
-        var sheetName = GetWorksheets().FirstOrDefault(w => w.Part == worksheet).Name;
-        if (string.IsNullOrEmpty(sheetName)) return;
-
-        foreach (var row in sheetData.Elements<Row>())
-        {
-            foreach (var cell in row.Elements<Cell>())
-            {
-                if (cell.CellFormula == null) continue;
-
-                var f = cell.CellFormula;
-                if (!string.IsNullOrEmpty(f.Text))
-                    f.Text = Core.FormulaRefShifter.Shift(
-                        f.Text, sheetName, sheetName, direction, insertIdx);
-
-                // Shared/array formulas carry their spill range on the `ref`
-                // attribute. Same A1 range syntax — pick the matching helper
-                // for the direction.
-                if (f.Reference?.Value != null)
-                {
-                    var shifted = direction switch
-                    {
-                        Core.FormulaShiftDirection.ColumnsRight => ShiftColInRefRight(f.Reference.Value, insertIdx),
-                        Core.FormulaShiftDirection.RowsDown => ShiftRowInRefDown(f.Reference.Value, insertIdx),
-                        Core.FormulaShiftDirection.ColumnsLeft => ShiftColInRef(f.Reference.Value, insertIdx),
-                        Core.FormulaShiftDirection.RowsUp => ShiftRowInRef(f.Reference.Value, insertIdx),
-                        _ => f.Reference.Value,
-                    };
-                    if (shifted != null) f.Reference = shifted;
-                    else f.Remove();
-                }
-            }
-        }
-    }
+    // RewriteFormulaRefsInSheet was removed — its responsibility (rewriting
+    // CellFormula.Text and the shared/array formula `ref` attribute) is now
+    // section 7 of ApplySheetRangeMutations in ExcelHandler.SheetShift.cs.
 
     private static string? ShiftColInRefRight(string? refStr, int insertColIdx)
     {
@@ -1187,52 +987,10 @@ public partial class ExcelHandler
         return string.Join(":", shifted);
     }
 
-    private void ShiftNamedRangeRowsDown(WorksheetPart worksheet, int insertRow)
-    {
-        var sheetName = GetWorksheets().FirstOrDefault(w => w.Part == worksheet).Name;
-        if (string.IsNullOrEmpty(sheetName)) return;
-        var definedNames = GetWorkbook().GetFirstChild<DefinedNames>();
-        if (definedNames == null) return;
-        foreach (var dn in definedNames.Elements<DefinedName>())
-        {
-            if (dn.Text == null) continue;
-            dn.Text = Regex.Replace(dn.Text,
-                $@"(?<={Regex.Escape(sheetName)}!\$?[A-Z]+\$?)(\d+)",
-                m =>
-                {
-                    var row = int.Parse(m.Value);
-                    return row >= insertRow ? (row + 1).ToString() : m.Value;
-                },
-                RegexOptions.IgnoreCase);
-        }
-        GetWorkbook().Save();
-    }
-
-    private void ShiftNamedRangeColsRight(WorksheetPart worksheet, int insertColIdx)
-    {
-        var sheetName = GetWorksheets().FirstOrDefault(w => w.Part == worksheet).Name;
-        if (string.IsNullOrEmpty(sheetName)) return;
-        var definedNames = GetWorkbook().GetFirstChild<DefinedNames>();
-        if (definedNames == null) return;
-        foreach (var dn in definedNames.Elements<DefinedName>())
-        {
-            if (dn.Text == null) continue;
-            dn.Text = Regex.Replace(dn.Text,
-                $@"(?<={Regex.Escape(sheetName)}!)\$?([A-Z]+)\$?(\d+)",
-                m =>
-                {
-                    var col = m.Groups[1].Value.ToUpperInvariant();
-                    var row = m.Groups[2].Value;
-                    var colIdx = ColumnNameToIndex(col);
-                    if (colIdx < insertColIdx) return m.Value;
-                    var dollar1 = m.Value.StartsWith("$") ? "$" : "";
-                    var dollar2 = m.Value.Contains("$" + col + "$") ? "$" : "";
-                    return $"{dollar1}{IndexToColumnName(colIdx + 1)}{dollar2}{row}";
-                },
-                RegexOptions.IgnoreCase);
-        }
-        GetWorkbook().Save();
-    }
+    // ShiftNamedRangeRowsDown / ShiftNamedRangeColsRight removed — defined
+    // names are now rewritten by section 8 of ApplySheetRangeMutations using
+    // the proper FormulaRefShifter (which handles quoted sheet names, string
+    // literals, and structured refs correctly, unlike the old regex helpers).
 
     // ==================== Row shift ====================
 
@@ -1240,17 +998,16 @@ public partial class ExcelHandler
     {
         var ws = GetSheet(worksheet);
         var sheetData = ws.GetFirstChild<SheetData>();
+        var sheetName = GetWorksheets().FirstOrDefault(w => w.Part == worksheet).Name ?? "";
 
-        // 1. Shift all rows after the deleted row: update RowIndex + all CellReferences
+        // 1. SheetData cellRef rewrite (delete direction).
         if (sheetData != null)
         {
-            // Row indices change after a shift — cached positions are stale
             InvalidateRowIndex(sheetData);
             foreach (var row in sheetData.Elements<Row>().ToList())
             {
                 var rowIdx = (int)(row.RowIndex?.Value ?? 0);
                 if (rowIdx <= deletedRow) continue;
-
                 foreach (var cell in row.Elements<Cell>())
                 {
                     if (cell.CellReference?.Value != null)
@@ -1263,92 +1020,12 @@ public partial class ExcelHandler
             }
         }
 
-        // 2. Merge cells
-        var mergeCells = ws.GetFirstChild<MergeCells>();
-        if (mergeCells != null)
-        {
-            foreach (var mc in mergeCells.Elements<MergeCell>().ToList())
-            {
-                var shifted = ShiftRowInRef(mc.Reference?.Value, deletedRow);
-                if (shifted == null) mc.Remove();
-                else mc.Reference = shifted;
-            }
-            if (!mergeCells.HasChildren) mergeCells.Remove();
-        }
-
-        // 3. Conditional formatting sqref
-        foreach (var cf in ws.Elements<ConditionalFormatting>().ToList())
-        {
-            if (cf.SequenceOfReferences?.HasValue != true) continue;
-            var newRefs = cf.SequenceOfReferences.Items
-                .Select(r => ShiftRowInRef(r.Value, deletedRow))
-                .OfType<string>().ToList();
-            if (newRefs.Count == 0) cf.Remove();
-            else cf.SequenceOfReferences = new ListValue<StringValue>(newRefs.Select(r => new StringValue(r)));
-        }
-
-        // 4. Data validations sqref
-        var dvs = ws.GetFirstChild<DataValidations>();
-        if (dvs != null)
-        {
-            foreach (var dv in dvs.Elements<DataValidation>().ToList())
-            {
-                if (dv.SequenceOfReferences?.HasValue != true) continue;
-                var newRefs = dv.SequenceOfReferences.Items
-                    .Select(r => ShiftRowInRef(r.Value, deletedRow))
-                    .OfType<string>().ToList();
-                if (newRefs.Count == 0) dv.Remove();
-                else dv.SequenceOfReferences = new ListValue<StringValue>(newRefs.Select(r => new StringValue(r)));
-            }
-            if (!dvs.HasChildren) dvs.Remove();
-        }
-
-        // 5. AutoFilter
-        var af = ws.GetFirstChild<AutoFilter>();
-        if (af?.Reference?.Value != null)
-        {
-            var shifted = ShiftRowInRef(af.Reference.Value, deletedRow);
-            if (shifted != null) af.Reference = shifted;
-            else af.Remove();
-        }
-
-        // 6. Hyperlinks (per-cell anchor refs)
-        var hyperlinks = ws.GetFirstChild<Hyperlinks>();
-        if (hyperlinks != null)
-        {
-            foreach (var hl in hyperlinks.Elements<Hyperlink>().ToList())
-            {
-                if (hl.Reference?.Value == null) continue;
-                var shifted = ShiftRowInRef(hl.Reference.Value, deletedRow);
-                if (shifted == null) hl.Remove();
-                else hl.Reference = shifted;
-            }
-            if (!hyperlinks.HasChildren) hyperlinks.Remove();
-        }
-
-        // 7. Tables (table.ref + autoFilter.ref inside table parts)
-        foreach (var tablePart in worksheet.TableDefinitionParts)
-        {
-            var tbl = tablePart.Table;
-            if (tbl == null) continue;
-            if (tbl.Reference?.Value != null)
-            {
-                var shifted = ShiftRowInRef(tbl.Reference.Value, deletedRow);
-                if (shifted != null) tbl.Reference = shifted;
-            }
-            if (tbl.AutoFilter?.Reference?.Value != null)
-            {
-                var shifted = ShiftRowInRef(tbl.AutoFilter.Reference.Value, deletedRow);
-                if (shifted != null) tbl.AutoFilter.Reference = shifted;
-            }
-            tbl.Save();
-        }
-
-        // 8. Named ranges (workbook-level)
-        ShiftNamedRangeRows(worksheet, deletedRow);
-
-        // 9. Formula refs in cells + shared/array formula `ref` attributes
-        RewriteFormulaRefsInSheet(worksheet, Core.FormulaShiftDirection.RowsUp, deletedRow);
+        // 2. All sheet-level range-bearing structures + formulas + namedRanges.
+        ApplySheetRangeMutations(
+            worksheet, sheetName,
+            refMapper: r => ShiftRowInRef(r, deletedRow),
+            formulaTextMapper: f => Core.FormulaRefShifter.Shift(
+                f, sheetName, sheetName, Core.FormulaShiftDirection.RowsUp, deletedRow));
     }
 
     // ==================== Column shift ====================
@@ -1358,8 +1035,9 @@ public partial class ExcelHandler
         var ws = GetSheet(worksheet);
         var deletedColIdx = ColumnNameToIndex(deletedColName);
         var sheetData = ws.GetFirstChild<SheetData>();
+        var sheetName = GetWorksheets().FirstOrDefault(w => w.Part == worksheet).Name ?? "";
 
-        // 1. Remove cells in deleted column, shift remaining cell references left
+        // 1. SheetData cellRef rewrite: remove cells in deleted col, shift others left.
         if (sheetData != null)
         {
             foreach (var row in sheetData.Elements<Row>())
@@ -1369,16 +1047,14 @@ public partial class ExcelHandler
                     if (cell.CellReference?.Value == null) continue;
                     var (col, rowIdx) = ParseCellReference(cell.CellReference.Value);
                     var colIdx = ColumnNameToIndex(col);
-
-                    if (colIdx == deletedColIdx)
-                        cell.Remove();
+                    if (colIdx == deletedColIdx) cell.Remove();
                     else if (colIdx > deletedColIdx)
                         cell.CellReference = $"{IndexToColumnName(colIdx - 1)}{rowIdx}";
                 }
             }
         }
 
-        // 2. Column width/style definitions
+        // 2. <Columns> width/style (col-only, op-asymmetric — kept out of walker).
         var columns = ws.GetFirstChild<Columns>();
         if (columns != null)
         {
@@ -1386,110 +1062,19 @@ public partial class ExcelHandler
             {
                 var min = (int)(col.Min?.Value ?? 0);
                 var max = (int)(col.Max?.Value ?? 0);
-
-                if (min == deletedColIdx && max == deletedColIdx)
-                {
-                    col.Remove();
-                }
-                else if (min > deletedColIdx)
-                {
-                    col.Min = (uint)(min - 1);
-                    col.Max = (uint)(max - 1);
-                }
-                else if (max >= deletedColIdx)
-                {
-                    col.Max = (uint)(max - 1);
-                }
+                if (min == deletedColIdx && max == deletedColIdx) col.Remove();
+                else if (min > deletedColIdx) { col.Min = (uint)(min - 1); col.Max = (uint)(max - 1); }
+                else if (max >= deletedColIdx) col.Max = (uint)(max - 1);
             }
             if (!columns.HasChildren) columns.Remove();
         }
 
-        // 3. Merge cells
-        var mergeCells = ws.GetFirstChild<MergeCells>();
-        if (mergeCells != null)
-        {
-            foreach (var mc in mergeCells.Elements<MergeCell>().ToList())
-            {
-                var shifted = ShiftColInRef(mc.Reference?.Value, deletedColIdx);
-                if (shifted == null) mc.Remove();
-                else mc.Reference = shifted;
-            }
-            if (!mergeCells.HasChildren) mergeCells.Remove();
-        }
-
-        // 4. Conditional formatting sqref
-        foreach (var cf in ws.Elements<ConditionalFormatting>().ToList())
-        {
-            if (cf.SequenceOfReferences?.HasValue != true) continue;
-            var newRefs = cf.SequenceOfReferences.Items
-                .Select(r => ShiftColInRef(r.Value, deletedColIdx))
-                .OfType<string>().ToList();
-            if (newRefs.Count == 0) cf.Remove();
-            else cf.SequenceOfReferences = new ListValue<StringValue>(newRefs.Select(r => new StringValue(r)));
-        }
-
-        // 5. Data validations sqref
-        var dvs = ws.GetFirstChild<DataValidations>();
-        if (dvs != null)
-        {
-            foreach (var dv in dvs.Elements<DataValidation>().ToList())
-            {
-                if (dv.SequenceOfReferences?.HasValue != true) continue;
-                var newRefs = dv.SequenceOfReferences.Items
-                    .Select(r => ShiftColInRef(r.Value, deletedColIdx))
-                    .OfType<string>().ToList();
-                if (newRefs.Count == 0) dv.Remove();
-                else dv.SequenceOfReferences = new ListValue<StringValue>(newRefs.Select(r => new StringValue(r)));
-            }
-            if (!dvs.HasChildren) dvs.Remove();
-        }
-
-        // 6. AutoFilter
-        var af = ws.GetFirstChild<AutoFilter>();
-        if (af?.Reference?.Value != null)
-        {
-            var shifted = ShiftColInRef(af.Reference.Value, deletedColIdx);
-            if (shifted != null) af.Reference = shifted;
-            else af.Remove();
-        }
-
-        // 7. Hyperlinks (per-cell anchor refs)
-        var hyperlinks = ws.GetFirstChild<Hyperlinks>();
-        if (hyperlinks != null)
-        {
-            foreach (var hl in hyperlinks.Elements<Hyperlink>().ToList())
-            {
-                if (hl.Reference?.Value == null) continue;
-                var shifted = ShiftColInRef(hl.Reference.Value, deletedColIdx);
-                if (shifted == null) hl.Remove();
-                else hl.Reference = shifted;
-            }
-            if (!hyperlinks.HasChildren) hyperlinks.Remove();
-        }
-
-        // 8. Tables (table.ref + autoFilter.ref inside table parts)
-        foreach (var tablePart in worksheet.TableDefinitionParts)
-        {
-            var tbl = tablePart.Table;
-            if (tbl == null) continue;
-            if (tbl.Reference?.Value != null)
-            {
-                var shifted = ShiftColInRef(tbl.Reference.Value, deletedColIdx);
-                if (shifted != null) tbl.Reference = shifted;
-            }
-            if (tbl.AutoFilter?.Reference?.Value != null)
-            {
-                var shifted = ShiftColInRef(tbl.AutoFilter.Reference.Value, deletedColIdx);
-                if (shifted != null) tbl.AutoFilter.Reference = shifted;
-            }
-            tbl.Save();
-        }
-
-        // 9. Named ranges
-        ShiftNamedRangeCols(worksheet, deletedColIdx);
-
-        // 10. Formula refs in cells + shared/array formula `ref` attributes
-        RewriteFormulaRefsInSheet(worksheet, Core.FormulaShiftDirection.ColumnsLeft, deletedColIdx);
+        // 3. All sheet-level range-bearing structures + formulas + namedRanges.
+        ApplySheetRangeMutations(
+            worksheet, sheetName,
+            refMapper: r => ShiftColInRef(r, deletedColIdx),
+            formulaTextMapper: f => Core.FormulaRefShifter.Shift(
+                f, sheetName, sheetName, Core.FormulaShiftDirection.ColumnsLeft, deletedColIdx));
     }
 
     // ==================== Shift helpers ====================
@@ -1541,45 +1126,8 @@ public partial class ExcelHandler
         return string.Join(":", shifted);
     }
 
-    /// <summary>
-    /// Update workbook-level named ranges after a row deletion.
-    /// Handles both relative (A1) and absolute ($A$1) references.
-    /// Row numbers in named range formula text are shifted via regex replacement.
-    /// </summary>
-    private void ShiftNamedRangeRows(WorksheetPart worksheet, int deletedRow)
-    {
-        var sheetName = GetWorksheets().FirstOrDefault(w => w.Part == worksheet).Name;
-        if (string.IsNullOrEmpty(sheetName)) return;
-
-        var definedNames = GetWorkbook().GetFirstChild<DefinedNames>();
-        if (definedNames == null) return;
-
-        foreach (var dn in definedNames.Elements<DefinedName>())
-        {
-            if (dn.Text == null) continue;
-            dn.Text = ShiftRowNumbersInText(dn.Text, sheetName, deletedRow);
-        }
-        GetWorkbook().Save();
-    }
-
-    /// <summary>
-    /// Update workbook-level named ranges after a column deletion.
-    /// </summary>
-    private void ShiftNamedRangeCols(WorksheetPart worksheet, int deletedColIdx)
-    {
-        var sheetName = GetWorksheets().FirstOrDefault(w => w.Part == worksheet).Name;
-        if (string.IsNullOrEmpty(sheetName)) return;
-
-        var definedNames = GetWorkbook().GetFirstChild<DefinedNames>();
-        if (definedNames == null) return;
-
-        foreach (var dn in definedNames.Elements<DefinedName>())
-        {
-            if (dn.Text == null) continue;
-            dn.Text = ShiftColLettersInText(dn.Text, sheetName, deletedColIdx);
-        }
-        GetWorkbook().Save();
-    }
+    // ShiftNamedRangeRows / ShiftNamedRangeCols removed — see comment above
+    // about ShiftNamedRangeRowsDown/ColsRight; same consolidation.
 
     // ==================== Formula impact detection ====================
 
@@ -1694,42 +1242,10 @@ public partial class ExcelHandler
     }
 
     /// <summary>
-    /// In a formula/reference string like "Sheet1!$A$3:$B$5", decrement row numbers > deletedRow.
-    /// Only touches references that belong to the given sheet.
-    /// </summary>
-    private static string ShiftRowNumbersInText(string text, string sheetName, int deletedRow)
-    {
-        // Match: optional sheet prefix (Sheet1! or 'Sheet 1'!), optional $, column letters, optional $, row number
-        return Regex.Replace(text,
-            $@"(?<={Regex.Escape(sheetName)}!\$?[A-Z]+\$?)(\d+)",
-            m =>
-            {
-                var row = int.Parse(m.Value);
-                return row > deletedRow ? (row - 1).ToString() : m.Value;
-            },
-            RegexOptions.IgnoreCase);
-    }
-
-    /// <summary>
-    /// In a formula/reference string like "Sheet1!$B$1:$D$5", shift column letters > deletedColIdx left by one.
-    /// Only touches references that belong to the given sheet.
-    /// </summary>
-    private static string ShiftColLettersInText(string text, string sheetName, int deletedColIdx)
-    {
-        return Regex.Replace(text,
-            $@"(?<={Regex.Escape(sheetName)}!)\$?([A-Z]+)\$?(\d+)",
-            m =>
-            {
-                var col = m.Groups[1].Value.ToUpperInvariant();
-                var row = m.Groups[2].Value;
-                var colIdx = ColumnNameToIndex(col);
-                if (colIdx <= deletedColIdx) return m.Value;
-                var dollar1 = m.Value.StartsWith("$") ? "$" : "";
-                var dollar2 = m.Value.Contains("$" + col + "$") ? "$" : "";
-                return $"{dollar1}{IndexToColumnName(colIdx - 1)}{dollar2}{row}";
-            },
-            RegexOptions.IgnoreCase);
-    }
+    // ShiftRowNumbersInText / ShiftColLettersInText removed — defined-name
+    // text is now rewritten by section 8 of ApplySheetRangeMutations using
+    // FormulaRefShifter, which correctly handles quoted sheet names, string
+    // literals, and structured refs that the regex shifters mishandled.
 
     /// <summary>
     /// R9-1: after a sheet is removed, walk every remaining worksheet's

@@ -493,178 +493,19 @@ public partial class ExcelHandler
     private void ApplyRowRenumberToSheet(WorksheetPart worksheet, string sheetName, IReadOnlyDictionary<int, int> map)
     {
         if (map.Count == 0) return;
-        var ws = GetSheet(worksheet);
-
-        // Cell formulas + shared/array ref attribute
-        var sheetData = ws.GetFirstChild<SheetData>();
-        if (sheetData != null)
-        {
-            foreach (var r in sheetData.Elements<Row>())
-            {
-                foreach (var c in r.Elements<Cell>())
-                {
-                    if (c.CellFormula == null) continue;
-                    if (!string.IsNullOrEmpty(c.CellFormula.Text))
-                        c.CellFormula.Text = Core.FormulaRefShifter.ApplyRowRenumberMap(
-                            c.CellFormula.Text, sheetName, sheetName, map);
-                    if (c.CellFormula.Reference?.Value != null)
-                        c.CellFormula.Reference = RemapRowsInRangeRef(c.CellFormula.Reference.Value, map) ?? c.CellFormula.Reference.Value;
-                }
-            }
-        }
-
-        // mergeCells
-        var mergeCells = ws.GetFirstChild<MergeCells>();
-        if (mergeCells != null)
-            foreach (var mc in mergeCells.Elements<MergeCell>())
-                if (mc.Reference?.Value != null)
-                    mc.Reference = RemapRowsInRangeRef(mc.Reference.Value, map) ?? mc.Reference.Value;
-
-        // CF sqref
-        foreach (var cf in ws.Elements<ConditionalFormatting>())
-        {
-            if (cf.SequenceOfReferences?.HasValue != true) continue;
-            var newRefs = cf.SequenceOfReferences.Items
-                .Select(r => RemapRowsInRangeRef(r.Value, map) ?? r.Value).ToList();
-            cf.SequenceOfReferences = new ListValue<StringValue>(newRefs.Select(r => new StringValue(r)));
-        }
-
-        // DV sqref
-        var dvs = ws.GetFirstChild<DataValidations>();
-        if (dvs != null)
-            foreach (var dv in dvs.Elements<DataValidation>())
-            {
-                if (dv.SequenceOfReferences?.HasValue != true) continue;
-                var newRefs = dv.SequenceOfReferences.Items
-                    .Select(r => RemapRowsInRangeRef(r.Value, map) ?? r.Value).ToList();
-                dv.SequenceOfReferences = new ListValue<StringValue>(newRefs.Select(r => new StringValue(r)));
-            }
-
-        // AutoFilter
-        var af = ws.GetFirstChild<AutoFilter>();
-        if (af?.Reference?.Value != null)
-        {
-            var s = RemapRowsInRangeRef(af.Reference.Value, map);
-            if (s != null) af.Reference = s;
-        }
-
-        // Hyperlinks
-        var hyperlinks = ws.GetFirstChild<Hyperlinks>();
-        if (hyperlinks != null)
-            foreach (var hl in hyperlinks.Elements<Hyperlink>())
-                if (hl.Reference?.Value != null)
-                {
-                    var s = RemapRowsInRangeRef(hl.Reference.Value, map);
-                    if (s != null) hl.Reference = s;
-                }
-
-        // Tables
-        foreach (var tablePart in worksheet.TableDefinitionParts)
-        {
-            var tbl = tablePart.Table;
-            if (tbl == null) continue;
-            if (tbl.Reference?.Value != null)
-            {
-                var s = RemapRowsInRangeRef(tbl.Reference.Value, map);
-                if (s != null) tbl.Reference = s;
-            }
-            if (tbl.AutoFilter?.Reference?.Value != null)
-            {
-                var s = RemapRowsInRangeRef(tbl.AutoFilter.Reference.Value, map);
-                if (s != null) tbl.AutoFilter.Reference = s;
-            }
-            tbl.Save();
-        }
-
-        // Workbook-level definedNames may reference rows on this sheet.
-        // Pass each defined-name expression through the same shifter; the
-        // sheet-scope guard inside ApplyRowRenumberMap leaves cross-sheet
-        // refs alone.
-        ApplyRowRenumberToWorkbookDefinedNames(sheetName, map);
+        ApplySheetRangeMutations(
+            worksheet, sheetName,
+            refMapper: r => RemapRowsInRangeRef(r, map),
+            formulaTextMapper: f => Core.FormulaRefShifter.ApplyRowRenumberMap(f, sheetName, sheetName, map));
     }
 
     private void ApplyColRenumberToSheet(WorksheetPart worksheet, string sheetName, IReadOnlyDictionary<int, int> map)
     {
         if (map.Count == 0) return;
-        var ws = GetSheet(worksheet);
-
-        // Cell formulas + shared/array ref attribute
-        var sheetData = ws.GetFirstChild<SheetData>();
-        if (sheetData != null)
-        {
-            foreach (var r in sheetData.Elements<Row>())
-            {
-                foreach (var c in r.Elements<Cell>())
-                {
-                    if (c.CellFormula == null) continue;
-                    if (!string.IsNullOrEmpty(c.CellFormula.Text))
-                        c.CellFormula.Text = Core.FormulaRefShifter.ApplyColRenumberMap(
-                            c.CellFormula.Text, sheetName, sheetName, map);
-                    if (c.CellFormula.Reference?.Value != null)
-                        c.CellFormula.Reference = RemapColsInRangeRef(c.CellFormula.Reference.Value, map) ?? c.CellFormula.Reference.Value;
-                }
-            }
-        }
-
-        var mergeCells = ws.GetFirstChild<MergeCells>();
-        if (mergeCells != null)
-            foreach (var mc in mergeCells.Elements<MergeCell>())
-                if (mc.Reference?.Value != null)
-                    mc.Reference = RemapColsInRangeRef(mc.Reference.Value, map) ?? mc.Reference.Value;
-
-        foreach (var cf in ws.Elements<ConditionalFormatting>())
-        {
-            if (cf.SequenceOfReferences?.HasValue != true) continue;
-            var newRefs = cf.SequenceOfReferences.Items
-                .Select(r => RemapColsInRangeRef(r.Value, map) ?? r.Value).ToList();
-            cf.SequenceOfReferences = new ListValue<StringValue>(newRefs.Select(r => new StringValue(r)));
-        }
-
-        var dvs = ws.GetFirstChild<DataValidations>();
-        if (dvs != null)
-            foreach (var dv in dvs.Elements<DataValidation>())
-            {
-                if (dv.SequenceOfReferences?.HasValue != true) continue;
-                var newRefs = dv.SequenceOfReferences.Items
-                    .Select(r => RemapColsInRangeRef(r.Value, map) ?? r.Value).ToList();
-                dv.SequenceOfReferences = new ListValue<StringValue>(newRefs.Select(r => new StringValue(r)));
-            }
-
-        var af = ws.GetFirstChild<AutoFilter>();
-        if (af?.Reference?.Value != null)
-        {
-            var s = RemapColsInRangeRef(af.Reference.Value, map);
-            if (s != null) af.Reference = s;
-        }
-
-        var hyperlinks = ws.GetFirstChild<Hyperlinks>();
-        if (hyperlinks != null)
-            foreach (var hl in hyperlinks.Elements<Hyperlink>())
-                if (hl.Reference?.Value != null)
-                {
-                    var s = RemapColsInRangeRef(hl.Reference.Value, map);
-                    if (s != null) hl.Reference = s;
-                }
-
-        foreach (var tablePart in worksheet.TableDefinitionParts)
-        {
-            var tbl = tablePart.Table;
-            if (tbl == null) continue;
-            if (tbl.Reference?.Value != null)
-            {
-                var s = RemapColsInRangeRef(tbl.Reference.Value, map);
-                if (s != null) tbl.Reference = s;
-            }
-            if (tbl.AutoFilter?.Reference?.Value != null)
-            {
-                var s = RemapColsInRangeRef(tbl.AutoFilter.Reference.Value, map);
-                if (s != null) tbl.AutoFilter.Reference = s;
-            }
-            tbl.Save();
-        }
-
-        // Workbook definedNames may reference columns on this sheet.
-        ApplyColRenumberToWorkbookDefinedNames(sheetName, map);
+        ApplySheetRangeMutations(
+            worksheet, sheetName,
+            refMapper: r => RemapColsInRangeRef(r, map),
+            formulaTextMapper: f => Core.FormulaRefShifter.ApplyColRenumberMap(f, sheetName, sheetName, map));
     }
 
     private static string? RemapColsInRangeRef(string? refStr, IReadOnlyDictionary<int, int> map)
@@ -693,45 +534,9 @@ public partial class ExcelHandler
         return string.Join(":", shifted);
     }
 
-    private void ApplyColRenumberToWorkbookDefinedNames(string sheetName, IReadOnlyDictionary<int, int> map)
-    {
-        if (map.Count == 0) return;
-        var definedNames = GetWorkbook().GetFirstChild<DefinedNames>();
-        if (definedNames == null) return;
-        bool changed = false;
-        foreach (var dn in definedNames.Elements<DefinedName>())
-        {
-            if (dn.Text == null) continue;
-            var newText = Core.FormulaRefShifter.ApplyColRenumberMap(
-                dn.Text, sheetName, sheetName, map);
-            if (!string.Equals(newText, dn.Text, StringComparison.Ordinal))
-            {
-                dn.Text = newText;
-                changed = true;
-            }
-        }
-        if (changed) GetWorkbook().Save();
-    }
-
-    private void ApplyRowRenumberToWorkbookDefinedNames(string sheetName, IReadOnlyDictionary<int, int> map)
-    {
-        if (map.Count == 0) return;
-        var definedNames = GetWorkbook().GetFirstChild<DefinedNames>();
-        if (definedNames == null) return;
-        bool changed = false;
-        foreach (var dn in definedNames.Elements<DefinedName>())
-        {
-            if (dn.Text == null) continue;
-            var newText = Core.FormulaRefShifter.ApplyRowRenumberMap(
-                dn.Text, sheetName, sheetName, map);
-            if (!string.Equals(newText, dn.Text, StringComparison.Ordinal))
-            {
-                dn.Text = newText;
-                changed = true;
-            }
-        }
-        if (changed) GetWorkbook().Save();
-    }
+    // ApplyRowRenumberToWorkbookDefinedNames / ApplyColRenumberToWorkbookDefinedNames
+    // removed — defined-names are now rewritten by section 8 of
+    // ApplySheetRangeMutations (the formulaTextMapper passed in).
 
     /// <summary>
     /// Apply the row-renumber map to a range-style ref like 'B2:D5' or 'A1'.
