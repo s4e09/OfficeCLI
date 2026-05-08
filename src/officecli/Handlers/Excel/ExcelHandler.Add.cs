@@ -276,6 +276,15 @@ public partial class ExcelHandler
                     targetIndex = targetIndex.Value - 1;
             }
 
+            // Snapshot every row's old RowIndex (per sheet) so we can build
+            // an oldToNew renumber map after the reposition + renumber. The
+            // map drives formula and range-ref rewriting so cross-row
+            // references follow the moved content.
+            var srcOldIdx = sheetData.Elements<Row>().ToDictionary(r => r, r => (int)(r.RowIndex?.Value ?? 0));
+            Dictionary<Row, int>? tgtOldIdx = null;
+            if (targetSheetData != sheetData)
+                tgtOldIdx = targetSheetData.Elements<Row>().ToDictionary(r => r, r => (int)(r.RowIndex?.Value ?? 0));
+
             row.Remove();
 
             if (targetIndex.HasValue)
@@ -293,7 +302,7 @@ public partial class ExcelHandler
 
             // Renumber every row in document order so Excel reads them in the
             // intended sequence — Excel ignores XML document order and uses
-            // <row r="N"> as the source of truth. Without renumbering, a move
+            // <row r='N'> as the source of truth. Without renumbering, a move
             // operation appears to do nothing on reopen.
             //
             // Limitation: this collapses any gaps the original sheet may have
@@ -303,6 +312,22 @@ public partial class ExcelHandler
             RenumberRowsAndCellRefs(targetSheetData);
             if (targetSheetData != sheetData)
                 RenumberRowsAndCellRefs(sheetData);
+
+            // Build oldToNew row-index maps and apply to formula text +
+            // range-bearing structures (mergeCells, CF/DV sqref, autoFilter,
+            // hyperlinks, table refs). Without this, formulas like A1==A3
+            // would still read literal A3 after the move, defeating the
+            // 'follow content' contract.
+            var srcMap = BuildRowRenumberMap(srcOldIdx);
+            var srcSheetWs = worksheet;
+            ApplyRowRenumberToSheet(srcSheetWs, sheetName, srcMap);
+            if (targetSheetData != sheetData && tgtOldIdx != null)
+            {
+                var tgtMap = BuildRowRenumberMap(tgtOldIdx);
+                var tgtWsPart = GetWorksheets().FirstOrDefault(w => GetSheet(w.Part).GetFirstChild<SheetData>() == targetSheetData).Part;
+                if (tgtWsPart != null)
+                    ApplyRowRenumberToSheet(tgtWsPart, GetWorksheets().First(w => w.Part == tgtWsPart).Name, tgtMap);
+            }
 
             SaveWorksheet(worksheet);
             if (targetSheetData != sheetData)
@@ -315,6 +340,149 @@ public partial class ExcelHandler
         }
 
         throw new ArgumentException($"Move not supported for: {elementRef}. Supported: row[N]");
+    }
+
+    /// <summary>
+    /// Build {old → new} row-index map from a snapshot taken before the
+    /// move + renumber. Rows whose old and new index match are omitted (the
+    /// shifter treats absent keys as no-op).
+    /// </summary>
+    private static Dictionary<int, int> BuildRowRenumberMap(Dictionary<Row, int> oldIdxByRow)
+    {
+        var map = new Dictionary<int, int>(oldIdxByRow.Count);
+        foreach (var (row, oldIdx) in oldIdxByRow)
+        {
+            int newIdx = (int)(row.RowIndex?.Value ?? 0u);
+            if (newIdx != 0 && newIdx != oldIdx)
+                map[oldIdx] = newIdx;
+        }
+        return map;
+    }
+
+    /// <summary>
+    /// Apply an oldToNew row-index map to every formula and range-bearing
+    /// structure on the sheet (mergeCells, CF/DV sqref, autoFilter,
+    /// hyperlinks, table refs). Range refs whose endpoints invert after
+    /// renumber are left unchanged (best-effort: post-renumber they no
+    /// longer express a contiguous A1 region).
+    /// </summary>
+    private void ApplyRowRenumberToSheet(WorksheetPart worksheet, string sheetName, IReadOnlyDictionary<int, int> map)
+    {
+        if (map.Count == 0) return;
+        var ws = GetSheet(worksheet);
+
+        // Cell formulas + shared/array ref attribute
+        var sheetData = ws.GetFirstChild<SheetData>();
+        if (sheetData != null)
+        {
+            foreach (var r in sheetData.Elements<Row>())
+            {
+                foreach (var c in r.Elements<Cell>())
+                {
+                    if (c.CellFormula == null) continue;
+                    if (!string.IsNullOrEmpty(c.CellFormula.Text))
+                        c.CellFormula.Text = Core.FormulaRefShifter.ApplyRowRenumberMap(
+                            c.CellFormula.Text, sheetName, sheetName, map);
+                    if (c.CellFormula.Reference?.Value != null)
+                        c.CellFormula.Reference = RemapRowsInRangeRef(c.CellFormula.Reference.Value, map) ?? c.CellFormula.Reference.Value;
+                }
+            }
+        }
+
+        // mergeCells
+        var mergeCells = ws.GetFirstChild<MergeCells>();
+        if (mergeCells != null)
+            foreach (var mc in mergeCells.Elements<MergeCell>())
+                if (mc.Reference?.Value != null)
+                    mc.Reference = RemapRowsInRangeRef(mc.Reference.Value, map) ?? mc.Reference.Value;
+
+        // CF sqref
+        foreach (var cf in ws.Elements<ConditionalFormatting>())
+        {
+            if (cf.SequenceOfReferences?.HasValue != true) continue;
+            var newRefs = cf.SequenceOfReferences.Items
+                .Select(r => RemapRowsInRangeRef(r.Value, map) ?? r.Value).ToList();
+            cf.SequenceOfReferences = new ListValue<StringValue>(newRefs.Select(r => new StringValue(r)));
+        }
+
+        // DV sqref
+        var dvs = ws.GetFirstChild<DataValidations>();
+        if (dvs != null)
+            foreach (var dv in dvs.Elements<DataValidation>())
+            {
+                if (dv.SequenceOfReferences?.HasValue != true) continue;
+                var newRefs = dv.SequenceOfReferences.Items
+                    .Select(r => RemapRowsInRangeRef(r.Value, map) ?? r.Value).ToList();
+                dv.SequenceOfReferences = new ListValue<StringValue>(newRefs.Select(r => new StringValue(r)));
+            }
+
+        // AutoFilter
+        var af = ws.GetFirstChild<AutoFilter>();
+        if (af?.Reference?.Value != null)
+        {
+            var s = RemapRowsInRangeRef(af.Reference.Value, map);
+            if (s != null) af.Reference = s;
+        }
+
+        // Hyperlinks
+        var hyperlinks = ws.GetFirstChild<Hyperlinks>();
+        if (hyperlinks != null)
+            foreach (var hl in hyperlinks.Elements<Hyperlink>())
+                if (hl.Reference?.Value != null)
+                {
+                    var s = RemapRowsInRangeRef(hl.Reference.Value, map);
+                    if (s != null) hl.Reference = s;
+                }
+
+        // Tables
+        foreach (var tablePart in worksheet.TableDefinitionParts)
+        {
+            var tbl = tablePart.Table;
+            if (tbl == null) continue;
+            if (tbl.Reference?.Value != null)
+            {
+                var s = RemapRowsInRangeRef(tbl.Reference.Value, map);
+                if (s != null) tbl.Reference = s;
+            }
+            if (tbl.AutoFilter?.Reference?.Value != null)
+            {
+                var s = RemapRowsInRangeRef(tbl.AutoFilter.Reference.Value, map);
+                if (s != null) tbl.AutoFilter.Reference = s;
+            }
+            tbl.Save();
+        }
+    }
+
+    /// <summary>
+    /// Apply the row-renumber map to a range-style ref like 'B2:D5' or 'A1'.
+    /// Returns null if any endpoint's row is absent from the map AND the
+    /// other endpoint is in the map (would produce a malformed range), or
+    /// if the resulting endpoints invert.
+    /// </summary>
+    private static string? RemapRowsInRangeRef(string? refStr, IReadOnlyDictionary<int, int> map)
+    {
+        if (string.IsNullOrEmpty(refStr)) return null;
+        var parts = refStr.Split(':');
+        var shifted = new List<string>(parts.Length);
+        var rowVals = new List<int>(parts.Length);
+        foreach (var part in parts)
+        {
+            try
+            {
+                var match = System.Text.RegularExpressions.Regex.Match(part, @"^([A-Z]+)(\d+)$");
+                if (!match.Success) { shifted.Add(part); rowVals.Add(-1); continue; }
+                var col = match.Groups[1].Value;
+                var oldRow = int.Parse(match.Groups[2].Value);
+                var newRow = map.TryGetValue(oldRow, out var n) ? n : oldRow;
+                shifted.Add($"{col}{newRow}");
+                rowVals.Add(newRow);
+            }
+            catch { shifted.Add(part); rowVals.Add(-1); }
+        }
+        // Range endpoint sanity: if both rows are valid and start > end, abort.
+        if (rowVals.Count == 2 && rowVals[0] > 0 && rowVals[1] > 0 && rowVals[0] > rowVals[1])
+            return null;
+        return string.Join(":", shifted);
     }
 
     /// <summary>

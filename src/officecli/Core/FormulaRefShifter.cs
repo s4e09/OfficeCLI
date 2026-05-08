@@ -62,6 +62,115 @@ public static class FormulaRefShifter
         RegexOptions.Compiled);
 
     /// <summary>
+    /// Rewrite cell references in a formula by remapping their row numbers
+    /// through an arbitrary <paramref name="oldToNewRow"/> mapping. Used by
+    /// move/reorder operations where the change is not a uniform +1/-1 shift
+    /// but a permutation of row indices (e.g. moving row 3 before row 2
+    /// produces the map {1→1, 2→3, 3→2}).
+    ///
+    /// <para>Refs whose row is not in the map pass through unchanged. For
+    /// ranges, both endpoints are remapped; if the result inverts (start &gt;
+    /// end) the original range is returned unchanged. Sheet-scope, string-
+    /// literal, and structured-ref skip rules are identical to <see cref="Shift"/>.</para>
+    /// </summary>
+    public static string ApplyRowRenumberMap(
+        string formula,
+        string currentSheet,
+        string modifiedSheet,
+        IReadOnlyDictionary<int, int> oldToNewRow)
+    {
+        if (string.IsNullOrEmpty(formula) || oldToNewRow.Count == 0) return formula;
+
+        var sb = new StringBuilder(formula.Length);
+        int i = 0;
+        while (i < formula.Length)
+        {
+            char ch = formula[i];
+            if (ch == '"')
+            {
+                sb.Append(ch); i++;
+                while (i < formula.Length)
+                {
+                    sb.Append(formula[i]);
+                    if (formula[i] == '"')
+                    {
+                        if (i + 1 < formula.Length && formula[i + 1] == '"')
+                        { sb.Append(formula[i + 1]); i += 2; continue; }
+                        i++; break;
+                    }
+                    i++;
+                }
+            }
+            else if (ch == '[')
+            {
+                int depth = 0;
+                while (i < formula.Length)
+                {
+                    char c = formula[i];
+                    sb.Append(c);
+                    if (c == '[') depth++;
+                    else if (c == ']') { depth--; if (depth == 0) { i++; break; } }
+                    i++;
+                }
+            }
+            else
+            {
+                int start = i;
+                while (i < formula.Length && formula[i] != '"' && formula[i] != '[') i++;
+                sb.Append(RenumberRefsInChunk(
+                    formula.AsSpan(start, i - start).ToString(),
+                    currentSheet, modifiedSheet, oldToNewRow));
+            }
+        }
+        return sb.ToString();
+    }
+
+    private static string RenumberRefsInChunk(
+        string chunk, string currentSheet, string modifiedSheet,
+        IReadOnlyDictionary<int, int> oldToNewRow)
+    {
+        return CellRefPattern.Replace(chunk, m =>
+        {
+            var sheetGroup = m.Groups["sheet"].Value;
+            string targetSheet = string.IsNullOrEmpty(sheetGroup)
+                ? currentSheet
+                : (sheetGroup.StartsWith('\'') && sheetGroup.EndsWith('\'')
+                    ? sheetGroup[1..^1].Replace("''", "'")
+                    : sheetGroup);
+            if (!targetSheet.Equals(modifiedSheet, StringComparison.OrdinalIgnoreCase))
+                return m.Value;
+
+            string c1 = m.Groups["c1"].Value;
+            string r1 = m.Groups["r1"].Value;
+            string c2 = m.Groups["c2"].Value;
+            string r2 = m.Groups["r2"].Value;
+            bool isRange = !string.IsNullOrEmpty(c2);
+            string sheetPrefix = string.IsNullOrEmpty(sheetGroup) ? "" : sheetGroup + "!";
+
+            string newR1 = RemapRow(r1, oldToNewRow);
+            if (!isRange) return $"{sheetPrefix}{c1}{newR1}";
+
+            string newR2 = RemapRow(r2, oldToNewRow);
+            // If both endpoints came from the map and the range inverts, the
+            // post-renumber range is no longer expressible as a contiguous
+            // A1 region — fall back to the original text rather than write
+            // a malformed ref.
+            int Parse(string s) => int.Parse(s.StartsWith('$') ? s[1..] : s);
+            if (Parse(newR1) > Parse(newR2)) return m.Value;
+
+            return $"{sheetPrefix}{c1}{newR1}:{c2}{newR2}";
+        });
+    }
+
+    private static string RemapRow(string rowPart, IReadOnlyDictionary<int, int> map)
+    {
+        bool abs = rowPart.StartsWith('$');
+        int oldNum = int.Parse(abs ? rowPart[1..] : rowPart);
+        if (!map.TryGetValue(oldNum, out var newNum)) return rowPart;
+        return (abs ? "$" : "") + newNum;
+    }
+
+    /// <summary>
     /// Returns the formula text rewritten so that any references targeting
     /// <paramref name="modifiedSheet"/> at or past <paramref name="insertIdx"/>
     /// are shifted by 1 in <paramref name="direction"/>. Refs targeting other
