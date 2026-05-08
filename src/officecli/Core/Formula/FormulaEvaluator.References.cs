@@ -168,6 +168,8 @@ internal partial class FormulaEvaluator
     private FormulaResult? EvalIndirect(List<object> args)
     {
         if (args.Count < 1) return FormulaResult.Error("#VALUE!");
+        // Propagate the original error rather than treating its text as a ref.
+        if (args[0] is FormulaResult { IsError: true } e) return e;
         var s = (args[0] as FormulaResult)?.AsString();
         if (string.IsNullOrEmpty(s)) return FormulaResult.Error("#REF!");
         var refArg = ParseRefString(s);
