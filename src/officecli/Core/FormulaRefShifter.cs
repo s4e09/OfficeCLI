@@ -349,6 +349,24 @@ public static class FormulaRefShifter
     }
 
     /// <summary>
+    /// Rewrite sheet-name prefixes when a sheet is renamed. The rewrite
+    /// only touches the formula's reference space — string literals
+    /// (<c>INDIRECT("Sheet1!A1")</c>) and bracketed structured-ref content
+    /// are left verbatim. <paramref name="oldRef"/> and <paramref name="newRef"/>
+    /// are the formula-form names with their trailing <c>!</c> already
+    /// applied (e.g. <c>"Sheet1!"</c> or <c>"'Sheet With Spaces'!"</c>),
+    /// matching how the existing rename code constructs them.
+    /// </summary>
+    public static string RenameSheetRef(string formula, string oldRef, string newRef)
+    {
+        if (string.IsNullOrEmpty(formula) || string.IsNullOrEmpty(oldRef)
+            || oldRef.Equals(newRef, StringComparison.Ordinal))
+            return formula;
+        return WalkFormulaTokens(formula, chunk =>
+            chunk.Replace(oldRef, newRef, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
     /// Returns the formula text rewritten so that any references targeting
     /// <paramref name="modifiedSheet"/> at or past <paramref name="insertIdx"/>
     /// are shifted by 1 in <paramref name="direction"/>. Refs targeting other

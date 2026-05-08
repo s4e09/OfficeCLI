@@ -858,7 +858,13 @@ public partial class ExcelHandler
                             {
                                 if (cell.CellFormula?.Text != null &&
                                     cell.CellFormula.Text.Contains(oldRef, StringComparison.OrdinalIgnoreCase))
-                                    cell.CellFormula.Text = cell.CellFormula.Text.Replace(oldRef, newRef, StringComparison.OrdinalIgnoreCase);
+                                {
+                                    // R3 BUG-2: must skip string literals — INDIRECT("Sheet1!A1")
+                                    // is a user-typed string, not a reference, and Excel preserves
+                                    // it verbatim across renames.
+                                    cell.CellFormula.Text = Core.FormulaRefShifter.RenameSheetRef(
+                                        cell.CellFormula.Text, oldRef, newRef);
+                                }
                             }
                             GetSheet(wsPart).Save();
                         }
