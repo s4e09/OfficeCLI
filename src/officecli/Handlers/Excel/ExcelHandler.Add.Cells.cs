@@ -140,7 +140,12 @@ public partial class ExcelHandler
 
         // Resolve --before / --after anchors (same shape as Excel CopyFrom):
         // anchor must be /<sheetName>/row[K] in the same sheet.
-        int? index = position?.Index;
+        // CONSISTENCY(zero-based-index): per project convention, position.Index
+        // is 0-based across all formats (--index 0 = head, --index 1 = before
+        // 2nd slot). xlsx Row uses a 1-based RowIndex internally, so +1 here
+        // and let the existing branch keep treating `index` as a 1-based row
+        // number (which is also what the anchor branch below produces).
+        int? index = position?.Index.HasValue == true ? position!.Index!.Value + 1 : (int?)null;
         if (index == null && position != null && (position.After != null || position.Before != null))
         {
             int FindAnchorRow(string anchorPath)
@@ -193,23 +198,28 @@ public partial class ExcelHandler
         {
             if (!int.TryParse(colsStr, out var cols) || cols <= 0)
                 throw new ArgumentException($"Invalid 'cols' value: '{colsStr}'. Expected a positive integer (number of columns to create).");
+            // CONSISTENCY(table-row-cN): pptx AddRow accepts c1=/c2=/... to
+            // populate the new row's cells (PowerPointHandler.Add.Table.cs
+            // L332). Mirror it here so xlsx `add row --prop cols=N c1=...`
+            // is a one-shot row create + fill instead of needing N follow-up
+            // cell Sets. Only materialize a <c> when the caller actually
+            // supplied content for that column — pre-emitting empty <c r=...>
+            // shells would diverge from Excel's stored form (empty cells are
+            // simply absent) and make Get("/Sheet/An") report "" instead of
+            // "(empty)".
             for (int c = 0; c < cols; c++)
             {
+                if (!properties.TryGetValue($"c{c + 1}", out var cellText) || cellText == null)
+                    continue;
                 var colLetter = IndexToColumnName(c + 1);
-                var newCell = new Cell { CellReference = $"{colLetter}{rowIdx}" };
-                // CONSISTENCY(table-row-cN): pptx AddRow accepts c1=/c2=/... to
-                // populate the new row's cells (PowerPointHandler.Add.Table.cs
-                // L332). Mirror it here so xlsx `add row --prop cols=N c1=...`
-                // is a one-shot row create + fill instead of needing N follow-up
-                // cell Sets. Stored as String-typed inline values; round-trips
-                // via Get("/Sheet/A1").Text.
-                if (properties.TryGetValue($"c{c + 1}", out var cellText) && cellText != null)
+                EnsureCellValueLength(cellText, $"{colLetter}{rowIdx}");
+                var safe = OfficeCli.Core.PivotTableHelper.SanitizeXmlText(cellText);
+                var newCell = new Cell
                 {
-                    EnsureCellValueLength(cellText, $"{colLetter}{rowIdx}");
-                    var safe = OfficeCli.Core.PivotTableHelper.SanitizeXmlText(cellText);
-                    newCell.CellValue = new CellValue(safe);
-                    newCell.DataType = new EnumValue<CellValues>(CellValues.String);
-                }
+                    CellReference = $"{colLetter}{rowIdx}",
+                    CellValue = new CellValue(safe),
+                    DataType = new EnumValue<CellValues>(CellValues.String),
+                };
                 newRow.AppendChild(newCell);
             }
         }
