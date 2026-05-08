@@ -441,6 +441,12 @@ static partial class CommandBuilder
                 var path = item.Path ?? "/";
                 var depth = item.Depth ?? 1;
                 var node = handler.Get(path, depth);
+                // Error-typed nodes (e.g. namedrange not found) must surface as
+                // exceptions so --stop-on-error can detect them. Without this,
+                // Get returns a node with Type="error" and a message in Text,
+                // ExecuteBatchItem treats it as success, and stop-on-error never fires.
+                if (node.Type == "error")
+                    throw new ArgumentException(node.Text ?? $"Path not found: {path}");
                 return OfficeCli.Core.OutputFormatter.FormatNode(node, format);
             }
             case "query":
