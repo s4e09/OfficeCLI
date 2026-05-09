@@ -60,6 +60,7 @@ public partial class ExcelHandler : IDocumentHandler
             ["/xl/workbook.xml"] = "/workbook",
             ["/xl/styles.xml"] = "/styles",
             ["/xl/sharedStrings.xml"] = "/sharedstrings",
+            ["/xl/theme/theme1.xml"] = "/theme",
         };
 
     private static string NormalizeZipPath(string partPath) =>
@@ -87,6 +88,12 @@ public partial class ExcelHandler : IDocumentHandler
         {
             var sst = workbookPart.GetPartsOfType<SharedStringTablePart>().FirstOrDefault();
             return sst?.SharedStringTable?.OuterXml ?? "(no shared strings)";
+        }
+
+        if (partPath == "/theme")
+        {
+            var themePart = workbookPart.ThemePart;
+            return themePart?.Theme?.OuterXml ?? "(no theme)";
         }
 
         // Drawing part: /SheetName/drawing
@@ -172,7 +179,7 @@ public partial class ExcelHandler : IDocumentHandler
             }
         }
 
-        throw new ArgumentException($"Unknown part: {partPath}. Available: /workbook, /styles, /sharedstrings, /<SheetName>, /<SheetName>/drawing, /<SheetName>/chart[N], /chart[N], /<SheetName>/<relId>");
+        throw new ArgumentException($"Unknown part: {partPath}. Available: /workbook, /styles, /sharedstrings, /theme, /<SheetName>, /<SheetName>/drawing, /<SheetName>/chart[N], /chart[N], /<SheetName>/<relId>");
     }
 
     private static string RawSheetWithFilter(WorksheetPart worksheetPart, int? startRow, int? endRow, HashSet<string>? cols)
@@ -237,6 +244,11 @@ public partial class ExcelHandler : IDocumentHandler
                 ?? throw new InvalidOperationException("No shared strings");
             rootElement = sst.SharedStringTable!;
         }
+        else if (partPath == "/theme")
+        {
+            rootElement = workbookPart.ThemePart?.Theme
+                ?? throw new ArgumentException("No theme part");
+        }
         else
         {
             // Drawing part: /SheetName/drawing
@@ -277,7 +289,7 @@ public partial class ExcelHandler : IDocumentHandler
                     // Try as sheet name
                     var sheetName = partPath.TrimStart('/');
                     var worksheet = FindWorksheet(sheetName)
-                        ?? throw new ArgumentException($"Unknown part: {partPath}. Available: /workbook, /styles, /sharedstrings, /<SheetName>, /<SheetName>/chart[N], /chart[N]");
+                        ?? throw new ArgumentException($"Unknown part: {partPath}. Available: /workbook, /styles, /sharedstrings, /theme, /<SheetName>, /<SheetName>/chart[N], /chart[N]");
                     rootElement = GetSheet(worksheet);
                 }
             }

@@ -46,6 +46,7 @@ public partial class PowerPointHandler : IDocumentHandler
         new(StringComparer.OrdinalIgnoreCase)
         {
             ["/ppt/presentation.xml"] = "/presentation",
+            ["/ppt/theme/theme1.xml"] = "/theme",
         };
 
     private static string NormalizeZipPath(string partPath) =>
@@ -53,22 +54,66 @@ public partial class PowerPointHandler : IDocumentHandler
 
     public string Raw(string partPath, int? startRow = null, int? endRow = null, HashSet<string>? cols = null)
     {
+        var presentationPart = _doc.PresentationPart;
+        if (presentationPart == null) return "(empty)";
+
         partPath = NormalizeZipPath(partPath);
 
         if (partPath == "/" || partPath == "/presentation")
-            return _doc.PresentationPart?.Presentation?.OuterXml ?? "(empty)";
+            return presentationPart.Presentation?.OuterXml ?? "(empty)";
 
-        var match = Regex.Match(partPath, @"^/slide\[(\d+)\]$");
-        if (match.Success)
+        if (partPath == "/theme")
+            return presentationPart.ThemePart?.Theme?.OuterXml ?? "(no theme)";
+
+        var slideMatch = Regex.Match(partPath, @"^/slide\[(\d+)\]$");
+        if (slideMatch.Success)
         {
-            var idx = int.Parse(match.Groups[1].Value);
+            var idx = int.Parse(slideMatch.Groups[1].Value);
             var slideParts = GetSlideParts().ToList();
             if (idx >= 1 && idx <= slideParts.Count)
                 return GetSlide(slideParts[idx - 1]).OuterXml;
             throw new ArgumentException($"slide[{idx}] not found (total: {slideParts.Count})");
         }
 
-        throw new ArgumentException($"Unknown part: {partPath}. Available: /presentation, /slide[N]");
+        // CONSISTENCY(raw-rawset-symmetry): RawSet supports master/layout/noteSlide;
+        // Raw must too, otherwise users can't read back what they just wrote.
+        var masterMatch = Regex.Match(partPath, @"^/slideMaster\[(\d+)\]$");
+        if (masterMatch.Success)
+        {
+            var idx = int.Parse(masterMatch.Groups[1].Value);
+            var masters = presentationPart.SlideMasterParts.ToList();
+            if (idx < 1 || idx > masters.Count)
+                throw new ArgumentException($"slideMaster[{idx}] not found (total: {masters.Count})");
+            return masters[idx - 1].SlideMaster?.OuterXml
+                ?? throw new InvalidOperationException("Corrupt file: slide master data missing");
+        }
+
+        var layoutMatch = Regex.Match(partPath, @"^/slideLayout\[(\d+)\]$");
+        if (layoutMatch.Success)
+        {
+            var idx = int.Parse(layoutMatch.Groups[1].Value);
+            var layouts = presentationPart.SlideMasterParts
+                .SelectMany(m => m.SlideLayoutParts).ToList();
+            if (idx < 1 || idx > layouts.Count)
+                throw new ArgumentException($"slideLayout[{idx}] not found (total: {layouts.Count})");
+            return layouts[idx - 1].SlideLayout?.OuterXml
+                ?? throw new InvalidOperationException("Corrupt file: slide layout data missing");
+        }
+
+        var noteMatch = Regex.Match(partPath, @"^/noteSlide\[(\d+)\]$");
+        if (noteMatch.Success)
+        {
+            var idx = int.Parse(noteMatch.Groups[1].Value);
+            var slideParts = GetSlideParts().ToList();
+            if (idx < 1 || idx > slideParts.Count)
+                throw new ArgumentException($"slide[{idx}] not found (total: {slideParts.Count})");
+            var notesPart = slideParts[idx - 1].NotesSlidePart
+                ?? throw new ArgumentException($"Slide {idx} has no notes");
+            return notesPart.NotesSlide?.OuterXml
+                ?? throw new InvalidOperationException("Corrupt file: notes slide data missing");
+        }
+
+        throw new ArgumentException($"Unknown part: {partPath}. Available: /presentation, /theme, /slide[N], /slideMaster[N], /slideLayout[N], /noteSlide[N]");
     }
 
     public void RawSet(string partPath, string xpath, string action, string? xml)
@@ -84,6 +129,11 @@ public partial class PowerPointHandler : IDocumentHandler
         {
             rootElement = presentationPart.Presentation
                 ?? throw new InvalidOperationException("No presentation");
+        }
+        else if (partPath == "/theme")
+        {
+            rootElement = presentationPart.ThemePart?.Theme
+                ?? throw new ArgumentException("No theme part");
         }
         else if (Regex.Match(partPath, @"^/slide\[(\d+)\]$") is { Success: true } slideMatch)
         {
@@ -125,7 +175,7 @@ public partial class PowerPointHandler : IDocumentHandler
         }
         else
         {
-            throw new ArgumentException($"Unknown part: {partPath}. Available: /presentation, /slide[N], /slideMaster[N], /slideLayout[N], /noteSlide[N]");
+            throw new ArgumentException($"Unknown part: {partPath}. Available: /presentation, /theme, /slide[N], /slideMaster[N], /slideLayout[N], /noteSlide[N]");
         }
 
         var affected = RawXmlHelper.Execute(rootElement, xpath, action, xml);
