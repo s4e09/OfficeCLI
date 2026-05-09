@@ -1,4 +1,4 @@
-// Copyright 2025 OfficeCli (officecli.ai)
+// Copyright 2025 OfficeCLI (officecli.ai)
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Net.Http;

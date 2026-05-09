@@ -1,4 +1,4 @@
-// Copyright 2025 OfficeCli (officecli.ai)
+// Copyright 2025 OfficeCLI (officecli.ai)
 // SPDX-License-Identifier: Apache-2.0
 //
 // Sheet-wide range-mutation walker. Used by every operation that needs to
