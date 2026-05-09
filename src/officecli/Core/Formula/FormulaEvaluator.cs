@@ -345,28 +345,23 @@ internal partial class FormulaEvaluator
 
                 if (IsCellRef(stripped)) { tokens.Add(new Token(TT.CellRef, stripped.ToUpperInvariant())); continue; }
 
-                // Defined name (e.g. `StageTable` → `Data!A2:B7`).
-                // Resolve to the target range/cell and emit the corresponding token.
+                // Defined name. Two flavors:
+                //   1. Literal range/cellref body — emit a single ref token
+                //      (e.g. `StageTable` → `Data!A2:B7`).
+                //   2. Formula body (OFFSET(...), INDIRECT(...), arithmetic) —
+                //      inline the body's tokens here so the parent expression
+                //      evaluates them in place, matching POI's
+                //      `evaluateNameFormula` recursion.
                 var definedNames = GetDefinedNames();
                 if (definedNames.TryGetValue(stripped, out var defRef))
                 {
-                    var cleaned = StripDollar(defRef).Trim();
-                    string? dnSheet = null;
-                    var dnCell = cleaned;
-                    var dnBang = cleaned.IndexOf('!');
-                    if (dnBang > 0)
+                    var body = defRef.TrimStart('=').Trim();
+                    if (TryDefinedNameAsSimpleRef(body) is { } refToken)
                     {
-                        dnSheet = cleaned[..dnBang].Trim('\'');
-                        dnCell = cleaned[(dnBang + 1)..];
+                        tokens.Add(refToken);
+                        continue;
                     }
-                    if (dnCell.Contains(':'))
-                        tokens.Add(new Token(dnSheet != null ? TT.SheetRange : TT.Range,
-                            dnSheet != null ? $"{dnSheet}!{dnCell}" : dnCell));
-                    else if (IsCellRef(dnCell))
-                        tokens.Add(new Token(dnSheet != null ? TT.SheetCellRef : TT.CellRef,
-                            dnSheet != null ? $"{dnSheet}!{dnCell.ToUpperInvariant()}" : dnCell.ToUpperInvariant()));
-                    else
-                        throw new NotSupportedException($"Unknown defined name target: {defRef}");
+                    tokens.AddRange(Tokenize(body));
                     continue;
                 }
 
@@ -392,6 +387,36 @@ internal partial class FormulaEvaluator
 
     private static bool IsCellRef(string s) => Regex.IsMatch(s, @"^[A-Z]{1,3}\d+$", RegexOptions.IgnoreCase);
     private static string StripDollar(string s) => s.Replace("$", "");
+
+    /// <summary>
+    /// If the defined-name body is a single literal cell or range (with optional
+    /// sheet prefix), return the corresponding token; otherwise null so the
+    /// caller falls back to inlining the body as a sub-formula.
+    /// </summary>
+    private static Token? TryDefinedNameAsSimpleRef(string body)
+    {
+        var cleaned = StripDollar(body).Trim();
+        string? sheet = null;
+        var cell = cleaned;
+        var bang = cleaned.IndexOf('!');
+        if (bang > 0)
+        {
+            sheet = cleaned[..bang].Trim('\'');
+            cell = cleaned[(bang + 1)..];
+        }
+        if (cell.Contains(':'))
+        {
+            // Bare A1:B5 or A:A or 1:1 is a literal range; OFFSET(A:A,...) is not.
+            if (cell.Contains('(') || cell.Contains(',') || cell.Contains(' '))
+                return null;
+            return new Token(sheet != null ? TT.SheetRange : TT.Range,
+                sheet != null ? $"{sheet}!{cell}" : cell);
+        }
+        if (IsCellRef(cell))
+            return new Token(sheet != null ? TT.SheetCellRef : TT.CellRef,
+                sheet != null ? $"{sheet}!{cell.ToUpperInvariant()}" : cell.ToUpperInvariant());
+        return null;
+    }
 
     // ==================== Recursive Descent Parser ====================
 
