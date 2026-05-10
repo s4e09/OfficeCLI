@@ -1419,6 +1419,46 @@ public partial class WordHandler
                 case "nowrap":
                     tcPr.NoWrap = IsTruthy(value) ? new NoWrap() : null;
                     break;
+                case "cnfstyle":
+                {
+                    // BUG-R3-03: cnfStyle is a 12-bit conditional-formatting hex
+                    // bitfield. Validate before writing so invalid values fail
+                    // loudly rather than corrupting the doc. Acceptable forms:
+                    // 12 hex digits (per CT_String per ISO/IEC 29500), or any
+                    // 1..16-char hex string (Word writers commonly emit 4-digit
+                    // hex). Reject negatives, non-hex, and lengths > 16.
+                    if (string.IsNullOrEmpty(value))
+                    {
+                        tcPr.RemoveAllChildren<ConditionalFormatStyle>();
+                        break;
+                    }
+                    if (!System.Text.RegularExpressions.Regex.IsMatch(value, "^[0-9A-Fa-f]+$"))
+                    {
+                        throw new ArgumentException(
+                            $"Invalid cnfStyle '{value}': must be a hex string (no negatives or non-hex characters).");
+                    }
+                    // ST_Cnf is a 12-bit field (12 binary digits). Values that
+                    // exceed 0xFFF cannot fit and are rejected.
+                    if (!ulong.TryParse(value, System.Globalization.NumberStyles.HexNumber,
+                            System.Globalization.CultureInfo.InvariantCulture, out var cnfNum)
+                        || cnfNum > 0xFFFu)
+                    {
+                        throw new ArgumentException(
+                            $"Invalid cnfStyle '{value}': numeric value exceeds the 12-bit field width (max 0xFFF).");
+                    }
+                    var cnf = tcPr.GetFirstChild<ConditionalFormatStyle>();
+                    if (cnf == null)
+                    {
+                        cnf = new ConditionalFormatStyle { Val = value };
+                        // cnfStyle is rank 0 in CT_TcPr (FIRST child)
+                        tcPr.PrependChild(cnf);
+                    }
+                    else
+                    {
+                        cnf.Val = value;
+                    }
+                    break;
+                }
                 case "vmerge":
                     // ST_Merge schema only defines "restart" — continuation is bare <w:vMerge/>.
                     tcPr.VerticalMerge = value.ToLowerInvariant() == "restart"
@@ -1671,8 +1711,20 @@ public partial class WordHandler
             switch (key.ToLowerInvariant())
             {
                 case "style":
-                    var tblStyle = tblPr.TableStyle ?? (tblPr.TableStyle = new TableStyle());
-                    tblStyle.Val = value;
+                case "tablestyle":
+                case "tablestyleid":
+                    // BUG-R3-05: empty/none clears the style — remove element rather
+                    // than leave it with an empty Val (which Get would have to filter).
+                    if (string.IsNullOrEmpty(value)
+                        || value.Equals("none", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (tblPr.TableStyle != null) tblPr.TableStyle.Remove();
+                    }
+                    else
+                    {
+                        var tblStyle = tblPr.TableStyle ?? (tblPr.TableStyle = new TableStyle());
+                        tblStyle.Val = value;
+                    }
                     break;
                 case "align" or "alignment":
                     tblPr.TableJustification = new TableJustification
@@ -1770,7 +1822,14 @@ public partial class WordHandler
                 case "bandcol" or "bandedcols" or "bandcols":
                 {
                     var tblLook = tblPr.GetFirstChild<TableLook>();
-                    if (tblLook == null) { tblLook = new TableLook { Val = "04A0" }; tblPr.AppendChild(tblLook); }
+                    if (tblLook == null)
+                    {
+                        // BUG-R3-08: insert tblLook (rank 14) in schema order;
+                        // AppendChild placed it AFTER tblCaption (rank 15) /
+                        // tblDescription (rank 16) when those existed first.
+                        tblLook = new TableLook { Val = "04A0" };
+                        InsertTblPrChildInOrder(tblPr, tblLook);
+                    }
                     var bv = IsTruthy(value);
                     switch (key.ToLowerInvariant())
                     {

@@ -2580,8 +2580,10 @@ public partial class WordHandler
             if (tp != null)
             {
                 // Table style
-                if (tp.TableStyle?.Val?.Value != null)
-                    node.Format["style"] = tp.TableStyle.Val.Value;
+                // BUG-R3-05: empty Val (set via legacy code that wrote tblStyle
+                // with empty string) must NOT surface as a "style" key.
+                if (!string.IsNullOrEmpty(tp.TableStyle?.Val?.Value))
+                    node.Format["style"] = tp.TableStyle.Val.Value!;
                 // Table borders
                 var tblBorders = tp.TableBorders;
                 if (tblBorders != null)
@@ -2686,6 +2688,55 @@ public partial class WordHandler
                     if (!string.IsNullOrEmpty(tShdVal)) node.Format["shading.val"] = tShdVal;
                     if (!string.IsNullOrEmpty(tShdFill)) node.Format["shading.fill"] = ParseHelpers.FormatHexColor(tShdFill);
                     if (!string.IsNullOrEmpty(tShdColor)) node.Format["shading.color"] = ParseHelpers.FormatHexColor(tShdColor);
+                }
+
+                // BUG-R3-01: tblLook readback — Set wrote the XML correctly, but
+                // Get never read it back (Set/Get round-trip gap). Emit both the
+                // short-form lowercase keys (firstrow/lastrow/bandrow — match
+                // Set's case-insensitive vocabulary and project canonical
+                // pattern: vmerge/colspan) AND OOXML-attribute-name camelCase
+                // keys (firstRow/bandedRows — verbatim attribute names) so
+                // batch round-trip works either way. The two forms exist for
+                // historical-vocabulary parity; values are kept consistent
+                // across both keys (lowercase stores "true"/"false" string,
+                // camelCase stores bool).
+                var tblLookRead = tp.GetFirstChild<TableLook>();
+                if (tblLookRead != null)
+                {
+                    if (tblLookRead.Val?.HasValue == true && !string.IsNullOrEmpty(tblLookRead.Val.Value))
+                        node.Format["tblLook.val"] = tblLookRead.Val.Value!;
+                    if (tblLookRead.FirstRow?.HasValue == true)
+                    {
+                        var v = tblLookRead.FirstRow.Value;
+                        if (v) { node.Format["firstrow"] = "true"; node.Format["firstRow"] = true; }
+                    }
+                    if (tblLookRead.LastRow?.HasValue == true)
+                    {
+                        var v = tblLookRead.LastRow.Value;
+                        if (v) { node.Format["lastrow"] = "true"; node.Format["lastRow"] = true; }
+                    }
+                    if (tblLookRead.FirstColumn?.HasValue == true)
+                    {
+                        var v = tblLookRead.FirstColumn.Value;
+                        if (v) { node.Format["firstcol"] = "true"; node.Format["firstCol"] = true; }
+                    }
+                    if (tblLookRead.LastColumn?.HasValue == true)
+                    {
+                        var v = tblLookRead.LastColumn.Value;
+                        if (v) { node.Format["lastcol"] = "true"; node.Format["lastCol"] = true; }
+                    }
+                    // banding semantics are inverted: noHBand=true means NO banding (bandrow=false).
+                    // Emit the key only when banding IS active (noHBand=false explicitly set).
+                    if (tblLookRead.NoHorizontalBand?.HasValue == true)
+                    {
+                        var noBand = tblLookRead.NoHorizontalBand.Value;
+                        if (!noBand) { node.Format["bandrow"] = "true"; node.Format["bandedRows"] = true; }
+                    }
+                    if (tblLookRead.NoVerticalBand?.HasValue == true)
+                    {
+                        var noBand = tblLookRead.NoVerticalBand.Value;
+                        if (!noBand) { node.Format["bandcol"] = "true"; node.Format["bandedCols"] = true; }
+                    }
                 }
             }
 
@@ -3235,6 +3286,10 @@ public partial class WordHandler
             // No wrap
             if (tcPr.NoWrap != null)
                 node.Format["nowrap"] = true;
+            // BUG-R3-03: cnfStyle (conditional formatting bitfield).
+            var cnfRead = tcPr.GetFirstChild<ConditionalFormatStyle>();
+            if (cnfRead?.Val?.Value is string cnfVal && !string.IsNullOrEmpty(cnfVal))
+                node.Format["cnfStyle"] = cnfVal;
         }
         // Alignment from first paragraph
         var firstPara = cell.Elements<Paragraph>().FirstOrDefault();
