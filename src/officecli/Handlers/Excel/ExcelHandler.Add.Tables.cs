@@ -763,6 +763,21 @@ public partial class ExcelHandler
             }
         }
 
+        // i103: when headerRow=true (the default) the table ref must cover
+        // at least 2 rows — header plus one data row. A header-only ref
+        // (e.g. A1:C1) produces an <autoFilter> that Excel rejects with
+        // "Removed Feature: AutoFilter from /xl/tables/tableN.xml part",
+        // which cascades to drop the whole table on file open. Reject up
+        // front with a clear message instead of letting Excel silently
+        // strip the table. headerRow=false is allowed to be a single
+        // (data-only) row.
+        if (hasHeader && startRow == endRow)
+        {
+            throw new ArgumentException(
+                $"table ref '{rangeRef}' has 1 row; tables must have at least 2 rows " +
+                "(header + 1 data row). Pass headerRow=false for a data-only single-row table.");
+        }
+
         // CONSISTENCY(table-totalrow): a:totalsRowShown MUST point at a row
         // OUTSIDE the data area. Previously we reused endRow as the totals
         // row, which overwrote whatever data lived on that last row. Expand
