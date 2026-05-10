@@ -1540,6 +1540,22 @@ public partial class WordHandler
                             ?.Elements<GridColumn>().Count() ?? 0;
                         if (gsGridCount > 0 && newSpan > gsGridCount)
                             throw new ArgumentException($"Invalid '{key}' value: '{value}'. gridSpan cannot exceed the table's grid column count ({gsGridCount}).");
+                        // BUG-R4-table-merge BUG-7: single-cell guard above
+                        // misses cumulative overflow — e.g. tc[1] colspan=2 +
+                        // tc[2] colspan=2 in a 3-col grid totals 4 slots.
+                        // Sum spans of all preceding siblings, then check
+                        // startCol + newSpan against gridCount.
+                        if (gsGridCount > 0)
+                        {
+                            int gsStartCol = 0;
+                            foreach (var prevTc in gsRow.Elements<TableCell>())
+                            {
+                                if (ReferenceEquals(prevTc, cell)) break;
+                                gsStartCol += prevTc.TableCellProperties?.GetFirstChild<GridSpan>()?.Val?.Value ?? 1;
+                            }
+                            if (gsStartCol + newSpan > gsGridCount)
+                                throw new ArgumentException($"Invalid '{key}' value: '{value}'. The row's total gridSpan ({gsStartCol + newSpan}) would exceed the table's grid column count ({gsGridCount}).");
+                        }
                     }
                     tcPr.GridSpan = new GridSpan { Val = newSpan };
                     // Ensure the row has the correct number of tc elements.
