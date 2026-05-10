@@ -40,8 +40,12 @@ public partial class ExcelHandler
         if (rows.Count == 0)
             return "No data to import";
 
-        // Import writes rows sequentially — bypass FindOrCreateCell (which is O(n) per row,
-        // causing O(n²) total for large imports) and directly append Row/Cell nodes in order.
+        // BUG-R11-import-dup-row BUG-11: import previously always appended a
+        // brand-new <row r="N">, producing duplicate row entries when the
+        // target rows already existed (Excel auto-repaired by keeping the
+        // first one, silently losing imported data). Upsert by RowIndex —
+        // reuse an existing row, otherwise insert a new one in sorted
+        // position. For each cell, upsert by CellReference too.
         int maxCols = 0;
         for (int r = 0; r < rows.Count; r++)
         {
@@ -49,15 +53,36 @@ public partial class ExcelHandler
             if (fields.Count > maxCols) maxCols = fields.Count;
             var rowIdx = (uint)(startRow + r);
 
-            var row = new Row { RowIndex = rowIdx };
-            sheetData.Append(row);
+            var row = sheetData.Elements<Row>()
+                .FirstOrDefault(rr => rr.RowIndex?.Value == rowIdx);
+            if (row == null)
+            {
+                row = new Row { RowIndex = rowIdx };
+                var nextRow = sheetData.Elements<Row>()
+                    .FirstOrDefault(rr => rr.RowIndex?.Value > rowIdx);
+                if (nextRow != null)
+                    sheetData.InsertBefore(row, nextRow);
+                else
+                    sheetData.Append(row);
+            }
 
             for (int c = 0; c < fields.Count; c++)
             {
                 var colIdx = startColIdx + c;
-                var cellRef = $"{IndexToColumnName(colIdx)}{rowIdx}";
-                var cell = new Cell { CellReference = cellRef.ToUpperInvariant() };
-                row.Append(cell);
+                var cellRef = $"{IndexToColumnName(colIdx)}{rowIdx}".ToUpperInvariant();
+                var cell = row.Elements<Cell>()
+                    .FirstOrDefault(cc => string.Equals(cc.CellReference?.Value, cellRef, StringComparison.OrdinalIgnoreCase));
+                if (cell == null)
+                {
+                    cell = new Cell { CellReference = cellRef };
+                    row.Append(cell);
+                }
+                else
+                {
+                    cell.CellFormula = null;
+                    cell.CellValue = null;
+                    cell.DataType = null;
+                }
                 SetCellValueWithTypeDetection(cell, fields[c]);
             }
         }
