@@ -363,11 +363,11 @@ public partial class ExcelHandler
             var dvIdx = int.Parse(validationMatch.Groups[1].Value);
             var dvs = GetSheet(worksheet).GetFirstChild<DataValidations>();
             if (dvs == null)
-                return null!;
+                return new DocumentNode { Path = path, Type = "error", Text = $"dataValidation[{dvIdx}] not found (sheet has no data validations)" };
 
             var dvList = dvs.Elements<DataValidation>().ToList();
             if (dvIdx < 1 || dvIdx > dvList.Count)
-                return null!;
+                return new DocumentNode { Path = path, Type = "error", Text = $"dataValidation[{dvIdx}] not found (sheet has {dvList.Count} validation(s))" };
 
             return DataValidationToNode(sheetNameFromPath, dvList[dvIdx - 1], dvIdx);
         }
@@ -473,7 +473,7 @@ public partial class ExcelHandler
             var cfIdx = int.Parse(cfMatch.Groups[1].Value);
             var cfElements = GetSheet(worksheet).Elements<ConditionalFormatting>().ToList();
             if (cfIdx < 1 || cfIdx > cfElements.Count)
-                return null!;
+                return new DocumentNode { Path = path, Type = "error", Text = $"cf[{cfIdx}] not found (sheet has {cfElements.Count} conditional formatting rule(s))" };
 
             var cf = cfElements[cfIdx - 1];
             var cfNode = new DocumentNode { Path = path, Type = "conditionalFormatting" };
@@ -778,12 +778,12 @@ public partial class ExcelHandler
             var cmtIndex = int.Parse(commentMatch.Groups[1].Value);
             var commentsPart = worksheet.WorksheetCommentsPart;
             if (commentsPart?.Comments == null)
-                return null!;
+                return new DocumentNode { Path = path, Type = "error", Text = $"comment[{cmtIndex}] not found (sheet has no comments)" };
 
             var cmtList = commentsPart.Comments.GetFirstChild<CommentList>();
             var cmtElement = cmtList?.Elements<Comment>().ElementAtOrDefault(cmtIndex - 1);
             if (cmtElement == null)
-                return null!;
+                return new DocumentNode { Path = path, Type = "error", Text = $"comment[{cmtIndex}] not found" };
 
             return CommentToNode(sheetNameFromPath, cmtElement, commentsPart.Comments, cmtIndex);
         }
