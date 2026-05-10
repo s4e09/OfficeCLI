@@ -222,12 +222,38 @@ public partial class PowerPointHandler
                         }
                         else
                         {
-                            var cellFillHex = tcPr?.GetFirstChild<Drawing.SolidFill>()?.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value;
-                            if (cellFillHex != null) cellNode.Format["fill"] = ParseHelpers.FormatHexColor(cellFillHex);
+                            // BUG-R6-A: Read both RgbColorModelHex and SchemeColor for cell fill
+                            // (mirror shape fill behavior). Scheme colors (accent1, dark1, ...)
+                            // were silently dropped before.
+                            var cellFillSolid = tcPr?.GetFirstChild<Drawing.SolidFill>();
+                            var cellFillColor = ReadColorFromFill(cellFillSolid);
+                            if (cellFillColor != null) cellNode.Format["fill"] = cellFillColor;
                         }
 
                         // Cell borders (including diagonal tl2br/tr2bl)
                         if (tcPr != null) ReadTableCellBorders(tcPr, cellNode);
+
+                        // BUG-R6-A: cell padding readback (Set wrote LeftMargin/etc; Get
+                        // missed it on the NodeBuilder cell branch). Canonical key is
+                        // "padding.*" per cross-handler rule (root CLAUDE.md).
+                        if (tcPr?.LeftMargin?.HasValue == true)
+                            cellNode.Format["padding.left"] = FormatEmu(tcPr.LeftMargin.Value);
+                        if (tcPr?.RightMargin?.HasValue == true)
+                            cellNode.Format["padding.right"] = FormatEmu(tcPr.RightMargin.Value);
+                        if (tcPr?.TopMargin?.HasValue == true)
+                            cellNode.Format["padding.top"] = FormatEmu(tcPr.TopMargin.Value);
+                        if (tcPr?.BottomMargin?.HasValue == true)
+                            cellNode.Format["padding.bottom"] = FormatEmu(tcPr.BottomMargin.Value);
+
+                        // BUG-R6-A: emit colspan/rowspan on cell node (mirror Query.cs).
+                        if (cell.GridSpan?.HasValue == true && cell.GridSpan.Value > 1)
+                            cellNode.Format["colspan"] = cell.GridSpan.Value;
+                        if (cell.RowSpan?.HasValue == true && cell.RowSpan.Value > 1)
+                            cellNode.Format["rowspan"] = cell.RowSpan.Value;
+                        if (cell.HorizontalMerge?.HasValue == true && cell.HorizontalMerge.Value)
+                            cellNode.Format["hmerge"] = true;
+                        if (cell.VerticalMerge?.HasValue == true && cell.VerticalMerge.Value)
+                            cellNode.Format["vmerge"] = true;
 
                         // Cell vertical alignment
                         if (tcPr?.Anchor?.HasValue == true)
@@ -307,6 +333,22 @@ public partial class PowerPointHandler
                         // is the schema default so absence == ltr.
                         if (cellFirstPara?.ParagraphProperties?.RightToLeft?.HasValue == true)
                             cellNode.Format["direction"] = cellFirstPara.ParagraphProperties.RightToLeft.Value ? "rtl" : "ltr";
+
+                        // BUG-R6-A: cell-level lineSpacing/spaceBefore/spaceAfter readback
+                        // from first paragraph (mirrors shape paragraph aggregation —
+                        // Set writes to all paragraphs; Get returns the first one's value).
+                        var cellFirstPProps = cellFirstPara?.ParagraphProperties;
+                        if (cellFirstPProps != null)
+                        {
+                            var cellLsPct = cellFirstPProps.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPercent>()?.Val?.Value;
+                            if (cellLsPct.HasValue) cellNode.Format["lineSpacing"] = SpacingConverter.FormatPptLineSpacingPercent(cellLsPct.Value);
+                            var cellLsPts = cellFirstPProps.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPoints>()?.Val?.Value;
+                            if (cellLsPts.HasValue) cellNode.Format["lineSpacing"] = SpacingConverter.FormatPptLineSpacingPoints(cellLsPts.Value);
+                            var cellSb = cellFirstPProps.GetFirstChild<Drawing.SpaceBefore>()?.GetFirstChild<Drawing.SpacingPoints>()?.Val?.Value;
+                            if (cellSb.HasValue) cellNode.Format["spaceBefore"] = SpacingConverter.FormatPptSpacing(cellSb.Value);
+                            var cellSa = cellFirstPProps.GetFirstChild<Drawing.SpaceAfter>()?.GetFirstChild<Drawing.SpacingPoints>()?.Val?.Value;
+                            if (cellSa.HasValue) cellNode.Format["spaceAfter"] = SpacingConverter.FormatPptSpacing(cellSa.Value);
+                        }
 
                         rowNode.Children.Add(cellNode);
                     }

@@ -414,23 +414,17 @@ public partial class PowerPointHandler
             }
             else if (tcPr?.GetFirstChild<Drawing.GradientFill>() is { } gradFill)
             {
-                var stops = gradFill.GradientStopList?.Elements<Drawing.GradientStop>().ToList();
-                if (stops != null && stops.Count >= 2)
-                {
-                    var gc1 = ParseHelpers.FormatHexColor(stops[0].GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value ?? "");
-                    var gc2 = ParseHelpers.FormatHexColor(stops[^1].GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value ?? "");
-                    var lin = gradFill.GetFirstChild<Drawing.LinearGradientFill>();
-                    var deg = lin?.Angle?.Value != null ? lin.Angle.Value / 60000.0 : 0.0;
-                    var degStr = deg % 1 == 0 ? $"{(int)deg}" : $"{deg:0.##}";
-                    var gradient = $"linear;{gc1};{gc2};{degStr}";
-                    cellNode.Format["fill"] = deg != 0 ? $"{gc1}-{gc2}-{degStr}" : $"{gc1}-{gc2}";
-                    cellNode.Format["gradient"] = gradient;
-                }
+                // BUG-R6-A: emit canonical fill="gradient" + Format["gradient"]=detail
+                // (matches NodeBuilder cell path — was inconsistent before).
+                cellNode.Format["fill"] = "gradient";
+                cellNode.Format["gradient"] = ReadGradientString(gradFill);
             }
             else
             {
-                var cellFillHex = tcPr?.GetFirstChild<Drawing.SolidFill>()?.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value;
-                if (cellFillHex != null) cellNode.Format["fill"] = ParseHelpers.FormatHexColor(cellFillHex);
+                // BUG-R6-A: read scheme color in addition to RgbColorModelHex.
+                var cellFillSolid = tcPr?.GetFirstChild<Drawing.SolidFill>();
+                var cellFillColor = ReadColorFromFill(cellFillSolid);
+                if (cellFillColor != null) cellNode.Format["fill"] = cellFillColor;
             }
 
             // Cell borders — following POI's getBorderWidth/getBorderColor pattern
@@ -476,6 +470,22 @@ public partial class PowerPointHandler
             // ltr is the schema default — only emit when explicitly set.
             if (cellFirstPara?.ParagraphProperties?.RightToLeft?.HasValue == true)
                 cellNode.Format["direction"] = cellFirstPara.ParagraphProperties.RightToLeft.Value ? "rtl" : "ltr";
+
+            // BUG-R6-A: cell-level lineSpacing/spaceBefore/spaceAfter readback
+            // from first paragraph (Set writes to all paragraphs in cell;
+            // Get returns the first one's value, mirroring shape paragraph aggregation).
+            var qCellFirstPProps = cellFirstPara?.ParagraphProperties;
+            if (qCellFirstPProps != null)
+            {
+                var qLsPct = qCellFirstPProps.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPercent>()?.Val?.Value;
+                if (qLsPct.HasValue) cellNode.Format["lineSpacing"] = OfficeCli.Core.SpacingConverter.FormatPptLineSpacingPercent(qLsPct.Value);
+                var qLsPts = qCellFirstPProps.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPoints>()?.Val?.Value;
+                if (qLsPts.HasValue) cellNode.Format["lineSpacing"] = OfficeCli.Core.SpacingConverter.FormatPptLineSpacingPoints(qLsPts.Value);
+                var qSb = qCellFirstPProps.GetFirstChild<Drawing.SpaceBefore>()?.GetFirstChild<Drawing.SpacingPoints>()?.Val?.Value;
+                if (qSb.HasValue) cellNode.Format["spaceBefore"] = OfficeCli.Core.SpacingConverter.FormatPptSpacing(qSb.Value);
+                var qSa = qCellFirstPProps.GetFirstChild<Drawing.SpaceAfter>()?.GetFirstChild<Drawing.SpacingPoints>()?.Val?.Value;
+                if (qSa.HasValue) cellNode.Format["spaceAfter"] = OfficeCli.Core.SpacingConverter.FormatPptSpacing(qSa.Value);
+            }
 
             // Font info from first run
             var firstRun = cell.Descendants<Drawing.Run>().FirstOrDefault();

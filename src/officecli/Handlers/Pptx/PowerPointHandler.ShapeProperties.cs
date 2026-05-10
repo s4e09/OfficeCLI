@@ -1496,6 +1496,17 @@ public partial class PowerPointHandler
                     // merge.right case (below) so plain `gridSpan=N` produces
                     // a working merge instead of a half-applied one.
                     var span = ParseHelpers.SafeParseInt(value, "gridspan");
+                    // BUG-R6-B: validate span ≥ 1 and not exceeding row width.
+                    if (span < 1)
+                        throw new ArgumentException($"Invalid colspan: '{value}'. Must be >= 1.");
+                    if (cell.Parent is Drawing.TableRow gsRowChk)
+                    {
+                        var gsCellsChk = gsRowChk.Elements<Drawing.TableCell>().ToList();
+                        var gsIdxChk = gsCellsChk.IndexOf(cell);
+                        var remaining = gsCellsChk.Count - gsIdxChk;
+                        if (span > remaining)
+                            throw new ArgumentException($"Invalid colspan: {span} exceeds remaining columns ({remaining}) from this cell.");
+                    }
                     cell.GridSpan = new DocumentFormat.OpenXml.Int32Value(span);
                     if (span > 1 && cell.Parent is Drawing.TableRow gsRow)
                     {
@@ -1507,8 +1518,22 @@ public partial class PowerPointHandler
                     break;
                 }
                 case "rowspan":
-                    cell.RowSpan = new DocumentFormat.OpenXml.Int32Value(ParseHelpers.SafeParseInt(value, "rowspan"));
+                {
+                    var rsSpan = ParseHelpers.SafeParseInt(value, "rowspan");
+                    // BUG-R6-B: validate rowspan ≥ 1 and not exceeding remaining rows.
+                    if (rsSpan < 1)
+                        throw new ArgumentException($"Invalid rowspan: '{value}'. Must be >= 1.");
+                    if (cell.Parent is Drawing.TableRow rsRowChk && rsRowChk.Parent is Drawing.Table rsTblChk)
+                    {
+                        var rsRows = rsTblChk.Elements<Drawing.TableRow>().ToList();
+                        var rsRowIdx = rsRows.IndexOf(rsRowChk);
+                        var remainingRows = rsRows.Count - rsRowIdx;
+                        if (rsSpan > remainingRows)
+                            throw new ArgumentException($"Invalid rowspan: {rsSpan} exceeds remaining rows ({remainingRows}) from this cell.");
+                    }
+                    cell.RowSpan = new DocumentFormat.OpenXml.Int32Value(rsSpan);
                     break;
+                }
                 case "vmerge":
                     cell.VerticalMerge = new DocumentFormat.OpenXml.BooleanValue(IsTruthy(value));
                     break;
@@ -1742,11 +1767,18 @@ public partial class PowerPointHandler
                 }
                 case "margin" or "padding":
                 {
+                    // BUG-R6-E: cell padding/margin must be >= 0 (OOXML schema requirement).
+                    static int NonNegEmu(string v, string side)
+                    {
+                        var e = (int)ParseEmu(v.Trim());
+                        if (e < 0) throw new ArgumentException($"Invalid cell {side}: '{v.Trim()}' (must be >= 0).");
+                        return e;
+                    }
                     var tcPrM = cell.TableCellProperties ?? (cell.TableCellProperties = new Drawing.TableCellProperties());
                     var parts = value.Split(',');
                     if (parts.Length == 1)
                     {
-                        var emu = (int)ParseEmu(parts[0].Trim());
+                        var emu = NonNegEmu(parts[0], "padding");
                         tcPrM.LeftMargin = emu;
                         tcPrM.RightMargin = emu;
                         tcPrM.TopMargin = emu;
@@ -1754,15 +1786,15 @@ public partial class PowerPointHandler
                     }
                     else if (parts.Length == 4)
                     {
-                        tcPrM.LeftMargin = (int)ParseEmu(parts[0].Trim());
-                        tcPrM.TopMargin = (int)ParseEmu(parts[1].Trim());
-                        tcPrM.RightMargin = (int)ParseEmu(parts[2].Trim());
-                        tcPrM.BottomMargin = (int)ParseEmu(parts[3].Trim());
+                        tcPrM.LeftMargin = NonNegEmu(parts[0], "padding.left");
+                        tcPrM.TopMargin = NonNegEmu(parts[1], "padding.top");
+                        tcPrM.RightMargin = NonNegEmu(parts[2], "padding.right");
+                        tcPrM.BottomMargin = NonNegEmu(parts[3], "padding.bottom");
                     }
                     else if (parts.Length == 2)
                     {
-                        var h = (int)ParseEmu(parts[0].Trim());
-                        var v = (int)ParseEmu(parts[1].Trim());
+                        var h = NonNegEmu(parts[0], "padding.horizontal");
+                        var v = NonNegEmu(parts[1], "padding.vertical");
                         tcPrM.LeftMargin = h;
                         tcPrM.RightMargin = h;
                         tcPrM.TopMargin = v;
@@ -1773,25 +1805,33 @@ public partial class PowerPointHandler
                 case "margin.left" or "padding.left":
                 {
                     var tcPrM = cell.TableCellProperties ?? (cell.TableCellProperties = new Drawing.TableCellProperties());
-                    tcPrM.LeftMargin = (int)ParseEmu(value);
+                    var v = (int)ParseEmu(value);
+                    if (v < 0) throw new ArgumentException($"Invalid cell padding.left: '{value}' (must be >= 0).");
+                    tcPrM.LeftMargin = v;
                     break;
                 }
                 case "margin.right" or "padding.right":
                 {
                     var tcPrM = cell.TableCellProperties ?? (cell.TableCellProperties = new Drawing.TableCellProperties());
-                    tcPrM.RightMargin = (int)ParseEmu(value);
+                    var v = (int)ParseEmu(value);
+                    if (v < 0) throw new ArgumentException($"Invalid cell padding.right: '{value}' (must be >= 0).");
+                    tcPrM.RightMargin = v;
                     break;
                 }
                 case "margin.top" or "padding.top":
                 {
                     var tcPrM = cell.TableCellProperties ?? (cell.TableCellProperties = new Drawing.TableCellProperties());
-                    tcPrM.TopMargin = (int)ParseEmu(value);
+                    var v = (int)ParseEmu(value);
+                    if (v < 0) throw new ArgumentException($"Invalid cell padding.top: '{value}' (must be >= 0).");
+                    tcPrM.TopMargin = v;
                     break;
                 }
                 case "margin.bottom" or "padding.bottom":
                 {
                     var tcPrM = cell.TableCellProperties ?? (cell.TableCellProperties = new Drawing.TableCellProperties());
-                    tcPrM.BottomMargin = (int)ParseEmu(value);
+                    var v = (int)ParseEmu(value);
+                    if (v < 0) throw new ArgumentException($"Invalid cell padding.bottom: '{value}' (must be >= 0).");
+                    tcPrM.BottomMargin = v;
                     break;
                 }
                 case "textdirection" or "textdir" or "vert":

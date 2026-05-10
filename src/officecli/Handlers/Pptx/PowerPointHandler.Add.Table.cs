@@ -68,6 +68,18 @@ public partial class PowerPointHandler
                 if (rows < 1 || cols < 1)
                     throw new ArgumentException("rows and cols must be >= 1");
 
+                // BUG-R6-D: enforce a practical upper bound on rows/cols so the
+                // EMU height/width calculations stay safely within int32 (the
+                // OOXML cy/cx attributes are int32). With the default rowHeight
+                // of 370840 EMU, int.MaxValue / 370840 ≈ 5790. Cap rows/cols at
+                // 5000 — well within OOXML practical limits and prevents the
+                // negative-cy schema-invalid output that 99999 rows produced.
+                const int MaxTableDim = 5000;
+                if (rows > MaxTableDim)
+                    throw new ArgumentException($"rows={rows} exceeds practical maximum ({MaxTableDim}); reduce rows or split into multiple tables.");
+                if (cols > MaxTableDim)
+                    throw new ArgumentException($"cols={cols} exceeds practical maximum ({MaxTableDim}); reduce cols or split into multiple tables.");
+
                 // Position & size
                 long tblX = properties.TryGetValue("x", out var txStr) ? ParseEmu(txStr) : 457200; // ~1.27cm
                 long tblY = properties.TryGetValue("y", out var tyStr) ? ParseEmu(tyStr) : 1600200; // ~4.44cm

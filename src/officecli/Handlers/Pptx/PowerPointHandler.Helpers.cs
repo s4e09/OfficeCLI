@@ -1434,12 +1434,23 @@ public partial class PowerPointHandler
     /// Resolve a table style name or GUID to a valid OOXML GUID.
     /// Throws ArgumentException for unrecognized style names.
     /// </summary>
+    // BUG-R6-C: strict GUID format check for direct passthrough.
+    // Pattern: {8HEX-4HEX-4HEX-4HEX-12HEX}, ASCII case-insensitive hex only.
+    private static readonly System.Text.RegularExpressions.Regex _guidPattern =
+        new(@"^\{[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\}$",
+            System.Text.RegularExpressions.RegexOptions.Compiled);
+
     private static string ResolveTableStyleId(string value)
     {
         if (_tableStyleNameToGuid.TryGetValue(value, out var guid))
             return guid;
         if (value.StartsWith("{"))
-            return value; // Direct GUID passthrough
+        {
+            if (!_guidPattern.IsMatch(value))
+                throw new ArgumentException(
+                    $"Invalid table style GUID: '{value}'. Expected pattern {{8HEX-4HEX-4HEX-4HEX-12HEX}}.");
+            return value; // Direct GUID passthrough (validated)
+        }
         throw new ArgumentException(
             $"Invalid table style: '{value}'. Valid values: medium1, medium2, medium3, medium4, light1, light2, light3, dark1, dark2, none, or a direct GUID like {{073A0DAA-...}}.");
     }
