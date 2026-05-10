@@ -606,7 +606,7 @@ public partial class WordHandler
     /// Apply a paragraph-level property. Returns true if handled, false if not recognized.
     /// Handles: style, alignment, indent, spacing, keepNext, keepLines, pageBreakBefore, widowControl, shading, pbdr.
     /// </summary>
-    private bool ApplyParagraphLevelProperty(ParagraphProperties pProps, string key, string? value)
+    private bool ApplyParagraphLevelProperty(ParagraphProperties pProps, string key, string? value, List<string>? warnings = null)
     {
         if (value is null) return false;
         switch (key.ToLowerInvariant())
@@ -617,6 +617,11 @@ public partial class WordHandler
                 // (Round 2). Round 7+8 wired the alias trio on AddStyle
                 // and SetStyle for /styles/X; the paragraph-level
                 // Set surface was the missing link.
+                // R7 deferred BT-4: warn (advisory, non-fatal) when the
+                // style id does not exist in the styles part — opening
+                // such a doc in Word shows a "style not found" badge.
+                if (warnings != null && !StyleIdExists(value))
+                    warnings.Add($"style '{value}' not found in styles part — will be referenced as-is");
                 pProps.ParagraphStyleId = new ParagraphStyleId { Val = value };
                 return true;
             case "stylename":

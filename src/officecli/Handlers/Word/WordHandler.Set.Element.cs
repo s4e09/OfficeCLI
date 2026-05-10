@@ -942,7 +942,7 @@ public partial class WordHandler
         foreach (var (key, value) in properties)
         {
             var k = key.ToLowerInvariant();
-            if (ApplyParagraphLevelProperty(pProps, key, value))
+            if (ApplyParagraphLevelProperty(pProps, key, value, unsupported))
             {
                 // CONSISTENCY(rtl-cascade): direction toggle stamps the full
                 // bidi+markRPr+runs cascade. See WordHandler.I18n.cs.

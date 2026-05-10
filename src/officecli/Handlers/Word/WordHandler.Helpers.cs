@@ -688,6 +688,22 @@ public partial class WordHandler
         return match?.StyleId?.Value;
     }
 
+    /// <summary>
+    /// Returns true if a style with the given styleId exists in the Styles part.
+    /// "Normal" is implicit in OOXML and considered to exist even when the
+    /// blank-document StyleDefinitionsPart is empty/absent — matches Word's
+    /// own behaviour where every doc has Normal as the default paragraph style.
+    /// </summary>
+    internal bool StyleIdExists(string? styleId)
+    {
+        if (string.IsNullOrEmpty(styleId)) return false;
+        if (string.Equals(styleId, "Normal", StringComparison.Ordinal)) return true;
+        var stylesPart = _doc.MainDocumentPart?.StyleDefinitionsPart;
+        if (stylesPart?.Styles == null) return false;
+        return stylesPart.Styles.Elements<Style>()
+            .Any(s => string.Equals(s.StyleId?.Value, styleId, StringComparison.Ordinal));
+    }
+
     // CONSISTENCY(field-cache-stale): true when <paramref name="run"/> sits
     // between an owning field's <w:fldChar w:fldCharType="separate"/> and
     // <w:fldChar w:fldCharType="end"/> — i.e. it is the cached result run
