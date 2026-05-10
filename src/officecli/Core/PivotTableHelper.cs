@@ -1263,11 +1263,12 @@ internal static partial class PivotTableHelper
         // The underlying column is NOT rendered into sheetData; Excel
         // computes calculated fields live at display time from the formula
         // stored on the cacheField.
-        ApplyCalculatedFields(cachePart.PivotCacheDefinition, pivotDef, properties);
+        if (cachePart.PivotCacheDefinition != null)
+            ApplyCalculatedFields(cachePart.PivotCacheDefinition, pivotDef, properties);
 
         pivotPart.PivotTableDefinition = pivotDef;
         pivotPart.PivotTableDefinition.Save();
-        cachePart.PivotCacheDefinition.Save();
+        cachePart.PivotCacheDefinition?.Save();
 
         // 6. RENDER the pivot output into the target sheet's <sheetData>.
         //

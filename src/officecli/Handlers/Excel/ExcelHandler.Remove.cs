@@ -254,6 +254,7 @@ public partial class ExcelHandler
                         if (sheetWsPartForCheck != null && ReferenceEquals(otherWsPart, sheetWsPartForCheck)) continue;
                         var otherSheetName = workbook.Sheets!.Elements<Sheet>()
                             .FirstOrDefault(s => s.Id?.Value == workbookPart.GetIdOfPart(otherWsPart))?.Name?.Value ?? "?";
+                        if (otherWsPart.Worksheet is null) continue;
                         foreach (var fcell in otherWsPart.Worksheet.Descendants<DocumentFormat.OpenXml.Spreadsheet.Cell>())
                         {
                             var f = fcell.CellFormula?.Text;
@@ -502,7 +503,8 @@ public partial class ExcelHandler
                 var refs = new List<string>();
                 foreach (var wsp in _doc.WorkbookPart.WorksheetParts)
                 {
-                    var wsName = _doc.WorkbookPart.Workbook.Sheets!
+                    if (wsp.Worksheet is null) continue;
+                    var wsName = _doc.WorkbookPart.Workbook?.Sheets?
                         .Elements<Sheet>()
                         .FirstOrDefault(s => s.Id?.Value == _doc.WorkbookPart.GetIdOfPart(wsp))?
                         .Name?.Value ?? "?";
