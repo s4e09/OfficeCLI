@@ -496,6 +496,42 @@ public partial class WordHandler
         // so Get() reports correct cols/colWidths and Word doesn't see a stale
         // grid wider than any row. Match RemoveTableColumn's behaviour but
         // applied per-cell.
+        // BUG-R2-table-merge BUG-6a: a table with 0 rows is invalid OOXML —
+        // Word errors / repairs the file on open. Reject removal of the only
+        // remaining row up-front; users must remove the table itself.
+        if (element is TableRow lastRowChk
+            && lastRowChk.Parent is Table lastRowTbl
+            && lastRowTbl.Elements<TableRow>().Count() == 1)
+        {
+            throw new ArgumentException(
+                "Cannot remove the last row of a table. Remove the table itself instead (a table with 0 rows is invalid OOXML).");
+        }
+
+        // BUG-R2-table-merge BUG-4a: when the removed row contains any
+        // <w:vMerge w:val="restart"/> anchor, every same-column continuation
+        // cell in subsequent rows is left orphaned (Word renders it
+        // invisible). Snapshot the affected (row, colSlot) pairs before
+        // removal so the post-Remove pass can clear continuations.
+        List<(Table tbl, int colSlot, int afterRowIdx)>? orphanRestartFixups = null;
+        if (element is TableRow vmRow && vmRow.Parent is Table vmTbl)
+        {
+            int slot = 0;
+            foreach (var vmCell in vmRow.Elements<TableCell>())
+            {
+                int span = vmCell.TableCellProperties?.GetFirstChild<GridSpan>()?.Val?.Value ?? 1;
+                var vmProp = vmCell.TableCellProperties?.GetFirstChild<VerticalMerge>();
+                if (vmProp != null
+                    && (vmProp.Val == null || vmProp.Val.Value == MergedCellValues.Restart))
+                {
+                    var allRows = vmTbl.Elements<TableRow>().ToList();
+                    int removedIdx = allRows.IndexOf(vmRow);
+                    orphanRestartFixups ??= new();
+                    orphanRestartFixups.Add((vmTbl, slot, removedIdx));
+                }
+                slot += span;
+            }
+        }
+
         TableRow? tcRow = null;
         Table? tcTable = null;
         int tcColStart = -1, tcColSpan = 1;
@@ -571,6 +607,30 @@ public partial class WordHandler
         }
 
         element.Remove();
+
+        // BUG-R2-table-merge BUG-4a: clear orphan vmerge=continue cells whose
+        // restart anchor was just removed. The first remaining row at the
+        // removed-row's slot becomes the new "stranded" row; promote its cell
+        // to a normal cell (or restart) by removing the <w:vMerge/> child.
+        if (orphanRestartFixups != null)
+        {
+            foreach (var (fxTbl, fxSlot, removedIdx) in orphanRestartFixups)
+            {
+                var rowsAfter = fxTbl.Elements<TableRow>().ToList();
+                for (int ri = removedIdx; ri < rowsAfter.Count; ri++)
+                {
+                    var targetCell = ResolveCellAtSlot(rowsAfter[ri], fxSlot);
+                    if (targetCell == null) break;
+                    var tcPrFx = targetCell.TableCellProperties;
+                    var vm = tcPrFx?.GetFirstChild<VerticalMerge>();
+                    if (vm == null) break;
+                    bool isContinue = vm.Val == null
+                        || vm.Val.Value == MergedCellValues.Continue;
+                    if (!isContinue) break;
+                    vm.Remove();
+                }
+            }
+        }
 
         // CONSISTENCY(tblGrid-sync): after TableCell removal, scan all rows; if
         // any column slot in [tcColStart, tcColStart+tcColSpan) is now unoccupied
@@ -1492,6 +1552,21 @@ public partial class WordHandler
         var grid = table.GetFirstChild<TableGrid>()
             ?? throw new InvalidOperationException("Table has no <w:tblGrid>");
         return (table, grid);
+    }
+
+    // Resolve the TableCell occupying a specific gridCol slot in a row,
+    // accounting for gridSpan-merged cells. Returns null if the row's total
+    // span is shorter than slot+1.
+    private static TableCell? ResolveCellAtSlot(TableRow trow, int slot)
+    {
+        int acc = 0;
+        foreach (var c in trow.Elements<TableCell>())
+        {
+            int span = c.TableCellProperties?.GetFirstChild<GridSpan>()?.Val?.Value ?? 1;
+            if (slot >= acc && slot < acc + span) return c;
+            acc += span;
+        }
+        return null;
     }
 
     private static void GuardNoMergesInColumn(Table table, int colIdx, string action)
