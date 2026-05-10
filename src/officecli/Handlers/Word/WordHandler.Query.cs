@@ -2584,6 +2584,52 @@ public partial class WordHandler
                         }
                     }
                 }
+                else if (isPictureSelector)
+                {
+                    // BUG-R3-04: Scan inside table cells for pictures.
+                    // CONSISTENCY(word-table-recurse): mirrors the OLE/equation/
+                    // run branches above. Without this, `query picture` silently
+                    // skips any picture embedded in a table cell.
+                    var tblIdx = body.Elements<DocumentFormat.OpenXml.Wordprocessing.Table>()
+                        .TakeWhile(t => t != tbl).Count();
+                    int rowIdxPic = 0;
+                    foreach (var row in tbl.Elements<TableRow>())
+                    {
+                        rowIdxPic++;
+                        int cellIdxPic = 0;
+                        foreach (var cell in row.Elements<TableCell>())
+                        {
+                            cellIdxPic++;
+                            int cellParaIdx = 0;
+                            foreach (var cellPara in cell.Elements<Paragraph>())
+                            {
+                                cellParaIdx++;
+                                int cellRunIdx = 0;
+                                foreach (var cellRun in GetAllRuns(cellPara))
+                                {
+                                    cellRunIdx++;
+                                    var drawing = cellRun.GetFirstChild<Drawing>();
+                                    if (drawing != null)
+                                    {
+                                        bool noAlt = parsed.Attributes.ContainsKey("__no-alt");
+                                        if (noAlt)
+                                        {
+                                            var docProps = drawing.Descendants<DW.DocProperties>().FirstOrDefault();
+                                            if (string.IsNullOrEmpty(docProps?.Description?.Value))
+                                                results.Add(CreateImageNode(drawing, cellRun,
+                                                    $"/body/tbl[{tblIdx + 1}]/tr[{rowIdxPic}]/tc[{cellIdxPic}]/{BuildParaPathSegment(cellPara, cellParaIdx)}/r[{cellRunIdx}]"));
+                                        }
+                                        else
+                                        {
+                                            results.Add(CreateImageNode(drawing, cellRun,
+                                                $"/body/tbl[{tblIdx + 1}]/tr[{rowIdxPic}]/tc[{cellIdxPic}]/{BuildParaPathSegment(cellPara, cellParaIdx)}/r[{cellRunIdx}]"));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 continue;
             }
 
