@@ -145,6 +145,27 @@ public partial class WordHandler
         }
         table.AppendChild(tblGrid);
 
+        // BUG-R8-H1: default <w:tblW> from sum of gridCol widths when the user
+        // did not provide width=... explicitly. Without tblW, Word switches to
+        // auto-fit and squashes columns to the visible text width, ignoring the
+        // tblGrid we just wrote. The user-supplied width= path below overrides
+        // this default when present (assignment to tblProps.TableWidth wins).
+        if (!properties.ContainsKey("width"))
+        {
+            long totalTwips = 0;
+            for (int gc = 0; gc < cols; gc++)
+            {
+                totalTwips += colWidthArr != null && gc < colWidthArr.Length
+                    ? colWidthArr[gc]
+                    : defaultColTwips;
+            }
+            tblProps.TableWidth = new TableWidth
+            {
+                Width = totalTwips.ToString(),
+                Type = TableWidthUnitValues.Dxa
+            };
+        }
+
         // Apply table-level properties from Add parameters
         foreach (var (tk, tv) in properties)
         {
@@ -179,7 +200,12 @@ public partial class WordHandler
                     }
                     else
                     {
-                        tblProps.TableWidth = new TableWidth { Width = ParseHelpers.SafeParseUint(tv, "width").ToString(), Type = TableWidthUnitValues.Dxa };
+                        // BUG-R8-H1: accept unit-qualified widths (cm/in/pt/dxa)
+                        // mirror Set cell-width path. Previously SafeParseUint
+                        // rejected width=10cm even though help docs showed cm.
+                        // CONSISTENCY(unit-twips): ParseTwips is the canonical
+                        // input-side twips converter for Word.
+                        tblProps.TableWidth = new TableWidth { Width = WordHandler.ParseTwips(tv).ToString(), Type = TableWidthUnitValues.Dxa };
                     }
                     break;
                 case "indent":
