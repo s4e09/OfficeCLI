@@ -1031,6 +1031,21 @@ internal static partial class PivotTableHelper
         if (pivotCaches != null)
             cacheId = pivotCaches.Elements<PivotCache>().Select(pc => pc.CacheId?.Value ?? 0u).DefaultIfEmpty(0u).Max() + 1;
 
+        // Design change (cache sharing): if any existing pivot already binds
+        // to an equivalent (sheet, range) source, reuse its
+        // PivotTableCacheDefinitionPart instead of creating a new one. This
+        // matches Excel's "one cache per source" contract — refresh
+        // propagates across siblings, file size doesn't blow up. See
+        // CountCacheReferrers / FindMatchingCachePart in
+        // PivotTableHelper.Cache.cs for the supporting helpers.
+        var sharedExistingCache = FindMatchingCachePart(workbookPart, sourceSheetName, sourceRef);
+        if (sharedExistingCache != null)
+        {
+            var existingCacheId = GetCacheIdForPart(workbookPart, sharedExistingCache);
+            if (existingCacheId.HasValue)
+                cacheId = existingCacheId.Value;
+        }
+
         // 3b. Collect all existing pivot names in the workbook so we can
         // reject duplicates (user-supplied) or auto-increment past collisions
         // (default name). Excel auto-renames on open to avoid the clash, but
@@ -1058,11 +1073,21 @@ internal static partial class PivotTableHelper
         PivotTableCacheDefinitionPart? cachePart = null;
         PivotTablePart? pivotPart = null;
         PivotCache? pivotCacheEntry = null;
+        bool reusedCache = sharedExistingCache != null;
         try
         {
 
-        // 4. Create PivotTableCacheDefinitionPart at workbook level
-        cachePart = workbookPart.AddNewPart<PivotTableCacheDefinitionPart>();
+        // 4. Create PivotTableCacheDefinitionPart at workbook level — or
+        // reuse the existing one if any pivot already references the same
+        // source (design change: cache sharing).
+        if (reusedCache)
+        {
+            cachePart = sharedExistingCache!;
+        }
+        else
+        {
+            cachePart = workbookPart.AddNewPart<PivotTableCacheDefinitionPart>();
+        }
         var cacheRelId = workbookPart.GetIdOfPart(cachePart);
 
         // Build cache definition + per-field shared-item index maps. The maps are
@@ -1085,52 +1110,73 @@ internal static partial class PivotTableHelper
         // numFmtId attribute. Without this, a column styled as "yyyy-mm-dd"
         // renders in the pivot as the raw OADate serial (45306, ...).
         var columnNumFmtIds = ResolveColumnNumFmtIds(workbookPart, columnStyleIds);
-        var (cacheDef, fieldNumeric, fieldValueIndex) =
-            BuildCacheDefinition(sourceSheetName, sourceRef, headers, columnData, axisFieldSet, dateGroups, columnNumFmtIds);
-        cachePart.PivotCacheDefinition = cacheDef;
-        cachePart.PivotCacheDefinition.Save();
-
-        // 4b. Create PivotTableCacheRecordsPart and write one record per source row.
-        // Without records, Excel rejects the file with "PivotTable report is invalid"
-        // because saveData defaults to true. Writing real records also makes the file
-        // self-contained for non-refreshing consumers (POI, third-party parsers).
-        var recordsPart = cachePart.AddNewPart<PivotTableCacheRecordsPart>();
-        // Derived date-group fields (databaseField="0") must be excluded from
-        // pivotCacheRecords — Excel computes them from the base field's
-        // <fieldGroup> definition on the fly. Pass their indices so the
-        // record writer skips them.
-        var derivedFieldSet = dateGroups.Count > 0
-            ? new HashSet<int>(dateGroups.Select(g => g.DerivedFieldIdx))
-            : null;
-        recordsPart.PivotCacheRecords = BuildCacheRecords(columnData, fieldNumeric, fieldValueIndex, derivedFieldSet);
-        recordsPart.PivotCacheRecords.Save();
-
-        // The pivotCacheDefinition element MUST carry an r:id attribute pointing to the
-        // records part — Excel uses it to find records, not the package _rels alone.
-        // LibreOffice writes this in xepivotxml.cxx:280 (FSNS(XML_r, XML_id)). Without
-        // this attribute the file looks structurally complete but Excel rejects it.
-        cacheDef.Id = cachePart.GetIdOfPart(recordsPart);
-        cachePart.PivotCacheDefinition.Save();
-
-        // Register in workbook's PivotCaches
-        if (pivotCaches == null)
+        bool[] fieldNumeric;
+        Dictionary<string, int>[] fieldValueIndex;
+        if (reusedCache)
         {
-            pivotCaches = new PivotCaches();
-            // OOXML schema requires pivotCaches AFTER calcPr/oleSize/
-            // customWorkbookViews and BEFORE smartTagPr/fileRecoveryPr/extLst.
-            // AppendChild puts it after fileRecoveryPr, violating schema order
-            // and causing Excel to report "problem with some content".
-            var insertBefore = workbook.GetFirstChild<WebPublishing>()
-                ?? workbook.GetFirstChild<FileRecoveryProperties>()
-                ?? (OpenXmlElement?)workbook.GetFirstChild<WebPublishObjects>();
-            if (insertBefore != null)
-                workbook.InsertBefore(pivotCaches, insertBefore);
-            else
-                workbook.AppendChild(pivotCaches);
+            // Cache sharing: skip building the cacheDefinition, the cache
+            // records part, and the workbook-level <pivotCache> entry — they
+            // already exist and serve at least one other pivot. We still need
+            // the (fieldNumeric, fieldValueIndex) maps locally so the
+            // RenderPivotIntoSheet step below has the same per-field metadata
+            // a fresh cache build would have produced. Re-derive them with a
+            // throwaway BuildCacheDefinition; its result is discarded.
+            var (_, fn, fvi) =
+                BuildCacheDefinition(sourceSheetName, sourceRef, headers, columnData, axisFieldSet, dateGroups, columnNumFmtIds);
+            fieldNumeric = fn;
+            fieldValueIndex = fvi;
         }
-        pivotCacheEntry = new PivotCache { CacheId = cacheId, Id = cacheRelId };
-        pivotCaches.AppendChild(pivotCacheEntry);
-        workbook.Save();
+        else
+        {
+            var (cacheDef, fn, fvi) =
+                BuildCacheDefinition(sourceSheetName, sourceRef, headers, columnData, axisFieldSet, dateGroups, columnNumFmtIds);
+            fieldNumeric = fn;
+            fieldValueIndex = fvi;
+            cachePart.PivotCacheDefinition = cacheDef;
+            cachePart.PivotCacheDefinition.Save();
+
+            // 4b. Create PivotTableCacheRecordsPart and write one record per source row.
+            // Without records, Excel rejects the file with "PivotTable report is invalid"
+            // because saveData defaults to true. Writing real records also makes the file
+            // self-contained for non-refreshing consumers (POI, third-party parsers).
+            var recordsPart = cachePart.AddNewPart<PivotTableCacheRecordsPart>();
+            // Derived date-group fields (databaseField="0") must be excluded from
+            // pivotCacheRecords — Excel computes them from the base field's
+            // <fieldGroup> definition on the fly. Pass their indices so the
+            // record writer skips them.
+            var derivedFieldSet = dateGroups.Count > 0
+                ? new HashSet<int>(dateGroups.Select(g => g.DerivedFieldIdx))
+                : null;
+            recordsPart.PivotCacheRecords = BuildCacheRecords(columnData, fieldNumeric, fieldValueIndex, derivedFieldSet);
+            recordsPart.PivotCacheRecords.Save();
+
+            // The pivotCacheDefinition element MUST carry an r:id attribute pointing to the
+            // records part — Excel uses it to find records, not the package _rels alone.
+            // LibreOffice writes this in xepivotxml.cxx:280 (FSNS(XML_r, XML_id)). Without
+            // this attribute the file looks structurally complete but Excel rejects it.
+            cacheDef.Id = cachePart.GetIdOfPart(recordsPart);
+            cachePart.PivotCacheDefinition.Save();
+
+            // Register in workbook's PivotCaches
+            if (pivotCaches == null)
+            {
+                pivotCaches = new PivotCaches();
+                // OOXML schema requires pivotCaches AFTER calcPr/oleSize/
+                // customWorkbookViews and BEFORE smartTagPr/fileRecoveryPr/extLst.
+                // AppendChild puts it after fileRecoveryPr, violating schema order
+                // and causing Excel to report "problem with some content".
+                var insertBefore = workbook.GetFirstChild<WebPublishing>()
+                    ?? workbook.GetFirstChild<FileRecoveryProperties>()
+                    ?? (OpenXmlElement?)workbook.GetFirstChild<WebPublishObjects>();
+                if (insertBefore != null)
+                    workbook.InsertBefore(pivotCaches, insertBefore);
+                else
+                    workbook.AppendChild(pivotCaches);
+            }
+            pivotCacheEntry = new PivotCache { CacheId = cacheId, Id = cacheRelId };
+            pivotCaches.AppendChild(pivotCacheEntry);
+            workbook.Save();
+        }
 
         // 5. Create PivotTablePart at worksheet level
         pivotPart = targetSheet.AddNewPart<PivotTablePart>();
@@ -1272,11 +1318,13 @@ internal static partial class PivotTableHelper
             catch { /* best-effort */ }
             try
             {
-                if (cachePart != null)
+                if (cachePart != null && !reusedCache)
                 {
                     // Deleting the cache part also drops its child
                     // PivotTableCacheRecordsPart and the relationship
                     // from pivotPart (already deleted above).
+                    // Do NOT delete a shared cache (cache sharing design):
+                    // it serves at least one other pivot.
                     workbookPart.DeletePart(cachePart);
                 }
             }

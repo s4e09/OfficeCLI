@@ -874,4 +874,111 @@ internal static partial class PivotTableHelper
         return records;
     }
 
+    // ==================== Pivot cache sharing (design change) ====================
+    //
+    // Excel's contract is "one pivotCache per source range, shared by all
+    // pivots that reference that source". OfficeCLI originally created a new
+    // cache per pivot (one cacheDefinition + cacheRecords part each), which
+    // bloated files and diverged from Excel behavior on refresh (refreshing
+    // the source under one pivot did not propagate to its sibling pivot
+    // because they each owned a private cache snapshot).
+    //
+    // The three sites that need to honor sharing are:
+    //   - Add: reuse an existing cache if any pivot already binds to a
+    //     source-equivalent cacheSource (NormalizePivotSource).
+    //   - Remove: derived ref-counting — only delete the cache part when
+    //     the LAST pivot referring to it is removed. This is what
+    //     PrunePivotCacheIfOrphan already does (it scans every remaining
+    //     pivottable part); the design rule just makes that load-bearing.
+    //   - Set source: copy-on-write. If the cache is currently shared, do
+    //     not mutate it in place — clone cacheDefinition + cacheRecords +
+    //     workbook.PivotCaches entry so this pivot points to a fresh,
+    //     private cache; siblings continue to see their original cache.
+
+    /// <summary>
+    /// Normalize a pivot source spec ("<sheet>!<range>" or just "<range>") into
+    /// a canonical key for equality comparison across two pivots' cacheSource.
+    /// First-version coverage: in-workbook explicit sheet+range references.
+    ///
+    /// Normalization rules:
+    ///   - sheet name: outer single/double quotes stripped ('Sheet 1' == Sheet 1),
+    ///     comparison case-insensitive (matches Excel sheet-name semantics).
+    ///   - range: '$' absolute markers stripped ($A$1:$B$3 == A1:B3), column
+    ///     letters uppercased.
+    ///   - Whitespace around '!' / commas trimmed.
+    ///
+    /// Deferred (returns the input untouched, so they fall through to
+    /// "different source" → no sharing — safe default):
+    ///   - named ranges (e.g. <c>SalesData</c>) — would need wb-level resolve.
+    ///   - external workbook references (<c>[Other.xlsx]Sheet1!A1:C5</c>).
+    ///   - structured-ref table references (<c>Table1[#All]</c>).
+    /// </summary>
+    internal static string NormalizePivotSource(string? sheetName, string? rangeRef)
+    {
+        if (string.IsNullOrWhiteSpace(sheetName) || string.IsNullOrWhiteSpace(rangeRef))
+            return $"{sheetName}|{rangeRef}";
+        var s = sheetName.Trim();
+        // Strip a single layer of matching quotes.
+        if (s.Length >= 2 && ((s[0] == '\'' && s[^1] == '\'') || (s[0] == '"' && s[^1] == '"')))
+            s = s.Substring(1, s.Length - 2);
+        var r = rangeRef.Trim().Replace("$", "").ToUpperInvariant();
+        return s.ToUpperInvariant() + "!" + r;
+    }
+
+    /// <summary>
+    /// Find an existing PivotTableCacheDefinitionPart whose cacheSource is
+    /// equivalent (after normalization) to the given (sheet, ref) target.
+    /// Walks every pivot table part in the workbook and dedupes by part.
+    /// Returns null if no match.
+    /// </summary>
+    internal static PivotTableCacheDefinitionPart? FindMatchingCachePart(
+        WorkbookPart workbookPart, string sheetName, string rangeRef)
+    {
+        var target = NormalizePivotSource(sheetName, rangeRef);
+        var seen = new HashSet<PivotTableCacheDefinitionPart>();
+        foreach (var ws in workbookPart.WorksheetParts)
+        {
+            foreach (var pp in ws.PivotTableParts)
+            {
+                var cp = pp.PivotTableCacheDefinitionPart;
+                if (cp == null || !seen.Add(cp)) continue;
+                var ws2 = cp.PivotCacheDefinition?.CacheSource?.WorksheetSource;
+                if (ws2 == null) continue;
+                var key = NormalizePivotSource(ws2.Sheet?.Value, ws2.Reference?.Value);
+                if (key == target) return cp;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Count how many distinct PivotTablePart instances (across all worksheets)
+    /// reference the given cacheDefinitionPart. Used to decide whether Set
+    /// source must clone (CoW) or may mutate the cache in place.
+    /// </summary>
+    internal static int CountCacheReferrers(WorkbookPart workbookPart,
+        PivotTableCacheDefinitionPart cachePart)
+    {
+        int n = 0;
+        foreach (var ws in workbookPart.WorksheetParts)
+            foreach (var pp in ws.PivotTableParts)
+                if (pp.PivotTableCacheDefinitionPart == cachePart) n++;
+        return n;
+    }
+
+    /// <summary>
+    /// Look up the cacheId (in workbook.xml's pivotCaches) for a given
+    /// cacheDefinitionPart by matching its r:id.
+    /// </summary>
+    internal static uint? GetCacheIdForPart(WorkbookPart workbookPart,
+        PivotTableCacheDefinitionPart cachePart)
+    {
+        string? rid = null;
+        try { rid = workbookPart.GetIdOfPart(cachePart); } catch { return null; }
+        var caches = workbookPart.Workbook?.GetFirstChild<PivotCaches>();
+        if (caches == null) return null;
+        foreach (var pc in caches.Elements<PivotCache>())
+            if (pc.Id?.Value == rid) return pc.CacheId?.Value;
+        return null;
+    }
 }
