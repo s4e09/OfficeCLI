@@ -114,13 +114,14 @@ public partial class ExcelHandler
                     };
                     break;
                 case "formula1":
-                    if (dv.Type?.Value == DataValidationValues.List && !value.StartsWith("\""))
-                        dv.Formula1 = new Formula1($"\"{value}\"");
-                    else
-                        dv.Formula1 = new Formula1(value);
+                    // CONSISTENCY(validation-normalize): use same NormalizeValidationFormula
+                    // as Add so range refs (C1:C3, Sheet1!A1:A3) are NOT double-quoted.
+                    // Previous code only checked !value.StartsWith("\""), which incorrectly
+                    // wrapped range refs that pass through unchanged in Add.
+                    dv.Formula1 = new Formula1(NormalizeValidationFormula(value, dv.Type?.Value));
                     break;
                 case "formula2":
-                    dv.Formula2 = new Formula2(value);
+                    dv.Formula2 = new Formula2(NormalizeValidationFormula(value, dv.Type?.Value));
                     break;
                 case "operator":
                     dv.Operator = value.ToLowerInvariant() switch
@@ -143,6 +144,26 @@ public partial class ExcelHandler
                 case "showinput": dv.ShowInputMessage = IsTruthy(value); break;
                 case "prompttitle": dv.PromptTitle = value; break;
                 case "prompt": dv.Prompt = value; break;
+                // CONSISTENCY(validation-errorstyle): errorStyle was supported in Add
+                // but missing from Set — silently fell into dvUnsupported.
+                case "errorstyle":
+                    dv.ErrorStyle = value.ToLowerInvariant() switch
+                    {
+                        "stop" => DataValidationErrorStyleValues.Stop,
+                        "warning" or "warn" => DataValidationErrorStyleValues.Warning,
+                        "information" or "info" => DataValidationErrorStyleValues.Information,
+                        _ => throw new ArgumentException(
+                            $"Unknown errorStyle: '{value}'. Use: stop, warning, information")
+                    };
+                    break;
+                // CONSISTENCY(validation-incelldropdown): inCellDropdown was in Add (inverted
+                // OOXML showDropDown semantics) but missing from Set. Also accept raw showDropDown.
+                case "incelldropdown":
+                    dv.ShowDropDown = !ParseHelpers.IsTruthy(value);
+                    break;
+                case "showdropdown":
+                    dv.ShowDropDown = ParseHelpers.IsTruthy(value);
+                    break;
                 default: dvUnsupported.Add(key); break;
             }
         }
