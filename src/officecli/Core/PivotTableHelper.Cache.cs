@@ -967,6 +967,71 @@ internal static partial class PivotTableHelper
     }
 
     /// <summary>
+    /// Clone a PivotTableCacheDefinitionPart (and its child
+    /// PivotTableCacheRecordsPart, if any) into a brand-new workbook-level
+    /// part, then register a new <pivotCache> entry with a fresh cacheId.
+    /// Used by Set source's copy-on-write path when the original cache is
+    /// shared with other pivots.
+    ///
+    /// The clone copies XML content via streaming, so any subsequent mutation
+    /// to the new cache cannot leak back to the original.
+    /// </summary>
+    internal static PivotTableCacheDefinitionPart CloneCachePartForCoW(
+        WorkbookPart workbookPart, PivotTableCacheDefinitionPart original)
+    {
+        var clone = workbookPart.AddNewPart<PivotTableCacheDefinitionPart>();
+        // Copy the cache definition XML stream wholesale.
+        using (var src = original.GetStream(FileMode.Open, FileAccess.Read))
+        using (var dst = clone.GetStream(FileMode.Create, FileAccess.Write))
+        {
+            src.CopyTo(dst);
+        }
+        // Force the SDK to re-read the part so subsequent edits go through
+        // its strongly-typed PivotCacheDefinition view.
+        _ = clone.PivotCacheDefinition;
+
+        // Clone the records part (if present) under the new cache part.
+        var origRecords = original.GetPartsOfType<PivotTableCacheRecordsPart>().FirstOrDefault();
+        if (origRecords != null)
+        {
+            var cloneRecords = clone.AddNewPart<PivotTableCacheRecordsPart>();
+            using (var src = origRecords.GetStream(FileMode.Open, FileAccess.Read))
+            using (var dst = cloneRecords.GetStream(FileMode.Create, FileAccess.Write))
+            {
+                src.CopyTo(dst);
+            }
+            // Re-point the cacheDef's r:id to the new records part.
+            if (clone.PivotCacheDefinition != null)
+                clone.PivotCacheDefinition.Id = clone.GetIdOfPart(cloneRecords);
+        }
+
+        // Register a new <pivotCache> entry in workbook.xml with a fresh cacheId.
+        var wb = workbookPart.Workbook
+            ?? throw new InvalidOperationException("Workbook is missing");
+        var pivotCaches = wb.GetFirstChild<PivotCaches>();
+        if (pivotCaches == null)
+        {
+            pivotCaches = new PivotCaches();
+            var insertBefore = wb.GetFirstChild<WebPublishing>()
+                ?? wb.GetFirstChild<FileRecoveryProperties>()
+                ?? (OpenXmlElement?)wb.GetFirstChild<WebPublishObjects>();
+            if (insertBefore != null)
+                wb.InsertBefore(pivotCaches, insertBefore);
+            else
+                wb.AppendChild(pivotCaches);
+        }
+        uint newCacheId = pivotCaches.Elements<PivotCache>()
+            .Select(pc => pc.CacheId?.Value ?? 0u).DefaultIfEmpty(0u).Max() + 1;
+        pivotCaches.AppendChild(new PivotCache
+        {
+            CacheId = newCacheId,
+            Id = workbookPart.GetIdOfPart(clone)
+        });
+        wb.Save();
+        return clone;
+    }
+
+    /// <summary>
     /// Look up the cacheId (in workbook.xml's pivotCaches) for a given
     /// cacheDefinitionPart by matching its r:id.
     /// </summary>

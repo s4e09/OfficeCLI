@@ -455,11 +455,38 @@ internal static partial class PivotTableHelper
         // fieldNumeric, and fieldValueIndex). We do NOT swap the part — only
         // its child elements — so the workbook-level <pivotCache> registration
         // and the relationship id from PivotTablePart → PivotCacheDefinitionPart
-        // stay intact.
+        // stay intact (single-referrer path).
         var (freshDef, fieldNumeric, fieldValueIndex) =
             BuildCacheDefinition(newSheetName, newRef, headers, columnData, axisFieldIndices: null, dateGroups: null);
 
-        // Replace WorksheetSource attributes in place.
+        // Cache sharing (design): if cachePart currently has more than one
+        // referrer, mutating it in place would silently change the source on
+        // every sibling pivot. Copy-on-write: clone the part for this pivot,
+        // rebind, and proceed with the mutation against the fresh clone. The
+        // original cache (still serving siblings) is left untouched.
+        int referrers = CountCacheReferrers(workbookPart, cachePart);
+        if (referrers > 1)
+        {
+            var clonedCache = CloneCachePartForCoW(workbookPart, cachePart);
+            // Switch the pivot from the shared cache to its own clone.
+            // PivotTablePart can hold only one PivotTableCacheDefinitionPart
+            // child; DeletePart on the container removes the rel link
+            // without destroying the part (it remains live under workbookPart
+            // and continues to serve sibling pivots).
+            try { pivotPart.DeletePart(cachePart); } catch { /* best-effort */ }
+            pivotPart.AddPart(clonedCache);
+            // Update pivotDef.cacheId to the cloned cache's id.
+            var newCacheId = GetCacheIdForPart(workbookPart, clonedCache);
+            if (newCacheId.HasValue && pivotPart.PivotTableDefinition != null)
+                pivotPart.PivotTableDefinition.CacheId = newCacheId.Value;
+            cachePart = clonedCache;
+            cacheDef = clonedCache.PivotCacheDefinition!;
+            existingWsSource = cacheDef.CacheSource?.WorksheetSource
+                ?? throw new InvalidOperationException("Cloned cache missing worksheetSource");
+        }
+
+        // Replace WorksheetSource attributes in place (on the clone if CoW
+        // happened, otherwise on the original single-referrer cache).
         existingWsSource.Reference = newRef;
         existingWsSource.Sheet = newSheetName;
 
