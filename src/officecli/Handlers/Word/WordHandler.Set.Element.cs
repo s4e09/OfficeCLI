@@ -1287,7 +1287,56 @@ public partial class WordHandler
                     }
                     else
                     {
-                        tcPr.TableCellWidth = new TableCellWidth { Width = ParseHelpers.SafeParseUint(value, "width").ToString(), Type = TableWidthUnitValues.Dxa };
+                        // BUG-R1-02: zero-width cell is invalid OOXML; SafeParseUint
+                        // accepts 0 but that produces <w:tcW w:w="0"/> which corrupts
+                        // table layout. Reject explicitly with the same error vocabulary
+                        // used for negative widths.
+                        var widthVal = ParseHelpers.SafeParseUint(value, "width");
+                        if (widthVal == 0)
+                            throw new ArgumentException($"Invalid 'width' value: '{value}'. Must be a positive integer (> 0); zero-width cells are invalid OOXML.");
+                        tcPr.TableCellWidth = new TableCellWidth { Width = widthVal.ToString(), Type = TableWidthUnitValues.Dxa };
+
+                        // BUG-R1-P0-1: keep tblGrid in sync — without this, setting a
+                        // cell width drifts cell tcW out of agreement with the
+                        // gridCol slot it occupies and Word's column-boundary
+                        // inference breaks across all other rows. Mirrors the
+                        // startCol calculation used by the gridspan branch.
+                        if (cell.Parent is TableRow widthRow
+                            && widthRow.Parent is Table widthTbl)
+                        {
+                            var widthGrid = widthTbl.GetFirstChild<TableGrid>();
+                            var widthGridCols = widthGrid?.Elements<GridColumn>().ToList();
+                            if (widthGridCols != null && widthGridCols.Count > 0)
+                            {
+                                int startCol = 0;
+                                foreach (var prevTc in widthRow.Elements<TableCell>())
+                                {
+                                    if (prevTc == cell) break;
+                                    startCol += prevTc.TableCellProperties?.GridSpan?.Val?.Value ?? 1;
+                                }
+                                var thisSpan = tcPr.GridSpan?.Val?.Value ?? 1;
+                                // Distribute the new width across spanned grid cols.
+                                // For span=1 just stamp the column directly. For
+                                // span>1 spread evenly so the sum still matches.
+                                if (startCol < widthGridCols.Count)
+                                {
+                                    if (thisSpan <= 1)
+                                    {
+                                        widthGridCols[startCol].Width = widthVal.ToString();
+                                    }
+                                    else
+                                    {
+                                        int per = (int)(widthVal / (uint)thisSpan);
+                                        int remainder = (int)(widthVal - (uint)(per * thisSpan));
+                                        for (int gi = 0; gi < thisSpan && startCol + gi < widthGridCols.Count; gi++)
+                                        {
+                                            var slice = per + (gi == thisSpan - 1 ? remainder : 0);
+                                            widthGridCols[startCol + gi].Width = slice.ToString();
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                     break;
                 case "padding":
@@ -1302,26 +1351,35 @@ public partial class WordHandler
                 }
                 case "padding.top":
                 {
+                    // BUG-R1-07: negative w:tcMar values are invalid OOXML.
+                    var ptv = ParseHelpers.SafeParseInt(value, "padding.top");
+                    if (ptv < 0) throw new ArgumentException($"Invalid 'padding.top' value: '{value}'. Cell margins must be non-negative (OOXML w:tcMar).");
                     var mar = tcPr.TableCellMargin ?? (tcPr.TableCellMargin = new TableCellMargin());
-                    mar.TopMargin = new TopMargin { Width = value, Type = TableWidthUnitValues.Dxa };
+                    mar.TopMargin = new TopMargin { Width = ptv.ToString(), Type = TableWidthUnitValues.Dxa };
                     break;
                 }
                 case "padding.bottom":
                 {
+                    var pbv = ParseHelpers.SafeParseInt(value, "padding.bottom");
+                    if (pbv < 0) throw new ArgumentException($"Invalid 'padding.bottom' value: '{value}'. Cell margins must be non-negative (OOXML w:tcMar).");
                     var mar = tcPr.TableCellMargin ?? (tcPr.TableCellMargin = new TableCellMargin());
-                    mar.BottomMargin = new BottomMargin { Width = value, Type = TableWidthUnitValues.Dxa };
+                    mar.BottomMargin = new BottomMargin { Width = pbv.ToString(), Type = TableWidthUnitValues.Dxa };
                     break;
                 }
                 case "padding.left":
                 {
+                    var plv = ParseHelpers.SafeParseInt(value, "padding.left");
+                    if (plv < 0) throw new ArgumentException($"Invalid 'padding.left' value: '{value}'. Cell margins must be non-negative (OOXML w:tcMar).");
                     var mar = tcPr.TableCellMargin ?? (tcPr.TableCellMargin = new TableCellMargin());
-                    mar.LeftMargin = new LeftMargin { Width = value, Type = TableWidthUnitValues.Dxa };
+                    mar.LeftMargin = new LeftMargin { Width = plv.ToString(), Type = TableWidthUnitValues.Dxa };
                     break;
                 }
                 case "padding.right":
                 {
+                    var prv = ParseHelpers.SafeParseInt(value, "padding.right");
+                    if (prv < 0) throw new ArgumentException($"Invalid 'padding.right' value: '{value}'. Cell margins must be non-negative (OOXML w:tcMar).");
                     var mar = tcPr.TableCellMargin ?? (tcPr.TableCellMargin = new TableCellMargin());
-                    mar.RightMargin = new RightMargin { Width = value, Type = TableWidthUnitValues.Dxa };
+                    mar.RightMargin = new RightMargin { Width = prv.ToString(), Type = TableWidthUnitValues.Dxa };
                     break;
                 }
                 case "textdirection" or "textdir":
@@ -1349,11 +1407,43 @@ public partial class WordHandler
                         : new VerticalMerge();
                     break;
                 case "hmerge":
-                    // Mirrors vmerge: ST_Merge schema only defines "restart" —
-                    // continuation is bare <w:hMerge/>.
-                    tcPr.HorizontalMerge = value.ToLowerInvariant() == "restart"
-                        ? new HorizontalMerge { Val = MergedCellValues.Restart }
-                        : new HorizontalMerge();
+                    // BUG-R1-P1-8: <w:hMerge> is a legacy DOC binary-compat
+                    // attribute that Word *ignores* in DOCX. The OOXML way to
+                    // express horizontal merge is <w:gridSpan>. Redirect
+                    // hmerge=restart to gridSpan semantics: merge this cell
+                    // with the next physical cell (gridSpan = current + next).
+                    // hmerge=continue is a no-op (continuation is implicit
+                    // when the previous cell carries gridSpan>1).
+                    {
+                        // Strip any stale legacy hMerge so we never coexist
+                        // with the new gridSpan path.
+                        tcPr.HorizontalMerge = null;
+                        if (value.ToLowerInvariant() == "restart"
+                            && cell.Parent is TableRow hmergeRow)
+                        {
+                            var nextCell = cell.NextSibling<TableCell>();
+                            int currentSpan = tcPr.GridSpan?.Val?.Value ?? 1;
+                            int nextSpan = nextCell?.TableCellProperties?.GridSpan?.Val?.Value ?? 1;
+                            int merged = currentSpan + (nextCell != null ? nextSpan : 1);
+
+                            // Cap to row's grid budget so we don't exceed gridCol count.
+                            var hmergeTbl = hmergeRow.Parent as Table;
+                            var hmergeGridCount = hmergeTbl?.GetFirstChild<TableGrid>()
+                                ?.Elements<GridColumn>().Count() ?? merged;
+                            int startCol = 0;
+                            foreach (var prevTc in hmergeRow.Elements<TableCell>())
+                            {
+                                if (prevTc == cell) break;
+                                startCol += prevTc.TableCellProperties?.GridSpan?.Val?.Value ?? 1;
+                            }
+                            int budget = Math.Max(1, hmergeGridCount - startCol);
+                            merged = Math.Min(merged, budget);
+
+                            tcPr.GridSpan = new GridSpan { Val = merged };
+                            if (nextCell != null && merged > currentSpan)
+                                nextCell.Remove();
+                        }
+                    }
                     break;
                 case var k when k.StartsWith("border"):
                     ApplyCellBorders(tcPr, key, value);
@@ -1362,6 +1452,16 @@ public partial class WordHandler
                     var newSpan = ParseHelpers.SafeParseInt(value, "gridspan");
                     if (newSpan <= 0)
                         throw new ArgumentException($"Invalid 'gridspan' value: '{value}'. Must be a positive integer (> 0).");
+                    // BUG-R1-03 / BUG-R1-P2-11: reject when gridspan would
+                    // exceed the table's grid column count — produces
+                    // schema-invalid OOXML and Word repairs the file on open.
+                    if (cell.Parent is TableRow gsRow && gsRow.Parent is Table gsTbl)
+                    {
+                        var gsGridCount = gsTbl.GetFirstChild<TableGrid>()
+                            ?.Elements<GridColumn>().Count() ?? 0;
+                        if (gsGridCount > 0 && newSpan > gsGridCount)
+                            throw new ArgumentException($"Invalid '{key}' value: '{value}'. gridSpan cannot exceed the table's grid column count ({gsGridCount}).");
+                    }
                     tcPr.GridSpan = new GridSpan { Val = newSpan };
                     // Ensure the row has the correct number of tc elements.
                     // Calculate total grid columns occupied by all cells in this row,
@@ -1598,10 +1698,13 @@ public partial class WordHandler
                     break;
                 case "padding":
                 {
-                    var dxa = value;
+                    // BUG-R1-07: negative w:tblCellMar values are invalid OOXML.
+                    var paddingVal = ParseHelpers.SafeParseInt(value, "padding");
+                    if (paddingVal < 0)
+                        throw new ArgumentException($"Invalid 'padding' value: '{value}'. Table cell margins must be non-negative (OOXML w:tblCellMar).");
+                    var dxa = paddingVal.ToString();
                     var cm = tblPr.TableCellMarginDefault ?? tblPr.AppendChild(new TableCellMarginDefault());
                     cm.TopMargin = new TopMargin { Width = dxa, Type = TableWidthUnitValues.Dxa };
-                    var paddingVal = ParseHelpers.SafeParseInt(dxa, "padding");
                     cm.TableCellLeftMargin = new TableCellLeftMargin { Width = (short)Math.Min(paddingVal, short.MaxValue), Type = TableWidthValues.Dxa };
                     cm.BottomMargin = new BottomMargin { Width = dxa, Type = TableWidthUnitValues.Dxa };
                     cm.TableCellRightMargin = new TableCellRightMargin { Width = (short)Math.Min(paddingVal, short.MaxValue), Type = TableWidthValues.Dxa };
@@ -1816,6 +1919,14 @@ public partial class WordHandler
                 case "colwidths" or "colWidths":
                 {
                     var parts = value.Split(',');
+                    // BUG-R1-01 / BUG-R1-P2-9: reject negative/zero widths
+                    // up front. Mirrors Add path validation.
+                    foreach (var p in parts)
+                    {
+                        var trimmed = p.Trim();
+                        if (long.TryParse(trimmed, out var pv) && pv <= 0)
+                            throw new ArgumentException($"Invalid 'colwidths' value: '{trimmed}'. Each column width must be a positive integer (in twips).");
+                    }
                     var tblGrid = tbl.GetFirstChild<TableGrid>();
                     if (tblGrid == null)
                     {
@@ -1823,6 +1934,12 @@ public partial class WordHandler
                         tbl.InsertAfter(tblGrid, tblPr);
                     }
                     var gridCols = tblGrid.Elements<GridColumn>().ToList();
+                    // BUG-R1-P1-5 / BUG-R1-04: when fewer values than cols are
+                    // supplied, leave the gridCol slots beyond `parts.Length`
+                    // untouched. We then re-stamp tcW for ALL cells from the
+                    // (possibly-partially-updated) gridCol widths so partial
+                    // updates do not leave cells 3,4,… orphaned without tcW.
+                    var newGridSnapshot = new List<long>();
                     for (int ci = 0; ci < parts.Length; ci++)
                     {
                         var twips = ParseTwips(parts[ci].Trim());
@@ -1830,15 +1947,62 @@ public partial class WordHandler
                             gridCols[ci].Width = twips.ToString();
                         else
                             tblGrid.AppendChild(new GridColumn { Width = twips.ToString() });
-                        // Also update cell widths in each row for this column
+                        // BUG-R1-P1-7: walk cells by GRID column index (accounting
+                        // for gridSpan), not by physical cell list index. A
+                        // merged cell at the start of a row occupies grid slots
+                        // 0..span-1, so the second physical cell maps to grid
+                        // index `span`, not `1`. Otherwise rows with merges get
+                        // the wrong colWidth stamped.
                         foreach (var tblRow in tbl.Elements<TableRow>())
                         {
-                            var cells = tblRow.Elements<TableCell>().ToList();
-                            if (ci < cells.Count)
+                            int gridIdx = 0;
+                            foreach (var rc in tblRow.Elements<TableCell>())
                             {
-                                var tcPr = cells[ci].TableCellProperties ?? cells[ci].PrependChild(new TableCellProperties());
-                                tcPr.TableCellWidth = new TableCellWidth { Width = twips.ToString(), Type = TableWidthUnitValues.Dxa };
+                                var rcSpan = rc.TableCellProperties?.GridSpan?.Val?.Value ?? 1;
+                                if (gridIdx == ci)
+                                {
+                                    // Only stamp tcW when the cell starts at this
+                                    // grid column AND occupies exactly one slot
+                                    // (single-span). Multi-span cells should
+                                    // sum the spanned widths, not adopt a single
+                                    // column's value — leave them untouched here.
+                                    if (rcSpan == 1)
+                                    {
+                                        var rcTcPr = rc.TableCellProperties ?? rc.PrependChild(new TableCellProperties());
+                                        rcTcPr.TableCellWidth = new TableCellWidth { Width = twips.ToString(), Type = TableWidthUnitValues.Dxa };
+                                    }
+                                    break;
+                                }
+                                if (gridIdx + rcSpan > ci)
+                                    break; // cell spans past ci but doesn't start at it; skip
+                                gridIdx += rcSpan;
                             }
+                        }
+                    }
+                    // BUG-R1-P1-5 / BUG-R1-04: ensure every single-span cell has
+                    // a tcW after the update. Cells touched by the loop above
+                    // were stamped from `parts`. Cells beyond parts.Length need
+                    // their tcW back-filled from the (untouched) gridCol value
+                    // so a partial colWidths update does NOT leave cells 3,4,…
+                    // orphaned without a width definition. Multi-span cells
+                    // remain untouched — their tcW (if any) is preserved.
+                    var gridColsAfter = tblGrid.Elements<GridColumn>().ToList();
+                    foreach (var tblRow in tbl.Elements<TableRow>())
+                    {
+                        int gIdx = 0;
+                        foreach (var rc in tblRow.Elements<TableCell>())
+                        {
+                            var rcSpan = rc.TableCellProperties?.GridSpan?.Val?.Value ?? 1;
+                            if (rcSpan == 1
+                                && gIdx >= parts.Length
+                                && gIdx < gridColsAfter.Count
+                                && rc.TableCellProperties?.TableCellWidth == null)
+                            {
+                                var rcTcPr = rc.TableCellProperties ?? rc.PrependChild(new TableCellProperties());
+                                var gw = gridColsAfter[gIdx].Width?.Value ?? "0";
+                                rcTcPr.TableCellWidth = new TableCellWidth { Width = gw, Type = TableWidthUnitValues.Dxa };
+                            }
+                            gIdx += rcSpan;
                         }
                     }
                     break;
