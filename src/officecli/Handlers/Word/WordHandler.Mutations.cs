@@ -391,6 +391,31 @@ public partial class WordHandler
         // Refresh textId on parent paragraph if removing a child element (e.g. run)
         var parentPara = element.Ancestors<Paragraph>().FirstOrDefault();
 
+        // CONSISTENCY(tblGrid-sync): when a TableCell is removed via the generic
+        // /body/tbl[T]/tr[R]/tc[C] path, the virtual /col[N] path's helper
+        // (RemoveTableColumn) is bypassed. After removal, if no row has a cell
+        // occupying that column slot anymore, prune the corresponding gridCol
+        // so Get() reports correct cols/colWidths and Word doesn't see a stale
+        // grid wider than any row. Match RemoveTableColumn's behaviour but
+        // applied per-cell.
+        TableRow? tcRow = null;
+        Table? tcTable = null;
+        int tcColStart = -1, tcColSpan = 1;
+        if (element is TableCell tcRem && element.Parent is TableRow row && row.Parent is Table tbl)
+        {
+            tcRow = row;
+            tcTable = tbl;
+            // Compute the gridCol starting index occupied by this cell, summing
+            // gridSpan of preceding cells (a merged cell occupies multiple slots).
+            tcColStart = 0;
+            foreach (var sib in row.Elements<TableCell>())
+            {
+                if (ReferenceEquals(sib, tcRem)) break;
+                tcColStart += sib.TableCellProperties?.GetFirstChild<GridSpan>()?.Val?.Value ?? 1;
+            }
+            tcColSpan = tcRem.TableCellProperties?.GetFirstChild<GridSpan>()?.Val?.Value ?? 1;
+        }
+
         // Section removal: cascade-clean Header/Footer parts that this sectPr was the
         // sole reference holder for. Without this, remove /section[N] orphans
         // word/headerN.xml + its rel in document.xml.rels — strict OOXML validators
@@ -448,6 +473,42 @@ public partial class WordHandler
         }
 
         element.Remove();
+
+        // CONSISTENCY(tblGrid-sync): after TableCell removal, scan all rows; if
+        // any column slot in [tcColStart, tcColStart+tcColSpan) is now unoccupied
+        // by every row, drop the corresponding gridCol(s). Otherwise leave the
+        // grid alone (column still in use by other rows — partial removal is a
+        // ragged-row case which we don't auto-shrink).
+        if (tcTable != null && tcColStart >= 0 && tcColSpan >= 1)
+        {
+            var gridCols = tcTable.GetFirstChild<TableGrid>()?.Elements<GridColumn>().ToList();
+            if (gridCols != null && gridCols.Count > 0)
+            {
+                // For each affected slot, check if any remaining row has a cell occupying it.
+                bool SlotOccupied(int slotIdx)
+                {
+                    foreach (var r in tcTable.Elements<TableRow>())
+                    {
+                        int acc = 0;
+                        foreach (var c in r.Elements<TableCell>())
+                        {
+                            int span = c.TableCellProperties?.GetFirstChild<GridSpan>()?.Val?.Value ?? 1;
+                            if (slotIdx >= acc && slotIdx < acc + span) return true;
+                            acc += span;
+                        }
+                    }
+                    return false;
+                }
+                // Walk highest slot first to keep indices stable.
+                for (int slot = tcColStart + tcColSpan - 1; slot >= tcColStart; slot--)
+                {
+                    if (slot >= 0 && slot < gridCols.Count && !SlotOccupied(slot))
+                    {
+                        gridCols[slot].Remove();
+                    }
+                }
+            }
+        }
 
         wrapperPara?.Remove();
 
