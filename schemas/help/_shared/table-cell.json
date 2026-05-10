@@ -94,7 +94,7 @@
     },
     "fill": {
       "type": "color",
-      "description": "cell background fill. Accepts a solid color (hex, named, rgb(...)), 'none' for explicit no-fill, or a gradient string 'COLOR1-COLOR2[-ANGLE]' (e.g. 'FF0000-0000FF-90'). Stored as a:solidFill / a:gradFill / a:noFill on a:tcPr.",
+      "description": "cell background fill. Accepts a solid color (hex, named, rgb(...)), 'none' for explicit no-fill, or a gradient string 'COLOR1-COLOR2[-ANGLE]' (e.g. 'FF0000-0000FF-90'). Stored on the cell's properties element using each format's native shading/fill primitives.",
       "aliases": [
         "background",
         "shd",

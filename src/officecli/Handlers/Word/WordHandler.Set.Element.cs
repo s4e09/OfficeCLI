@@ -1266,7 +1266,7 @@ public partial class WordHandler
                         tcPr.Shading = shd;
                     }
                     break;
-                case "align" or "alignment":
+                case "align" or "alignment" or "halign":
                     var alignVal = ParseJustification(value);
                     // Apply alignment to ALL paragraphs in the cell, not just the first
                     foreach (var cellAlignPara in cell.Elements<Paragraph>())

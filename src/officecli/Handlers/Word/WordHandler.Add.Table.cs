@@ -596,6 +596,44 @@ public partial class WordHandler
             newCell.PrependChild(new TableCellProperties(tcw));
         }
 
+        // BUG-R2-P3-6: bare `fill` / `shd` / `shading` on AddCell were
+        // silently dropped because the dotted-key fallback below only
+        // visits keys containing '.'. Schema declares add:true for `fill`
+        // on docx table-cell, so honour the contract. CONSISTENCY(add-set-symmetry).
+        foreach (var (key, value) in properties)
+        {
+            var keyLower = key.ToLowerInvariant();
+            if (keyLower is "fill" or "shd" or "shading")
+            {
+                var tcPrFill = newCell.GetFirstChild<TableCellProperties>()
+                    ?? newCell.PrependChild(new TableCellProperties());
+                var shd = new Shading();
+                var shdParts = value.Split(';');
+                if (shdParts.Length == 1)
+                {
+                    shd.Val = ShadingPatternValues.Clear;
+                    shd.Fill = OfficeCli.Core.ParseHelpers.SanitizeColorForOoxml(shdParts[0]).Rgb;
+                }
+                else if (shdParts.Length >= 2)
+                {
+                    var pat = shdParts[0].TrimStart('#');
+                    if (pat.Length >= 6 && pat.All(char.IsAsciiHexDigit))
+                    {
+                        shd.Val = ShadingPatternValues.Clear;
+                        shd.Fill = OfficeCli.Core.ParseHelpers.SanitizeColorForOoxml(shdParts[0]).Rgb;
+                    }
+                    else
+                    {
+                        shd.Val = new ShadingPatternValues(shdParts[0]);
+                        shd.Fill = OfficeCli.Core.ParseHelpers.SanitizeColorForOoxml(shdParts[1]).Rgb;
+                        if (shdParts.Length >= 3)
+                            shd.Color = OfficeCli.Core.ParseHelpers.SanitizeColorForOoxml(shdParts[2]).Rgb;
+                    }
+                }
+                tcPrFill.Shading = shd;
+            }
+        }
+
         // Dotted-key fallback for tcPr-level attrs (shd.fill, etc.) not
         // modeled by hand-rolled blocks. Lazy-create tcPr if any dotted
         // attr binds. CONSISTENCY(add-set-symmetry).
