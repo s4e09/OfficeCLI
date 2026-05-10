@@ -721,7 +721,7 @@ public partial class ExcelHandler
                         // *path* is rejected by InsertMergeCellChecked since path
                         // is a single-target locator.
                         foreach (var rangeRef in value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-                            InsertMergeCellChecked(mergeCellsEl, rangeRef);
+                            InsertMergeCellChecked(mergeCellsEl, rangeRef, worksheet);
                         mergeCellsEl.Count = (uint)mergeCellsEl.Elements<MergeCell>().Count();
                     }
                     break;
@@ -1083,7 +1083,7 @@ public partial class ExcelHandler
                         ws.AppendChild(mergeCells);
                     }
                     foreach (var part in value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-                        InsertMergeCellChecked(mergeCells, part.ToUpperInvariant());
+                        InsertMergeCellChecked(mergeCells, part.ToUpperInvariant(), worksheet);
                     mergeCells.Count = (uint)mergeCells.Elements<MergeCell>().Count();
                     break;
                 }
@@ -1707,7 +1707,7 @@ public partial class ExcelHandler
                         // (`--prop merge=A1:B1,A2:B2`), at sheet- or cell-anchored set.
                         // A comma in the path itself is rejected by the guard inside
                         // InsertMergeCellChecked with an actionable message.
-                        InsertMergeCellChecked(mergeCells, rangeRef);
+                        InsertMergeCellChecked(mergeCells, rangeRef, worksheet);
                         mergeCells.Count = (uint)mergeCells.Elements<MergeCell>().Count();
                     }
                     else if (doSweep)

@@ -1839,7 +1839,7 @@ public partial class ExcelHandler
         new(@"^[A-Z]+[0-9]+(:[A-Z]+[0-9]+)?$",
             System.Text.RegularExpressions.RegexOptions.Compiled);
 
-    private static void InsertMergeCellChecked(MergeCells mergeCells, string newRangeRef)
+    private static void InsertMergeCellChecked(MergeCells mergeCells, string newRangeRef, WorksheetPart? worksheetPart = null)
     {
         var refUpper = newRangeRef.ToUpperInvariant();
         // Bottom-line guard: <mergeCell ref="..."> is OOXML ST_Ref — a single A1
@@ -1864,6 +1864,27 @@ public partial class ExcelHandler
                 throw new ArgumentException(
                     $"Merge range '{refUpper}' overlaps existing merged range '{er}'. " +
                     $"Excel rejects overlapping mergeCell entries.");
+        }
+        // BUG-R2-table-merge BUG-5: Excel forbids mergeCell entries that
+        // intersect a ListObject table range — files saved with such a
+        // merge open with a "found a problem" repair dialog. Reject up
+        // front so callers see a clear error instead of file corruption.
+        if (worksheetPart != null)
+        {
+            foreach (var tdp in worksheetPart.TableDefinitionParts)
+            {
+                var tblRef = tdp.Table?.Reference?.Value;
+                if (string.IsNullOrEmpty(tblRef)) continue;
+                if (RangesOverlap(refUpper, tblRef.ToUpperInvariant()))
+                {
+                    var tblName = tdp.Table?.Name?.Value
+                        ?? tdp.Table?.DisplayName?.Value
+                        ?? "(unnamed)";
+                    throw new ArgumentException(
+                        $"Merge range '{refUpper}' overlaps ListObject table '{tblName}' (ref '{tblRef}'). " +
+                        "Excel does not allow merging cells inside a table range. Convert the table to a normal range first.");
+                }
+            }
         }
         mergeCells.AppendChild(new MergeCell { Reference = refUpper });
     }

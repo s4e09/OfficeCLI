@@ -675,7 +675,7 @@ public partial class ExcelHandler
             // separate <mergeCell> elements. Comma in *path* is rejected by
             // InsertMergeCellChecked since path is a single-target locator.
             foreach (var rangeRef in mergeRange.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-                InsertMergeCellChecked(mergeCellsEl, rangeRef);
+                InsertMergeCellChecked(mergeCellsEl, rangeRef, cellWorksheet);
             mergeCellsEl.Count = (uint)mergeCellsEl.Elements<MergeCell>().Count();
         }
 
