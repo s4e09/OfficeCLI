@@ -4387,16 +4387,25 @@ public partial class ExcelHandler
             wb.Descendants<Sheet>().Select(s => s.Name?.Value ?? "").Where(n => n.Length > 0),
             StringComparer.OrdinalIgnoreCase);
 
+        // Strip out double-quoted string literals first — formulas can carry
+        // arbitrary text in `"..."` (e.g. `="World!"` or
+        // `=INDIRECT("Foo!B2")`) and an unguarded scan would mis-flag the
+        // contents as a sheet reference. OOXML escapes inner double quotes
+        // by doubling (`""`), so the literal-content pattern matches either
+        // `""` or any non-`"` character.
+        var scan = System.Text.RegularExpressions.Regex.Replace(
+            formula, @"""(""""|[^""])*""", "\"\"");
+
         // Quoted form: '...'! — inner single quotes escaped as ''
         foreach (System.Text.RegularExpressions.Match m in
-                 System.Text.RegularExpressions.Regex.Matches(formula, @"'((?:[^']|'')+)'!"))
+                 System.Text.RegularExpressions.Regex.Matches(scan, @"'((?:[^']|'')+)'!"))
         {
             var name = m.Groups[1].Value.Replace("''", "'");
             if (!names.Contains(name)) return true;
         }
         // Bare form: Name! — letters/digits/underscore/period (Excel allows these unquoted)
         foreach (System.Text.RegularExpressions.Match m in
-                 System.Text.RegularExpressions.Regex.Matches(formula, @"(?<![A-Za-z0-9_'.])([A-Za-z_][A-Za-z0-9_.]*)!"))
+                 System.Text.RegularExpressions.Regex.Matches(scan, @"(?<![A-Za-z0-9_'.])([A-Za-z_][A-Za-z0-9_.]*)!"))
         {
             if (!names.Contains(m.Groups[1].Value)) return true;
         }
