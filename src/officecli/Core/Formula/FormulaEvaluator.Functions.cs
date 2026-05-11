@@ -361,8 +361,16 @@ internal partial class FormulaEvaluator
         // OFFSET / INDIRECT / ranges produce a FormulaResult.Area whose underlying
         // RangeData carries the resolved reference's top-left origin. Use that
         // when present so ROW(OFFSET(A1,2,0)) reports 3 (not the cell value's row).
-        if (AsRangeData(args[0]) is { BaseRow: > 0 } rd)
-            return FR(isRow ? rd.BaseRow : rd.BaseCol);
+        // For *computed* arrays (BaseRow=0 — array constants like {1,2,3} or
+        // arithmetic results like A1:A3*2) there is no workbook origin. Return
+        // #REF! rather than silently null, mirroring POI's CacheAreaEval-vs-
+        // AreaEval distinction: a transient array has no row/column identity.
+        if (AsRangeData(args[0]) is { } rd)
+        {
+            if (rd.BaseRow > 0) return FR(isRow ? rd.BaseRow : rd.BaseCol);
+            return FormulaResult.Error("#REF!");
+        }
+        if (args[0] is FormulaResult { IsArray: true }) return FormulaResult.Error("#REF!");
         if (args[0] is FormulaResult r)
         { var m = Regex.Match(r.AsString(), @"([A-Z]+)(\d+)", RegexOptions.IgnoreCase);
           return m.Success ? FR(isRow ? int.Parse(m.Groups[2].Value) : ColToIndex(m.Groups[1].Value)) : null; }
