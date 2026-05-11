@@ -240,7 +240,7 @@ internal partial class FormulaEvaluator
 
     // ==================== Tokenizer ====================
 
-    private enum TT { Number, String, CellRef, Range, Op, LParen, RParen, Comma, Func, Bool, Compare, SheetCellRef, SheetRange }
+    private enum TT { Number, String, CellRef, Range, Op, LParen, RParen, Comma, Func, Bool, Compare, SheetCellRef, SheetRange, ArrayLit, Error }
     private record Token(TT Type, string Value);
 
     private Dictionary<string, string> GetDefinedNames()
@@ -294,6 +294,20 @@ internal partial class FormulaEvaluator
             if (ch == ')') { tokens.Add(new Token(TT.RParen, ")")); i++; continue; }
             if (ch == ',') { tokens.Add(new Token(TT.Comma, ",")); i++; continue; }
             if (ch == '&') { tokens.Add(new Token(TT.Op, "&")); i++; continue; }
+
+            // Array constant literal: {1,2,3} (row) or {1;2;3} (column) or
+            // {1,2;3,4} (matrix). Per ECMA-376 §18.17.7.282 (array-constant),
+            // comma separates columns, semicolon separates rows. Cells may be
+            // numbers, quoted strings, or TRUE/FALSE. Nested {} is not allowed.
+            if (ch == '{')
+            {
+                var start = i + 1;
+                var end = formula.IndexOf('}', start);
+                if (end < 0) throw new NotSupportedException("Unclosed { in array constant");
+                tokens.Add(new Token(TT.ArrayLit, formula[start..end]));
+                i = end + 1;
+                continue;
+            }
 
             if (ch == '"')
             {
@@ -415,6 +429,16 @@ internal partial class FormulaEvaluator
                 if (definedNames.TryGetValue(stripped, out var defRef))
                 {
                     var body = defRef.TrimStart('=').Trim();
+                    // Defined name pointing at an error literal (e.g. the
+                    // target sheet was deleted and the workbook persisted
+                    // `<definedName>#REF!</definedName>`) must surface as
+                    // that exact error, not collapse to #NAME? via the
+                    // tokenize-fail catch-all below.
+                    if (body.Length >= 2 && body[0] == '#' && body[^1] == '!')
+                    {
+                        tokens.Add(new Token(TT.Error, body));
+                        continue;
+                    }
                     if (TryDefinedNameAsSimpleRef(body) is { } refToken)
                     {
                         tokens.Add(refToken);
@@ -506,6 +530,12 @@ internal partial class FormulaEvaluator
             var op = t[p].Value; p++;
             var right = ParseConcat(t, ref p); if (right == null) return null;
             if (left.IsError) return left; if (right.IsError) return right;
+            // Element-wise comparison when either side is array/range — needed
+            // by the SUMPRODUCT((A1:A3>0)*1) conditional-count idiom. Returns
+            // 0/1 doubles (not Bool) so downstream `*1` stays in numeric domain
+            // matching POI's TwoOperandNumericOperation+ArrayFunction policy.
+            if (HasArrayShape(left) || HasArrayShape(right))
+            { left = ApplyComparison(left, right, op); continue; }
             var cmp = CompareValues(left, right);
             left = op switch { "=" => FormulaResult.Bool(cmp == 0), "<>" => FormulaResult.Bool(cmp != 0),
                 "<" => FormulaResult.Bool(cmp < 0), ">" => FormulaResult.Bool(cmp > 0),
@@ -513,6 +543,44 @@ internal partial class FormulaEvaluator
             if (left == null) return null;
         }
         return left;
+    }
+
+    // Sibling of ApplyBinaryOp for comparison operators. Element-wise on
+    // arrays/ranges, scalar fallback otherwise. Returns FormulaResult.Array
+    // of 0/1 doubles (treating BoolEval as numeric, matching how SUMPRODUCT
+    // / SUM / multiplication consume the result).
+    private FormulaResult? ApplyComparison(FormulaResult left, FormulaResult right, string op)
+    {
+        // Lift to per-element FormulaResult arrays so CompareValues sees
+        // proper typed cells (string vs number) instead of collapsed doubles.
+        var la = AsResultArray(left); var ra = AsResultArray(right);
+        int n = Math.Max(la?.Length ?? 1, ra?.Length ?? 1);
+        var o = new double[n];
+        for (int i = 0; i < n; i++)
+        {
+            var l = la != null ? (i < la.Length ? la[i] : null) : left;
+            var r = ra != null ? (i < ra.Length ? ra[i] : null) : right;
+            if (l == null || r == null) { o[i] = 0; continue; }
+            var cmp = CompareValues(l, r);
+            o[i] = op switch
+            {
+                "=" => cmp == 0 ? 1 : 0,
+                "<>" => cmp != 0 ? 1 : 0,
+                "<" => cmp < 0 ? 1 : 0,
+                ">" => cmp > 0 ? 1 : 0,
+                "<=" => cmp <= 0 ? 1 : 0,
+                ">=" => cmp >= 0 ? 1 : 0,
+                _ => 0
+            };
+        }
+        return FormulaResult.Array(o);
+    }
+
+    private static FormulaResult?[]? AsResultArray(FormulaResult r)
+    {
+        if (r.IsArray) return r.ArrayValue!.Select(x => (FormulaResult?)FormulaResult.Number(x)).ToArray();
+        if (r.IsRange) return r.RangeValue!.ToFlatResults();
+        return null;
     }
 
     private FormulaResult? ParseConcat(List<Token> t, ref int p)
@@ -582,6 +650,38 @@ internal partial class FormulaEvaluator
 
     private static bool HasArrayShape(FormulaResult r) => r.IsArray || r.IsRange;
 
+    // Parse the body of an array constant `{...}` (without the braces).
+    // Rows are separated by ';', columns by ',' — per ECMA-376 §18.17.7.282.
+    // Each cell is a number / "string" / TRUE / FALSE. Produces a RangeData
+    // wrapped as Area so ApplyBinaryOp and aggregate functions handle it
+    // identically to a real range. BaseRow/BaseCol stay 0 (not a workbook
+    // reference) — see POI CacheAreaEval-vs-AreaEval distinction.
+    private static FormulaResult ParseArrayConstant(string body)
+    {
+        var rows = body.Split(';');
+        var rowCells = rows.Select(r => r.Split(',').Select(c => c.Trim()).ToArray()).ToArray();
+        var cols = rowCells.Max(r => r.Length);
+        var cells = new FormulaResult?[rowCells.Length, cols];
+        for (int r = 0; r < rowCells.Length; r++)
+            for (int c = 0; c < cols; c++)
+            {
+                var s = c < rowCells[r].Length ? rowCells[r][c] : "";
+                cells[r, c] = ParseArrayConstantCell(s);
+            }
+        return FormulaResult.Area(new RangeData(cells));
+    }
+
+    private static FormulaResult? ParseArrayConstantCell(string s)
+    {
+        if (s.Length == 0) return null;
+        if (s.Length >= 2 && s[0] == '"' && s[^1] == '"') return FormulaResult.Str(s[1..^1].Replace("\"\"", "\""));
+        if (s.Equals("TRUE", StringComparison.OrdinalIgnoreCase)) return FormulaResult.Bool(true);
+        if (s.Equals("FALSE", StringComparison.OrdinalIgnoreCase)) return FormulaResult.Bool(false);
+        if (s.StartsWith('#') && s.EndsWith('!')) return FormulaResult.Error(s);
+        if (double.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var n)) return FormulaResult.Number(n);
+        return FormulaResult.Str(s);
+    }
+
     private static double[]? AsArrayLike(FormulaResult r)
     {
         if (r.IsArray) return r.ArrayValue;
@@ -602,7 +702,12 @@ internal partial class FormulaEvaluator
         {
             if (t[p].Value == "-") { p++; var v = ParseUnary(t, ref p); if (v == null) return null;
                 if (v.IsError) return v;
-                return v.IsArray ? FormulaResult.Array(v.ArrayValue!.Select(x => -x).ToArray()) : FormulaResult.Number(-v.AsNumber()); }
+                // Element-wise negate for both Array and Range operands —
+                // previously only IsArray was handled, so `-A1:A3` collapsed
+                // via AsNumber to -FirstCell instead of producing an array.
+                if (HasArrayShape(v))
+                    return FormulaResult.Array(AsArrayLike(v)!.Select(x => -x).ToArray());
+                return FormulaResult.Number(-v.AsNumber()); }
             if (t[p].Value == "+") { p++; return ParseUnary(t, ref p); }
         }
         return ParsePostfix(t, ref p);
@@ -632,6 +737,8 @@ internal partial class FormulaEvaluator
             // are intercepted earlier by ParseFunction and bypass this path.
             case TT.Range: p++; return FormulaResult.Area(Expand2DRange(tok.Value));
             case TT.SheetRange: p++; return FormulaResult.Area(Expand2DRange(tok.Value));
+            case TT.ArrayLit: p++; return ParseArrayConstant(tok.Value);
+            case TT.Error: p++; return FormulaResult.Error(tok.Value);
             case TT.LParen: p++; var inner = ParseExpression(t, ref p); if (p < t.Count && t[p].Type == TT.RParen) p++; return inner;
             case TT.Func: return ParseFunction(t, ref p);
             default: return null;
