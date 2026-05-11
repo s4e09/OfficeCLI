@@ -437,6 +437,21 @@ public partial class ExcelHandler
         _viewAsIssuesWorksheetCache = null;
         _viewAsIssuesSheetNameCache = null;
 
+        // Should the scan that produces issues of `subtypeName` run?
+        // True when no filter is active, when the filter is the broad
+        // bucket the subtype belongs to (here always Content), or when
+        // the filter names the subtype exactly. Centralising this keeps
+        // every inline gate consistent with the end-of-function filter,
+        // so `--type content` and the no-filter default both see every
+        // Content-bucket subtype.
+        bool ShouldScan(string subtypeName)
+        {
+            if (issueType == null) return true;
+            return string.Equals(issueType, subtypeName, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(issueType, "content", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(issueType, "c", StringComparison.OrdinalIgnoreCase);
+        }
+
         var sheets = GetWorksheets();
         foreach (var (sheetName, worksheetPart) in sheets)
         {
@@ -466,7 +481,7 @@ public partial class ExcelHandler
                     }
                     else if (cell.CellFormula?.Text is { } fText
                         && string.IsNullOrEmpty(cell.CellValue?.Text)
-                        && (issueType == null || issueType == "formula_not_evaluated"))
+                        && ShouldScan("formula_not_evaluated"))
                     {
                         // Route through the shared EvaluateForReport so view
                         // text / view issues / Format["evaluated"] all agree on
@@ -575,13 +590,15 @@ public partial class ExcelHandler
         }
 
         // Chart numCache vs live cell values — stale-cache detection.
-        // Off by default because it walks every chart × every series × every
-        // point and evaluates every referenced range; opt in via
-        // `--type chart_cache_stale`. When a cell's value changed but the
-        // chart hasn't been refreshed by Excel, the chart silently shows
-        // old values. The check requires explicit opt-in because some
-        // numCache deltas are legitimate (rounding, formatting), and we
-        // don't want noise on every casual `view issues`.
+        // Opt-in only via `--type chart_cache_stale`. Two reasons:
+        //   (1) Cost — walks every chart × every series × every point and
+        //       evaluates every referenced range.
+        //   (2) Signal-to-noise — some numCache deltas are legitimate
+        //       (rounding, formatting), and we don't want false positives
+        //       on every default `view issues`.
+        // Because this is opt-in only, it is intentionally NOT part of the
+        // `--type content` broad-bucket scan. Document this in help so the
+        // omission is discoverable rather than surprising.
         if (issueType == "chart_cache_stale")
         {
             foreach (var (slug, numRef) in EnumerateChartNumberRefs())
