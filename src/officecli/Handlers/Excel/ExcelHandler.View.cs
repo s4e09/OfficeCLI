@@ -104,7 +104,7 @@ public partial class ExcelHandler
 
                     if (string.IsNullOrEmpty(value) && formula == null)
                         warn = " \u26a0 empty";
-                    else if (formula != null && IsExcelErrorValue(value))
+                    else if (formula != null && IsExcelErrorValue(cell, value))
                         warn = " \u26a0 formula error";
 
                     sb.AppendLine($"  {cellRef}: [{value}] \u2190 {annotation}{warn}");
@@ -206,7 +206,7 @@ public partial class ExcelHandler
                     var value = GetCellDisplayValue(cell);
                     if (string.IsNullOrEmpty(value)) emptyCells++;
                     if (cell.CellFormula != null) formulaCells++;
-                    if (IsExcelErrorValue(value)) errorCells++;
+                    if (IsExcelErrorValue(cell, value)) errorCells++;
 
                     var type = GetCellTypeName(cell);
                     typeCounts[type] = typeCounts.GetValueOrDefault(type) + 1;
@@ -263,7 +263,7 @@ public partial class ExcelHandler
                     var value = GetCellDisplayValue(cell);
                     if (string.IsNullOrEmpty(value)) emptyCells++;
                     if (cell.CellFormula != null) formulaCells++;
-                    if (IsExcelErrorValue(value)) errorCells++;
+                    if (IsExcelErrorValue(cell, value)) errorCells++;
                     var type = GetCellTypeName(cell);
                     typeCounts[type] = typeCounts.GetValueOrDefault(type) + 1;
                 }
@@ -493,17 +493,12 @@ public partial class ExcelHandler
                     var cellRef = cell.CellReference?.Value ?? "?";
                     var value = GetCellDisplayValue(cell);
 
-                    // Recognise the full set of Excel error sentinels a
-                    // formula cell can carry as cachedValue. Detection
-                    // goes through IsExcelErrorValue (Helpers.cs) so view
-                    // issues, view stats, and view outline agree on which
-                    // values count as an error. cell.DataType==Error is an
-                    // additional positive signal — Excel writers tag the
-                    // cell type explicitly even when the cachedValue text
-                    // round-trips correctly.
-                    bool isErrorCell = IsExcelErrorValue(value)
-                        || (cell.DataType?.Value == CellValues.Error
-                            && value != "#OCLI_NOTEVAL!");
+                    // Centralised detection in IsExcelErrorValue(cell, value)
+                    // — value-shape match plus the cell.DataType==Error
+                    // signal. view issues, view stats, and view outline all
+                    // go through the same overload so the three readers
+                    // never disagree on which cells count as errors.
+                    bool isErrorCell = IsExcelErrorValue(cell, value);
                     if (cell.CellFormula != null && isErrorCell)
                     {
                         // Two-step routing keeps the semantic decision (what

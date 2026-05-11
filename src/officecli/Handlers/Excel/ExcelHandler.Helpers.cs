@@ -103,12 +103,31 @@ public partial class ExcelHandler
         if (value == "#OCLI_NOTEVAL!") return false;
         if (!value.StartsWith('#') || value.Length < 2) return false;
         // Every Excel error sentinel starts with `#` followed by an
-        // uppercase letter or `N` (the `N/A` shape). Covers the seven
-        // ECMA-376 codes, the modern additions (#SPILL!, #CALC!,
-        // #FIELD!, #BLOCKED!, #CONNECT!, #UNKNOWN!), and async-fetch
-        // sentinels (#GETTING_DATA) which lack the trailing `!`.
+        // uppercase letter. Covers the seven ECMA-376 codes, the modern
+        // additions (#SPILL!, #CALC!, #FIELD!, #BLOCKED!, #CONNECT!,
+        // #UNKNOWN!), and async-fetch sentinels (#GETTING_DATA) which
+        // lack the trailing `!`. Intentionally lenient — there is no
+        // OOXML BNF for the error namespace and Microsoft has added
+        // codes over time. The trade-off is that `#FOO` would also match
+        // here; the alternative (closed-set whitelist) would break the
+        // moment a new error code lands.
         char c = value[1];
-        return c == 'N' || (c >= 'A' && c <= 'Z');
+        return c >= 'A' && c <= 'Z';
+    }
+
+    /// <summary>
+    /// Cell-aware overload. Recognises an Excel error in either the cell's
+    /// display value (delegates to the string overload) or via the explicit
+    /// <c>t="e"</c> data type. The DataType check covers writers that tag
+    /// the cell type but leave the cached <c>&lt;v&gt;</c> in some unusual
+    /// form (or empty). Centralised here so view stats, view outline, and
+    /// view issues all classify the same cells as errors.
+    /// </summary>
+    internal static bool IsExcelErrorValue(Cell cell, string? displayValue)
+    {
+        if (IsExcelErrorValue(displayValue)) return true;
+        return cell.DataType?.Value == CellValues.Error
+            && displayValue != "#OCLI_NOTEVAL!";
     }
 
     internal static void ValidateFormulaCellRefs(string formula)
