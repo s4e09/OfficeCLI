@@ -213,12 +213,17 @@ public partial class WordHandler
     /// </summary>
     private static string? TryGetParagraphTextWithFieldSentinels(Paragraph para)
     {
-        // fldSimple form: inspect each <w:fldSimple> for an empty body and
-        // emit the sentinel inline. fldSimple coexists with the complex-field
-        // walk below — paragraphs can contain either form (rarely both).
-        if (para.Descendants<SimpleField>().Any(fs =>
-            IsDynamicFieldInstruction(fs.Instruction?.Value?.Trim() ?? "")
-            && fs.Descendants<Text>().All(t => string.IsNullOrEmpty(t.Text))))
+        // fldSimple form: a dynamic field is "unevaluated" if its body is
+        // empty OR its w:dirty bit is set (r2 trial-team A.G3 / B.N3). The
+        // sentinel replaces both forms so view text doesn't show stale text
+        // alongside an evaluated=false signal in get --json.
+        bool FldSimpleNeedsSentinel(SimpleField fs)
+        {
+            if (!IsDynamicFieldInstruction(fs.Instruction?.Value?.Trim() ?? "")) return false;
+            if (fs.Dirty?.Value == true) return true;
+            return fs.Descendants<Text>().All(t => string.IsNullOrEmpty(t.Text));
+        }
+        if (para.Descendants<SimpleField>().Any(FldSimpleNeedsSentinel))
         {
             var sbS = new StringBuilder();
             foreach (var child in para.ChildElements)
@@ -226,11 +231,10 @@ public partial class WordHandler
                 if (child is SimpleField fs)
                 {
                     var instr = fs.Instruction?.Value?.Trim() ?? "";
-                    var t = string.Concat(fs.Descendants<Text>().Select(x => x.Text));
-                    if (t.Length == 0 && IsDynamicFieldInstruction(instr))
+                    if (FldSimpleNeedsSentinel(fs))
                         sbS.Append("#OCLI_NOTEVAL!{").Append(instr).Append('}');
                     else
-                        sbS.Append(t);
+                        sbS.Append(string.Concat(fs.Descendants<Text>().Select(x => x.Text)));
                 }
                 else if (child is Run run)
                     sbS.Append(string.Concat(run.Elements<Text>().Select(x => x.Text)));
@@ -247,6 +251,7 @@ public partial class WordHandler
         var sb = new StringBuilder();
         bool sawUnevaluated = false;
         Run? beginRun = null;
+        bool beginDirty = false;
         FieldCode? instrCode = null;
         bool inResult = false;
         bool hasResult = false;
@@ -258,17 +263,24 @@ public partial class WordHandler
             {
                 var charType = fldChar.FieldCharType?.Value;
                 if (charType == FieldCharValues.Begin)
-                { beginRun = run; instrCode = null; inResult = false; hasResult = false; }
+                { beginRun = run; beginDirty = fldChar.Dirty?.Value == true; instrCode = null; inResult = false; hasResult = false; }
                 else if (charType == FieldCharValues.Separate) inResult = true;
                 else if (charType == FieldCharValues.End)
                 {
-                    if (beginRun != null && instrCode != null && !hasResult)
+                    if (beginRun != null && instrCode != null)
                     {
                         var instr = instrCode.Text?.Trim() ?? "";
-                        if (IsDynamicFieldInstruction(instr))
-                        { sb.Append("#OCLI_NOTEVAL!{").Append(instr).Append('}'); sawUnevaluated = true; }
+                        // r2 trial-team A.G3: dirty fields with a cached
+                        // result are also "not really evaluated" — drop the
+                        // stale result and inject the sentinel so view text
+                        // matches the get --json `evaluated:false` signal.
+                        if ((!hasResult || beginDirty) && IsDynamicFieldInstruction(instr))
+                        {
+                            sb.Append("#OCLI_NOTEVAL!{").Append(instr).Append('}');
+                            sawUnevaluated = true;
+                        }
                     }
-                    beginRun = null; instrCode = null; inResult = false; hasResult = false;
+                    beginRun = null; beginDirty = false; instrCode = null; inResult = false; hasResult = false;
                 }
             }
             else if (beginRun != null)
@@ -281,7 +293,12 @@ public partial class WordHandler
                 else
                 {
                     var t = string.Concat(run.Elements<Text>().Select(x => x.Text));
-                    if (t.Length > 0) { sb.Append(t); hasResult = true; }
+                    if (t.Length > 0)
+                    {
+                        // Hold result text — emit only at End if not dirty
+                        hasResult = true;
+                        if (!beginDirty) sb.Append(t);
+                    }
                 }
             }
             else
@@ -1359,26 +1376,45 @@ public partial class WordHandler
 
         // <w:fldSimple instr="..."> form — same observability gap. Some
         // authoring tools (and our own AddDefault path) emit fldSimple
-        // instead of the complex fldChar triad. The body's <w:r><w:t> is
-        // the cached result; absent or empty means "not evaluated".
-        foreach (var fld in body.Descendants<SimpleField>())
+        // instead of the complex fldChar triad. r2 trial-team C.A1 / B.N3:
+        // also scan header / footer / footnote / endnote parts (mirrors
+        // FindFields), and check the w:dirty attribute for the same
+        // semantics as complex-field dirty (cached but Word will re-render).
+        var simpleContainers = new List<OpenXmlElement>();
+        if (body != null) simpleContainers.Add(body);
+        foreach (var hp in _doc.MainDocumentPart?.HeaderParts ?? Enumerable.Empty<DocumentFormat.OpenXml.Packaging.HeaderPart>())
+            if (hp.Header != null) simpleContainers.Add(hp.Header);
+        foreach (var fp in _doc.MainDocumentPart?.FooterParts ?? Enumerable.Empty<DocumentFormat.OpenXml.Packaging.FooterPart>())
+            if (fp.Footer != null) simpleContainers.Add(fp.Footer);
+        if (_doc.MainDocumentPart?.FootnotesPart?.Footnotes is { } footnotes)
+            simpleContainers.Add(footnotes);
+        if (_doc.MainDocumentPart?.EndnotesPart?.Endnotes is { } endnotes)
+            simpleContainers.Add(endnotes);
+        foreach (var container in simpleContainers)
         {
-            if (limit.HasValue && issues.Count >= limit.Value) break;
-            var instr = fld.Instruction?.Value?.Trim() ?? "";
-            if (!IsDynamicFieldInstruction(instr)) continue;
-            var resultText = string.Join("", fld.Descendants<Text>().Select(t => t.Text));
-            if (resultText.Length > 0) continue;
-            issues.Add(new DocumentIssue
+            foreach (var fld in container.Descendants<SimpleField>())
             {
-                Id = $"U{++issueNum}",
-                Type = IssueType.Content,
-                Subtype = "field_not_evaluated",
-                Severity = IssueSeverity.Warning,
-                Path = "/body",
-                Message = "Field written but not evaluated (no cached result, Word has not rendered it)",
-                Context = "{ " + instr + " }",
-                Suggestion = "Open the document in Word once (or run a TOC update) so the result run is populated."
-            });
+                if (limit.HasValue && issues.Count >= limit.Value) break;
+                var instr = fld.Instruction?.Value?.Trim() ?? "";
+                if (!IsDynamicFieldInstruction(instr)) continue;
+                var resultText = string.Join("", fld.Descendants<Text>().Select(t => t.Text));
+                var isDirty = fld.Dirty?.Value == true;
+                if (!isDirty && resultText.Length > 0) continue;
+                issues.Add(new DocumentIssue
+                {
+                    Id = $"U{++issueNum}",
+                    Type = IssueType.Content,
+                    Subtype = "field_not_evaluated",
+                    Severity = IssueSeverity.Warning,
+                    Path = "/body",
+                    Message = isDirty
+                        ? "Field marked dirty (cached result may be stale, Word will re-render on open)"
+                        : "Field written but not evaluated (no cached result, Word has not rendered it)",
+                    Context = "{ " + instr + " }",
+                    Suggestion = "Open the document in Word once (or run a TOC update) so the result run is populated."
+                });
+            }
+            if (limit.HasValue && issues.Count >= limit.Value) break;
         }
 
         // Filter by type. Accepts both broad bucket (format/content/structure)

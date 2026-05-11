@@ -573,21 +573,28 @@ public partial class PowerPointHandler
             if (limit.HasValue && issues.Count >= limit.Value) break;
         }
 
+        // Subtype / type filter (r2 trial-team A.G2 / B.N1 / C.A2). pptx
+        // previously ignored issueType entirely. Accept both broad bucket
+        // (format/content/structure) and specific subtype identifiers.
+        if (issueType != null)
+        {
+            var bucket = issueType.ToLowerInvariant() switch
+            {
+                "format" or "f" => IssueType.Format,
+                "content" or "c" => IssueType.Content,
+                "structure" or "s" => IssueType.Structure,
+                _ => (IssueType?)null
+            };
+            if (bucket.HasValue)
+                issues = issues.Where(i => i.Type == bucket.Value).ToList();
+            else
+                issues = issues.Where(i => string.Equals(i.Subtype, issueType, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+
         return issues;
     }
 
-    /// <summary>
-    /// PowerPoint <a:fld type="..."> values that PowerPoint renders dynamically
-    /// (slide number, dates). User-input field types are interactive — their
-    /// blank state is normal, not an issue.
-    /// </summary>
-    private static bool IsDynamicSlideFieldType(string fldType)
-    {
-        if (string.IsNullOrEmpty(fldType)) return false;
-        // slidenum, datetime, datetime1..datetime13 are PPT's built-in dynamic
-        // fields per ECMA-376 §20.1.6.4 (ST_PlaceholderType + ST_TextFieldType).
-        if (fldType == "slidenum") return true;
-        if (fldType.StartsWith("datetime", StringComparison.OrdinalIgnoreCase)) return true;
-        return false;
-    }
+    // IsDynamicSlideFieldType has been collapsed into Helpers.cs's
+    // IsDynamicSlideFieldTypeStatic — single source of truth (r2 trial-team C.B).
+    private static bool IsDynamicSlideFieldType(string fldType) => IsDynamicSlideFieldTypeStatic(fldType);
 }

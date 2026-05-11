@@ -662,9 +662,15 @@ public partial class PowerPointHandler
         return sb.ToString();
     }
 
-    // Sibling of PowerPointHandler.View.IsDynamicSlideFieldType, accessible
-    // from the Helpers partial without crossing into View internals.
-    private static bool IsDynamicSlideFieldTypeStatic(string fldType)
+    /// <summary>
+    /// Single source of truth (r2 trial-team C.B) for which `<a:fld type="…">`
+    /// values PowerPoint renders dynamically — slidenum and datetime* are
+    /// auto-populated when the slide opens. Used by `view text` sentinel
+    /// emission (this file), `view issues` slide_field_not_evaluated
+    /// (View.cs), and shape Format["evaluated"] (NodeBuilder.cs). Adding a
+    /// new dynamic type here propagates everywhere.
+    /// </summary>
+    internal static bool IsDynamicSlideFieldTypeStatic(string fldType)
     {
         if (string.IsNullOrEmpty(fldType)) return false;
         if (fldType == "slidenum") return true;

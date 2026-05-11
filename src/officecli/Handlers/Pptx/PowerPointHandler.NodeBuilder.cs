@@ -393,9 +393,10 @@ public partial class PowerPointHandler
             foreach (var fld in shape.TextBody.Descendants<Drawing.Field>())
             {
                 var fldType = fld.Type?.Value ?? "";
-                if (string.IsNullOrEmpty(fldType)) continue;
-                if (fldType != "slidenum" && !fldType.StartsWith("datetime", StringComparison.OrdinalIgnoreCase))
-                    continue;
+                // Single source of truth in Helpers.IsDynamicSlideFieldTypeStatic
+                // (r2 trial-team C.B). Adding new dynamic types only needs one
+                // edit there.
+                if (!IsDynamicSlideFieldTypeStatic(fldType)) continue;
                 anyDynamic = true;
                 var cached = string.Concat(fld.Elements<Drawing.Text>().Select(t => t.Text));
                 if (cached.Length == 0) { anyUnevaluated = true; break; }

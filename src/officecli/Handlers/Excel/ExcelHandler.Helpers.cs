@@ -1391,9 +1391,14 @@ public partial class ExcelHandler
         if (formula != null)
         {
             node.Format["formula"] = formula;
-            // cachedValue + evaluated flag: prefer XML cached value, else
-            // route through EvaluateForReport so view text / view issues /
-            // this Get path can't drift apart as evaluator coverage grows.
+            // cachedValue + evaluated flag — strict XML-state semantics
+            // (r2 trial-team A.G1). cachedValue is what Excel's own writer
+            // persisted in <x:v>; evaluated mirrors that presence. If
+            // officecli's own evaluator can compute a value, surface it
+            // separately under `computedValue` so agents can use it without
+            // confusing "Excel rendered this" with "officecli thinks this
+            // would render to". The two often agree but DO diverge — e.g.
+            // an Add-only formula or a formula referencing a missing sheet.
             var rawCached = cell.CellValue?.Text;
             bool evaluated;
             if (!string.IsNullOrEmpty(rawCached))
@@ -1404,38 +1409,23 @@ public partial class ExcelHandler
             else if (evaluator != null)
             {
                 var report = evaluator.EvaluateForReport(formula);
-                // R9-1: do NOT fall back to an evaluated cachedValue when the
-                // formula references a sheet that no longer exists in the
-                // workbook. Otherwise cross-sheet refs whose target sheet
-                // was removed silently evaluate to "0" (see
-                // FormulaEvaluator.ResolveSheetCellResult), reporting a
-                // stale/fake cached value where Excel would show #REF!.
+                // R9-1: do NOT advertise a computedValue when the formula
+                // references a sheet that no longer exists — that branch in
+                // ResolveSheetCellResult silently returns 0, which would
+                // pollute computedValue with a stale fake. Leave only the
+                // formula text + evaluated=false, and let view issues
+                // formula_not_evaluated surface the gap.
                 if (report.Status == Core.EvalReportStatus.Evaluated && !FormulaReferencesMissingSheet(formula))
-                {
-                    node.Format["cachedValue"] = report.Result!.ToCellValueText();
-                    evaluated = true;
-                }
+                    node.Format["computedValue"] = report.Result!.ToCellValueText();
                 else if (report.Status == Core.EvalReportStatus.Error && !FormulaReferencesMissingSheet(formula))
-                {
-                    node.Format["cachedValue"] = report.Result!.ErrorValue!;
-                    evaluated = true;
-                }
-                else
-                {
-                    // Formula written but no cached value AND evaluator could
-                    // not produce one (unsupported syntax, missing sheet, etc.).
-                    // Agents read this to distinguish "formula evaluated to
-                    // empty/0" from "evaluator gave up" — see also
-                    // `view issues` formula_not_evaluated.
-                    evaluated = false;
-                }
+                    node.Format["computedValue"] = report.Result!.ErrorValue!;
+                evaluated = false;
             }
             else
             {
                 // No evaluator available (caller didn't pass one and lazy-init
-                // skipped — e.g. cached value path already satisfied earlier
-                // call, or no WorksheetPart context). Conservative: report
-                // not-evaluated rather than silently true.
+                // skipped — e.g. no WorksheetPart context). Conservative:
+                // report not-evaluated rather than silently true.
                 evaluated = false;
             }
             node.Format["evaluated"] = evaluated;

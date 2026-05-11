@@ -472,7 +472,12 @@ public partial class ExcelHandler
                         // text / view issues / Format["evaluated"] all agree on
                         // what counts as "evaluator gave up".
                         var report = evaluator.EvaluateForReport(fText);
-                        if (report.Status == Core.EvalReportStatus.NotEvaluated)
+                        // r2 trial-team B.N2: also report when the formula
+                        // references a sheet that no longer exists — the Get
+                        // path suppresses computedValue there (R9-1) and sets
+                        // evaluated=false, but view issues was silent.
+                        if (report.Status == Core.EvalReportStatus.NotEvaluated
+                            || FormulaReferencesMissingSheet(fText))
                         {
                             issues.Add(new DocumentIssue
                             {
@@ -481,7 +486,9 @@ public partial class ExcelHandler
                                 Subtype = "formula_not_evaluated",
                                 Severity = IssueSeverity.Warning,
                                 Path = $"{sheetName}!{cellRef}",
-                                Message = "Formula written but not evaluated (no cachedValue, evaluator unsupported)",
+                                Message = FormulaReferencesMissingSheet(fText)
+                                    ? "Formula references missing sheet (officecli evaluator silently returns 0; Excel would show #REF!)"
+                                    : "Formula written but not evaluated (no cachedValue, evaluator unsupported)",
                                 Context = $"={fText}"
                             });
                         }
@@ -629,6 +636,25 @@ public partial class ExcelHandler
                 Path = path,
                 Message = msg
             });
+        }
+
+        // Subtype / type filter (mirrors WordHandler.ViewAsIssues r2 fix).
+        // r2 trial-team A.G2 / C.A2 / B.N1 — xlsx previously did inline gating
+        // on issueType inside the formula loop but didn't filter the final list,
+        // so `--type chart_series_ref_missing_sheet` returned everything.
+        if (issueType != null)
+        {
+            var bucket = issueType.ToLowerInvariant() switch
+            {
+                "format" or "f" => IssueType.Format,
+                "content" or "c" => IssueType.Content,
+                "structure" or "s" => IssueType.Structure,
+                _ => (IssueType?)null
+            };
+            if (bucket.HasValue)
+                issues = issues.Where(i => i.Type == bucket.Value).ToList();
+            else
+                issues = issues.Where(i => string.Equals(i.Subtype, issueType, StringComparison.OrdinalIgnoreCase)).ToList();
         }
 
         return issues;
