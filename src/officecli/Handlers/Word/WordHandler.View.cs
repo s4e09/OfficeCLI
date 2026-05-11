@@ -203,6 +203,70 @@ public partial class WordHandler
         return sb.ToString();
     }
 
+    /// <summary>
+    /// Build paragraph text with #OCLI_NOTEVAL!{instr} markers replacing any
+    /// dynamic complex field (PAGE, REF, SEQ, TOC, …) that has no cached
+    /// result run. Returns null when the paragraph contains no such
+    /// unevaluated field so callers fall back to normal text extraction.
+    /// Form fields (FORMTEXT etc) are handled separately by
+    /// GetParagraphTextWithFormFields and short-circuit before this.
+    /// </summary>
+    private static string? TryGetParagraphTextWithFieldSentinels(Paragraph para)
+    {
+        // Quick reject: skip the walk if the paragraph has no fldChar at all.
+        var anyFldChar = para.Descendants<FieldChar>().Any();
+        if (!anyFldChar) return null;
+        // Also skip form fields — those go through GetParagraphTextWithFormFields.
+        if (para.Descendants<FieldChar>().Any(fc => fc.FormFieldData != null)) return null;
+
+        var sb = new StringBuilder();
+        bool sawUnevaluated = false;
+        Run? beginRun = null;
+        FieldCode? instrCode = null;
+        bool inResult = false;
+        bool hasResult = false;
+
+        foreach (var run in para.Descendants<Run>())
+        {
+            var fldChar = run.GetFirstChild<FieldChar>();
+            if (fldChar != null)
+            {
+                var charType = fldChar.FieldCharType?.Value;
+                if (charType == FieldCharValues.Begin)
+                { beginRun = run; instrCode = null; inResult = false; hasResult = false; }
+                else if (charType == FieldCharValues.Separate) inResult = true;
+                else if (charType == FieldCharValues.End)
+                {
+                    if (beginRun != null && instrCode != null && !hasResult)
+                    {
+                        var instr = instrCode.Text?.Trim() ?? "";
+                        if (IsDynamicFieldInstruction(instr))
+                        { sb.Append("#OCLI_NOTEVAL!{").Append(instr).Append('}'); sawUnevaluated = true; }
+                    }
+                    beginRun = null; instrCode = null; inResult = false; hasResult = false;
+                }
+            }
+            else if (beginRun != null)
+            {
+                if (!inResult)
+                {
+                    var fc = run.GetFirstChild<FieldCode>();
+                    if (fc != null) instrCode = fc;
+                }
+                else
+                {
+                    var t = string.Concat(run.Elements<Text>().Select(x => x.Text));
+                    if (t.Length > 0) { sb.Append(t); hasResult = true; }
+                }
+            }
+            else
+            {
+                sb.Append(string.Concat(run.Elements<Text>().Select(x => x.Text)));
+            }
+        }
+        return sawUnevaluated ? sb.ToString() : null;
+    }
+
     // ==================== Semantic Layer ====================
 
     public string ViewAsText(int? startLine = null, int? endLine = null, int? maxLines = null, HashSet<string>? cols = null)
@@ -305,6 +369,19 @@ public partial class WordHandler
                 }
                 else
                 {
+                    // Check for unevaluated dynamic fields first — inject
+                    // #OCLI_NOTEVAL!{instr} sentinel where Word would render
+                    // a value, so view text stops silently dropping the field.
+                    // Matches xlsx's #OCLI_NOTEVAL! treatment of unevaluated
+                    // formulas.
+                    var fieldSentinelText = TryGetParagraphTextWithFieldSentinels(para);
+                    if (fieldSentinelText != null)
+                    {
+                        var listPrefixFs = GetListPrefix(para);
+                        sb.AppendLine($"[{path}] {sdtLabel}{listPrefixFs}{fieldSentinelText}");
+                        emitted++;
+                        continue;
+                    }
                     // Check for formfields first
                     var ffText = GetParagraphTextWithFormFields(para);
 
@@ -1223,6 +1300,32 @@ public partial class WordHandler
             }
 
             if (limit.HasValue && issues.Count >= limit.Value) break;
+        }
+
+        // Dynamic fields written but not rendered — same observability pattern
+        // as xlsx's formula_not_evaluated. Word renders PAGE/REF/SEQ/TOC/...
+        // into a `<fldChar separate>` … result-runs … `<fldChar end>` cache
+        // when it opens the document. A fresh authoring round with no Word
+        // pass leaves the cache empty, and `view text` silently drops the
+        // field — agents can't tell "this { PAGE } is blank because Word
+        // hasn't seen it yet" from "the paragraph is genuinely empty".
+        foreach (var field in FindFields())
+        {
+            if (limit.HasValue && issues.Count >= limit.Value) break;
+            var instr = field.InstrCode.Text?.Trim() ?? "";
+            if (!IsDynamicFieldInstruction(instr)) continue;
+            var resultText = string.Join("", field.ResultRuns.SelectMany(r => r.Elements<Text>()).Select(t => t.Text));
+            if (field.SeparateRun != null && resultText.Length > 0) continue;
+            issues.Add(new DocumentIssue
+            {
+                Id = $"U{++issueNum}",
+                Type = IssueType.Content,
+                Severity = IssueSeverity.Warning,
+                Path = "/body",
+                Message = "Field written but not evaluated (no cached result, Word has not rendered it)",
+                Context = "{ " + instr + " }",
+                Suggestion = "Open the document in Word once (or run a TOC update) so the result run is populated."
+            });
         }
 
         // Filter by type

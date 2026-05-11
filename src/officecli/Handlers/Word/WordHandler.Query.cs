@@ -1163,12 +1163,40 @@ public partial class WordHandler
         node.Format["instruction"] = instr;
         node.Format["fieldType"] = fieldType;
 
+        // Cross-handler observability protocol — matches xlsx Format["evaluated"]
+        // on formula cells. true = Word has rendered a cached result run.
+        // false = field code written but no cached run yet (typical for newly
+        // authored docs before Word opens them, or after `dirty` was flipped).
+        // `view issues` reports false on *dynamic* field types (PAGE, REF, …)
+        // via field_not_evaluated; user-input fields (FORMTEXT etc) ignore.
+        node.Format["evaluated"] = field.SeparateRun != null && resultText.Length > 0;
+
         // Check dirty flag
         var beginChar = field.BeginRun.GetFirstChild<FieldChar>();
         if (beginChar?.Dirty?.Value == true)
             node.Format["dirty"] = true;
 
         return node;
+    }
+
+    /// <summary>
+    /// Returns true if the field instruction names a Word-rendered dynamic
+    /// field (PAGE, REF, SEQ, TOC, DATE, …) whose absence of a cached result
+    /// is a "not yet evaluated" signal worth reporting. User-input fields
+    /// (FORMTEXT, FORMCHECKBOX, GOTOBUTTON, MACROBUTTON) are interactive and
+    /// having no result is normal.
+    /// </summary>
+    internal static bool IsDynamicFieldInstruction(string instruction)
+    {
+        var head = instruction.TrimStart().Split(' ', 2)[0].ToUpperInvariant();
+        return head is "PAGE" or "NUMPAGES" or "SECTION" or "SECTIONPAGES"
+            or "DATE" or "TIME" or "CREATEDATE" or "SAVEDATE" or "PRINTDATE"
+            or "FILENAME" or "FILESIZE" or "FILEFORMAT"
+            or "AUTHOR" or "USERNAME" or "TITLE" or "SUBJECT" or "KEYWORDS" or "COMMENTS"
+            or "REF" or "PAGEREF" or "NOTEREF" or "STYLEREF" or "HYPERLINK"
+            or "SEQ" or "TOC" or "TC" or "INDEX" or "RD" or "XE"
+            or "MERGEFIELD" or "IF" or "FORMULA" or "EQ" or "INFO"
+            or "BIBLIOGRAPHY" or "CITATION" or "QUOTE" or "INCLUDETEXT";
     }
 
     /// <summary>Find all paragraphs containing TOC field codes.</summary>
