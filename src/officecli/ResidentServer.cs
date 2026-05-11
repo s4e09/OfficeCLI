@@ -906,6 +906,10 @@ public class ResidentServer : IDisposable
         var end = req.GetIntArg("end");
         var maxLines = req.GetIntArg("max-lines");
         var issueType = req.GetArgOrNull("type");
+        // Resident parity with CLI front-end: reject typos / unknown subtypes
+        // here too so a `--type foo` call doesn't get a silent count:0 just
+        // because the request came over the pipe instead of through argv.
+        OfficeCli.Core.IssueSubtypes.Validate(issueType);
         var limit = req.GetIntArg("limit");
         var cols = req.GetCols("cols");
         var pageFilter = req.GetArgOrNull("page");
