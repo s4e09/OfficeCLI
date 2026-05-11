@@ -14,6 +14,10 @@
 [English](README.md) | [中文](README_zh.md) | [日本語](README_ja.md) | **한국어**
 
 <p align="center">
+  <strong>💬 커뮤니티:</strong> <a href="https://discord.gg/2QAwJn7Egx" target="_blank">Discord</a>
+</p>
+
+<p align="center">
   <img src="assets/ppt-process.gif" alt="AionUi에서 OfficeCLI로 PPT 제작 과정" width="100%">
 </p>
 
