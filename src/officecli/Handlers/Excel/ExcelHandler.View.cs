@@ -493,7 +493,21 @@ public partial class ExcelHandler
                     var cellRef = cell.CellReference?.Value ?? "?";
                     var value = GetCellDisplayValue(cell);
 
-                    if (cell.CellFormula != null && value is "#REF!" or "#VALUE!" or "#NAME?" or "#DIV/0!")
+                    // Recognise the full set of Excel error sentinels a
+                    // formula cell can carry as cachedValue, not just the
+                    // four most-common ones. Standard ECMA-376 errors are
+                    // #NULL!, #DIV/0!, #VALUE!, #REF!, #NAME?, #NUM!, #N/A;
+                    // modern additions (Excel 2019+) include #SPILL!,
+                    // #CALC!, #BLOCKED!, #FIELD!, #UNKNOWN!, #GETTING_DATA,
+                    // and #CONNECT!. Detect via cell.DataType==Error when
+                    // the writer tagged it, plus a structural fallback
+                    // (#name! or #N/A shape) for cells where the writer
+                    // forgot the t="e" attribute.
+                    bool isErrorCell = value != "#OCLI_NOTEVAL!"
+                        && (cell.DataType?.Value == CellValues.Error
+                            || (value.StartsWith('#') &&
+                                (value.EndsWith('!') || value == "#N/A")));
+                    if (cell.CellFormula != null && isErrorCell)
                     {
                         // Two-step routing keeps the semantic decision (what
                         // kind of failure is this?) separate from the filter
