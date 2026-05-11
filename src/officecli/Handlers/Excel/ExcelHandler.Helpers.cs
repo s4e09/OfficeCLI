@@ -1211,7 +1211,10 @@ public partial class ExcelHandler
         }
 
         // Formula cells: if there's a cached value, return it.
-        // If not, try to evaluate; last resort: show the formula expression.
+        // If not, try to evaluate; otherwise emit a sentinel so callers can
+        // distinguish "formula not evaluated" from "cell contains the literal
+        // text `=FOO`". The sentinel matches Excel's `#…!` error-code shape
+        // so it sorts visually next to #REF!/#VALUE!/etc.
         if (string.IsNullOrEmpty(value) && cell.CellFormula?.Text != null)
         {
             if (evaluator != null)
@@ -1220,7 +1223,7 @@ public partial class ExcelHandler
                 if (evalResult != null && !evalResult.IsError)
                     return evalResult.ToCellValueText();
             }
-            return "=" + Core.ModernFunctionQualifier.Unqualify(cell.CellFormula.Text);
+            return "#NOT_EVAL!=" + Core.ModernFunctionQualifier.Unqualify(cell.CellFormula.Text);
         }
 
         // Apply number format to numeric cells (dates, percentages, etc.)
@@ -1382,9 +1385,14 @@ public partial class ExcelHandler
             node.Format["formula"] = formula;
             // cachedValue: prefer XML cached value, then evaluated value
             var rawCached = cell.CellValue?.Text;
+            bool evaluated;
             if (!string.IsNullOrEmpty(rawCached))
+            {
                 node.Format["cachedValue"] = rawCached;
+                evaluated = true;
+            }
             else if (displayText != null && !displayText.StartsWith("=") &&
+                     !displayText.StartsWith("#NOT_EVAL!") &&
                      !FormulaReferencesMissingSheet(formula))
             {
                 // R9-1: do NOT fall back to an evaluated cachedValue when the
@@ -1394,7 +1402,17 @@ public partial class ExcelHandler
                 // FormulaEvaluator.ResolveSheetCellResult), reporting a
                 // stale/fake cached value where Excel would show #REF!.
                 node.Format["cachedValue"] = displayText;
+                evaluated = true;
             }
+            else
+            {
+                // Formula written but no cached value AND evaluator could not
+                // produce one (unsupported syntax, missing sheet, etc.). Agents
+                // read this to distinguish "formula evaluated to empty/0" from
+                // "evaluator gave up" — see also `view issues` formula_not_evaluated.
+                evaluated = false;
+            }
+            node.Format["evaluated"] = evaluated;
         }
         // Array formula readback — keys match Set input
         if (cell.CellFormula?.FormulaType?.Value == CellFormulaValues.Array)
@@ -1839,15 +1857,12 @@ public partial class ExcelHandler
         new(@"^[A-Z]+[0-9]+(:[A-Z]+[0-9]+)?$",
             System.Text.RegularExpressions.RegexOptions.Compiled);
 
-    private static void InsertMergeCellChecked(MergeCells mergeCells, string newRangeRef, WorksheetPart? worksheetPart = null)
+    // CONSISTENCY(merge-comma): callers should run this BEFORE creating an
+    // empty <mergeCells> container, so a rejected ref doesn't leave a
+    // schema-invalid empty container in the saved file.
+    private static void ValidateMergeRefLiteral(string newRangeRef)
     {
         var refUpper = newRangeRef.ToUpperInvariant();
-        // Bottom-line guard: <mergeCell ref="..."> is OOXML ST_Ref — a single A1
-        // cell or A1:B2 range. Comma-separated forms are accepted only as a
-        // batch convenience in prop *values* (sheet-level merge=A1:B1,A2:B2),
-        // and must be split into separate <mergeCell> elements before reaching
-        // this writer. This guard makes any future drift fail at write time
-        // instead of corrupting the file and exploding later in `view`.
         if (refUpper.Contains(','))
             throw new ArgumentException(
                 $"Invalid merge ref '{newRangeRef}': path is a single-target locator (no comma). " +
@@ -1855,6 +1870,12 @@ public partial class ExcelHandler
         if (!SingleMergeRefPattern.IsMatch(refUpper))
             throw new ArgumentException(
                 $"Invalid merge ref '{newRangeRef}': must be a single A1 cell (e.g. 'B2') or A1:B2 range (e.g. 'B4:E4').");
+    }
+
+    private static void InsertMergeCellChecked(MergeCells mergeCells, string newRangeRef, WorksheetPart? worksheetPart = null)
+    {
+        ValidateMergeRefLiteral(newRangeRef);
+        var refUpper = newRangeRef.ToUpperInvariant();
         foreach (var existing in mergeCells.Elements<MergeCell>())
         {
             if (existing.Reference?.Value is not string er) continue;

@@ -663,6 +663,10 @@ public partial class ExcelHandler
         // call instead of needing a follow-up set.
         if (properties.TryGetValue("merge", out var mergeRange) && !string.IsNullOrWhiteSpace(mergeRange))
         {
+            var refList = mergeRange.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            // CONSISTENCY(merge-empty-container): pre-validate before container
+            // creation — see ExcelHandler.Helpers.ValidateMergeRefLiteral.
+            foreach (var r in refList) ValidateMergeRefLiteral(r);
             var sheetEl = GetSheet(cellWorksheet);
             var mergeCellsEl = sheetEl.GetFirstChild<MergeCells>();
             if (mergeCellsEl == null)
@@ -674,7 +678,7 @@ public partial class ExcelHandler
             // batch form (here, in cell Set, and in sheet Set) — split into
             // separate <mergeCell> elements. Comma in *path* is rejected by
             // InsertMergeCellChecked since path is a single-target locator.
-            foreach (var rangeRef in mergeRange.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            foreach (var rangeRef in refList)
                 InsertMergeCellChecked(mergeCellsEl, rangeRef, cellWorksheet);
             mergeCellsEl.Count = (uint)mergeCellsEl.Elements<MergeCell>().Count();
         }

@@ -710,6 +710,11 @@ public partial class ExcelHandler
                     }
                     else
                     {
+                        var refList = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                        // CONSISTENCY(merge-empty-container): validate every ref before
+                        // creating the container so a rejected ref doesn't leave an
+                        // empty <mergeCells> in the saved file.
+                        foreach (var r in refList) ValidateMergeRefLiteral(r);
                         if (mergeCellsEl == null)
                         {
                             mergeCellsEl = new MergeCells();
@@ -720,7 +725,7 @@ public partial class ExcelHandler
                         // — split into separate <mergeCell> elements. Comma in
                         // *path* is rejected by InsertMergeCellChecked since path
                         // is a single-target locator.
-                        foreach (var rangeRef in value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                        foreach (var rangeRef in refList)
                             InsertMergeCellChecked(mergeCellsEl, rangeRef, worksheet);
                         mergeCellsEl.Count = (uint)mergeCellsEl.Elements<MergeCell>().Count();
                     }
@@ -1076,13 +1081,17 @@ public partial class ExcelHandler
                     // "A1:D1,B3:B5" for multiple ranges).
                     // R2-1: Split comma-separated ranges into separate <mergeCell> elements;
                     // Excel rejects a single <mergeCell ref="A1:D1,B3:B5"/>.
+                    var refParts = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    // CONSISTENCY(merge-empty-container): pre-validate before container
+                    // creation — see ExcelHandler.Helpers.ValidateMergeRefLiteral.
+                    foreach (var r in refParts) ValidateMergeRefLiteral(r);
                     var mergeCells = ws.GetFirstChild<MergeCells>();
                     if (mergeCells == null)
                     {
                         mergeCells = new MergeCells();
                         ws.AppendChild(mergeCells);
                     }
-                    foreach (var part in value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                    foreach (var part in refParts)
                         InsertMergeCellChecked(mergeCells, part.ToUpperInvariant(), worksheet);
                     mergeCells.Count = (uint)mergeCells.Elements<MergeCell>().Count();
                     break;
@@ -1695,6 +1704,9 @@ public partial class ExcelHandler
 
                     if (doMerge)
                     {
+                        // CONSISTENCY(merge-empty-container): pre-validate before container
+                        // creation — see ExcelHandler.Helpers.ValidateMergeRefLiteral.
+                        ValidateMergeRefLiteral(rangeRef);
                         var mergeCells = ws.GetFirstChild<MergeCells>();
                         if (mergeCells == null)
                         {
