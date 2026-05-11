@@ -472,10 +472,9 @@ public partial class ExcelHandler
                         // text / view issues / Format["evaluated"] all agree on
                         // what counts as "evaluator gave up".
                         var report = evaluator.EvaluateForReport(fText);
-                        // r2 trial-team B.N2: also report when the formula
-                        // references a sheet that no longer exists — the Get
-                        // path suppresses computedValue there (R9-1) and sets
-                        // evaluated=false, but view issues was silent.
+                        // Also report when the formula references a sheet that
+                        // no longer exists — the Get path suppresses computedValue
+                        // there and sets evaluated=false, but view issues was silent.
                         if (report.Status == Core.EvalReportStatus.NotEvaluated
                             || FormulaReferencesMissingSheet(fText))
                         {
@@ -638,10 +637,10 @@ public partial class ExcelHandler
             });
         }
 
-        // Subtype / type filter (mirrors WordHandler.ViewAsIssues r2 fix).
-        // r2 trial-team A.G2 / C.A2 / B.N1 — xlsx previously did inline gating
-        // on issueType inside the formula loop but didn't filter the final list,
-        // so `--type chart_series_ref_missing_sheet` returned everything.
+        // Subtype / type filter (mirrors WordHandler.ViewAsIssues). xlsx
+        // previously did inline gating on issueType inside the formula loop
+        // but didn't filter the final list, so
+        // `--type chart_series_ref_missing_sheet` returned everything.
         if (issueType != null)
         {
             var bucket = issueType.ToLowerInvariant() switch

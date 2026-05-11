@@ -214,9 +214,9 @@ public partial class WordHandler
     private static string? TryGetParagraphTextWithFieldSentinels(Paragraph para)
     {
         // fldSimple form: a dynamic field is "unevaluated" if its body is
-        // empty OR its w:dirty bit is set (r2 trial-team A.G3 / B.N3). The
-        // sentinel replaces both forms so view text doesn't show stale text
-        // alongside an evaluated=false signal in get --json.
+        // empty OR its w:dirty bit is set. The sentinel replaces both forms
+        // so view text doesn't show stale text alongside an evaluated=false
+        // signal in get --json.
         bool FldSimpleNeedsSentinel(SimpleField fs)
         {
             if (!IsDynamicFieldInstruction(fs.Instruction?.Value?.Trim() ?? "")) return false;
@@ -270,10 +270,10 @@ public partial class WordHandler
                     if (beginRun != null && instrCode != null)
                     {
                         var instr = instrCode.Text?.Trim() ?? "";
-                        // r2 trial-team A.G3: dirty fields with a cached
-                        // result are also "not really evaluated" — drop the
-                        // stale result and inject the sentinel so view text
-                        // matches the get --json `evaluated:false` signal.
+                        // Dirty fields with a cached result are also "not
+                        // really evaluated" — drop the stale result and
+                        // inject the sentinel so view text matches the
+                        // get --json `evaluated:false` signal.
                         if ((!hasResult || beginDirty) && IsDynamicFieldInstruction(instr))
                         {
                             sb.Append("#OCLI_NOTEVAL!{").Append(instr).Append('}');
@@ -1376,10 +1376,10 @@ public partial class WordHandler
 
         // <w:fldSimple instr="..."> form — same observability gap. Some
         // authoring tools (and our own AddDefault path) emit fldSimple
-        // instead of the complex fldChar triad. r2 trial-team C.A1 / B.N3:
-        // also scan header / footer / footnote / endnote parts (mirrors
-        // FindFields), and check the w:dirty attribute for the same
-        // semantics as complex-field dirty (cached but Word will re-render).
+        // instead of the complex fldChar triad. Scan header / footer /
+        // footnote / endnote parts (mirrors FindFields), and check the
+        // w:dirty attribute for the same semantics as complex-field dirty
+        // (cached but Word will re-render).
         var simpleContainers = new List<OpenXmlElement>();
         if (body != null) simpleContainers.Add(body);
         foreach (var hp in _doc.MainDocumentPart?.HeaderParts ?? Enumerable.Empty<DocumentFormat.OpenXml.Packaging.HeaderPart>())

@@ -663,8 +663,8 @@ public partial class PowerPointHandler
     }
 
     /// <summary>
-    /// Single source of truth (r2 trial-team C.B) for which `<a:fld type="…">`
-    /// values PowerPoint renders dynamically — slidenum and datetime* are
+    /// Single source of truth for which `<a:fld type="…">` values
+    /// PowerPoint renders dynamically — slidenum and datetime* are
     /// auto-populated when the slide opens. Used by `view text` sentinel
     /// emission (this file), `view issues` slide_field_not_evaluated
     /// (View.cs), and shape Format["evaluated"] (NodeBuilder.cs). Adding a

@@ -1391,14 +1391,15 @@ public partial class ExcelHandler
         if (formula != null)
         {
             node.Format["formula"] = formula;
-            // cachedValue + evaluated flag — strict XML-state semantics
-            // (r2 trial-team A.G1). cachedValue is what Excel's own writer
-            // persisted in <x:v>; evaluated mirrors that presence. If
+            // cachedValue + evaluated flag — strict XML-state semantics.
+            // cachedValue is what Excel's own writer persisted in <x:v>;
+            // evaluated mirrors that presence. If
             // officecli's own evaluator can compute a value, surface it
             // separately under `computedValue` so agents can use it without
             // confusing "Excel rendered this" with "officecli thinks this
             // would render to". The two often agree but DO diverge — e.g.
-            // an Add-only formula or a formula referencing a missing sheet.
+            // an Add-path formula (no <v> written) or a formula referencing
+            // a missing sheet.
             var rawCached = cell.CellValue?.Text;
             bool evaluated;
             if (!string.IsNullOrEmpty(rawCached))
@@ -1409,12 +1410,11 @@ public partial class ExcelHandler
             else if (evaluator != null)
             {
                 var report = evaluator.EvaluateForReport(formula);
-                // R9-1: do NOT advertise a computedValue when the formula
-                // references a sheet that no longer exists — that branch in
-                // ResolveSheetCellResult silently returns 0, which would
-                // pollute computedValue with a stale fake. Leave only the
-                // formula text + evaluated=false, and let view issues
-                // formula_not_evaluated surface the gap.
+                // Do NOT advertise a computedValue when the formula references a
+                // sheet that no longer exists — that branch in ResolveSheetCellResult
+                // silently returns 0, which would pollute computedValue with a stale
+                // fake. Leave only the formula text + evaluated=false, and let
+                // view issues formula_not_evaluated surface the gap.
                 if (report.Status == Core.EvalReportStatus.Evaluated && !FormulaReferencesMissingSheet(formula))
                     node.Format["computedValue"] = report.Result!.ToCellValueText();
                 else if (report.Status == Core.EvalReportStatus.Error && !FormulaReferencesMissingSheet(formula))
@@ -4359,7 +4359,7 @@ public partial class ExcelHandler
     }
 
     /// <summary>
-    /// R9-1: scan a formula body for Sheet-qualified refs (bare `Sheet1!A1`
+    /// Scan a formula body for Sheet-qualified refs (bare `Sheet1!A1`
     /// or quoted `'My Data'!A1`) and return true if any referenced sheet
     /// name does not exist in the current workbook. Used to suppress the
     /// evaluator-based cachedValue fallback when cross-sheet refs point at

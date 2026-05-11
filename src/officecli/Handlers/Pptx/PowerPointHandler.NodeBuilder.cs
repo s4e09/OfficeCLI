@@ -393,9 +393,8 @@ public partial class PowerPointHandler
             foreach (var fld in shape.TextBody.Descendants<Drawing.Field>())
             {
                 var fldType = fld.Type?.Value ?? "";
-                // Single source of truth in Helpers.IsDynamicSlideFieldTypeStatic
-                // (r2 trial-team C.B). Adding new dynamic types only needs one
-                // edit there.
+                // Single source of truth in Helpers.IsDynamicSlideFieldTypeStatic.
+                // Adding new dynamic types only needs one edit there.
                 if (!IsDynamicSlideFieldTypeStatic(fldType)) continue;
                 anyDynamic = true;
                 var cached = string.Concat(fld.Elements<Drawing.Text>().Select(t => t.Text));

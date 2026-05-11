@@ -2066,10 +2066,10 @@ public partial class WordHandler
                     // Cross-handler `evaluated` protocol — mirrors complex-field
                     // FieldToNode and xlsx Format["evaluated"]. fldSimple's
                     // cached result lives in its descendant <w:t>s; empty
-                    // means "Word hasn't rendered it yet". r2 trial-team
-                    // B.N3: also check w:dirty — fldSimple supports the same
-                    // dirty attribute as fldChar, and Word re-renders dirty
-                    // fields on open regardless of cached text presence.
+                    // means "Word hasn't rendered it yet". Also check w:dirty
+                    // — fldSimple supports the same dirty attribute as
+                    // fldChar, and Word re-renders dirty fields on open
+                    // regardless of cached text presence.
                     var fldDirty = fld.Dirty?.Value == true;
                     if (fldDirty) fldNode.Format["dirty"] = true;
                     fldNode.Format["evaluated"] = !fldDirty && displayText.Length > 0;

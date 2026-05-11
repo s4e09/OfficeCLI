@@ -573,9 +573,9 @@ public partial class PowerPointHandler
             if (limit.HasValue && issues.Count >= limit.Value) break;
         }
 
-        // Subtype / type filter (r2 trial-team A.G2 / B.N1 / C.A2). pptx
-        // previously ignored issueType entirely. Accept both broad bucket
-        // (format/content/structure) and specific subtype identifiers.
+        // Subtype / type filter. pptx previously ignored issueType entirely.
+        // Accept both broad bucket (format/content/structure) and specific
+        // subtype identifiers.
         if (issueType != null)
         {
             var bucket = issueType.ToLowerInvariant() switch
@@ -595,6 +595,6 @@ public partial class PowerPointHandler
     }
 
     // IsDynamicSlideFieldType has been collapsed into Helpers.cs's
-    // IsDynamicSlideFieldTypeStatic — single source of truth (r2 trial-team C.B).
+    // IsDynamicSlideFieldTypeStatic — single source of truth.
     private static bool IsDynamicSlideFieldType(string fldType) => IsDynamicSlideFieldTypeStatic(fldType);
 }
