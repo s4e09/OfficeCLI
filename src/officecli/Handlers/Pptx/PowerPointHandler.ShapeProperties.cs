@@ -526,7 +526,11 @@ public partial class PowerPointHandler
                     if (existingGeom != null)
                         existingGeom.Preset = ParsePresetShape(value);
                     else
-                        spPr.AppendChild(new Drawing.PresetGeometry(new Drawing.AdjustValueList()) { Preset = ParsePresetShape(value) });
+                        {
+                            var newGeom = EnsurePresetGeometry(spPr);
+                            newGeom.AppendChild(new Drawing.AdjustValueList());
+                            newGeom.Preset = ParsePresetShape(value);
+                        }
                     break;
                 }
 
@@ -543,7 +547,11 @@ public partial class PowerPointHandler
                         if (existingGeom != null)
                             existingGeom.Preset = ParsePresetShape(value);
                         else
-                            spPr.AppendChild(new Drawing.PresetGeometry(new Drawing.AdjustValueList()) { Preset = ParsePresetShape(value) });
+                            {
+                            var newGeom = EnsurePresetGeometry(spPr);
+                            newGeom.AppendChild(new Drawing.AdjustValueList());
+                            newGeom.Preset = ParsePresetShape(value);
+                        }
                     }
                     else
                     {

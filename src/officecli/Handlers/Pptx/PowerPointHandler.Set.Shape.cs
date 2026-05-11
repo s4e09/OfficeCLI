@@ -315,16 +315,14 @@ public partial class PowerPointHandler
                 case "linewidth" or "line.width":
                 {
                     var spPr = cxn.ShapeProperties ?? (cxn.ShapeProperties = new ShapeProperties());
-                    var outline = spPr.GetFirstChild<Drawing.Outline>()
-                        ?? spPr.AppendChild(new Drawing.Outline());
+                    var outline = EnsureOutline(spPr);
                     outline.Width = Core.EmuConverter.ParseLineWidth(value);
                     break;
                 }
                 case "linecolor" or "line.color" or "line" or "color":
                 {
                     var spPr = cxn.ShapeProperties ?? (cxn.ShapeProperties = new ShapeProperties());
-                    var outline = spPr.GetFirstChild<Drawing.Outline>()
-                        ?? spPr.AppendChild(new Drawing.Outline());
+                    var outline = EnsureOutline(spPr);
                     var (rgb, _) = ParseHelpers.SanitizeColorForOoxml(value);
                     outline.RemoveAllChildren<Drawing.SolidFill>();
                     var newFill = new Drawing.SolidFill(
@@ -358,8 +356,7 @@ public partial class PowerPointHandler
                 case "linedash" or "line.dash":
                 {
                     var spPr = cxn.ShapeProperties ?? (cxn.ShapeProperties = new ShapeProperties());
-                    var outline = spPr.GetFirstChild<Drawing.Outline>()
-                        ?? spPr.AppendChild(new Drawing.Outline());
+                    var outline = EnsureOutline(spPr);
                     outline.RemoveAllChildren<Drawing.PresetDash>();
                     var newDash = new Drawing.PresetDash { Val = value.ToLowerInvariant() switch
                     {
@@ -391,8 +388,7 @@ public partial class PowerPointHandler
                     if (!double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var lnOpacity)
                         || double.IsNaN(lnOpacity) || double.IsInfinity(lnOpacity))
                         throw new ArgumentException($"Invalid 'lineOpacity' value: '{value}'. Expected a finite decimal 0.0-1.0.");
-                    var outline = spPr.GetFirstChild<Drawing.Outline>()
-                        ?? spPr.AppendChild(new Drawing.Outline());
+                    var outline = EnsureOutline(spPr);
                     var solidFill = outline.GetFirstChild<Drawing.SolidFill>();
                     if (solidFill == null)
                     {
@@ -440,8 +436,7 @@ public partial class PowerPointHandler
                     // CONSISTENCY(canonical-key): schema canonical is 'shape';
                     // 'preset'/'prstgeom' retained as legacy aliases.
                     var spPr = cxn.ShapeProperties ?? (cxn.ShapeProperties = new ShapeProperties());
-                    var prstGeom = spPr.GetFirstChild<Drawing.PresetGeometry>()
-                        ?? spPr.AppendChild(new Drawing.PresetGeometry());
+                    var prstGeom = EnsurePresetGeometry(spPr);
                     // CONSISTENCY(connector-shape-aliases): mirror Add.Misc.cs —
                     // accept short canonical names (straight/elbow/curve) plus
                     // OOXML full names (incl. 2-segment forms which fold to 3-segment).
@@ -458,8 +453,7 @@ public partial class PowerPointHandler
                 case "headend" or "headEnd":
                 {
                     var spPr = cxn.ShapeProperties ?? (cxn.ShapeProperties = new ShapeProperties());
-                    var outline = spPr.GetFirstChild<Drawing.Outline>()
-                        ?? spPr.AppendChild(new Drawing.Outline());
+                    var outline = EnsureOutline(spPr);
                     outline.RemoveAllChildren<Drawing.HeadEnd>();
                     var newHeadEnd = new Drawing.HeadEnd { Type = ParseLineEndType(value) };
                     // CT_LineProperties: ... → headEnd → tailEnd (headEnd before tailEnd)
@@ -473,8 +467,7 @@ public partial class PowerPointHandler
                 case "tailend" or "tailEnd":
                 {
                     var spPr = cxn.ShapeProperties ?? (cxn.ShapeProperties = new ShapeProperties());
-                    var outline = spPr.GetFirstChild<Drawing.Outline>()
-                        ?? spPr.AppendChild(new Drawing.Outline());
+                    var outline = EnsureOutline(spPr);
                     outline.RemoveAllChildren<Drawing.TailEnd>();
                     // CT_LineProperties: tailEnd is last — always append
                     outline.AppendChild(new Drawing.TailEnd { Type = ParseLineEndType(value) });

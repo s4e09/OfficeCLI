@@ -413,6 +413,38 @@ public partial class PowerPointHandler
     }
 
     /// <summary>
+    /// Get or create PresetGeometry in correct CT_ShapeProperties schema
+    /// position (rank 2, the geometry choice slot). Must precede fill / ln /
+    /// effectLst / scene3d / sp3d / extLst. Symmetric to EnsureOutline /
+    /// EnsureEffectList — converts a raw AppendChild idiom that produced
+    /// schema-invalid order whenever those higher-rank elements existed first.
+    /// </summary>
+    private static Drawing.PresetGeometry EnsurePresetGeometry(ShapeProperties spPr)
+    {
+        var prstGeom = spPr.GetFirstChild<Drawing.PresetGeometry>();
+        if (prstGeom != null) return prstGeom;
+
+        prstGeom = new Drawing.PresetGeometry();
+        // First higher-rank sibling — rank 3 (fill choice) onward.
+        var insertBefore = (DocumentFormat.OpenXml.OpenXmlElement?)spPr.GetFirstChild<Drawing.NoFill>()
+            ?? (DocumentFormat.OpenXml.OpenXmlElement?)spPr.GetFirstChild<Drawing.SolidFill>()
+            ?? (DocumentFormat.OpenXml.OpenXmlElement?)spPr.GetFirstChild<Drawing.GradientFill>()
+            ?? (DocumentFormat.OpenXml.OpenXmlElement?)spPr.GetFirstChild<Drawing.BlipFill>()
+            ?? (DocumentFormat.OpenXml.OpenXmlElement?)spPr.GetFirstChild<Drawing.PatternFill>()
+            ?? (DocumentFormat.OpenXml.OpenXmlElement?)spPr.GetFirstChild<Drawing.GroupFill>()
+            ?? (DocumentFormat.OpenXml.OpenXmlElement?)spPr.GetFirstChild<Drawing.Outline>()
+            ?? (DocumentFormat.OpenXml.OpenXmlElement?)spPr.GetFirstChild<Drawing.EffectList>()
+            ?? (DocumentFormat.OpenXml.OpenXmlElement?)spPr.GetFirstChild<Drawing.Scene3DType>()
+            ?? (DocumentFormat.OpenXml.OpenXmlElement?)spPr.GetFirstChild<Drawing.Shape3DType>()
+            ?? spPr.GetFirstChild<Drawing.ShapePropertiesExtensionList>();
+        if (insertBefore != null)
+            spPr.InsertBefore(prstGeom, insertBefore);
+        else
+            spPr.AppendChild(prstGeom);
+        return prstGeom;
+    }
+
+    /// <summary>
     /// Get or create Outline in correct schema position.
     /// Schema order: fill → ln → effectLst → scene3d → sp3d → extLst
     /// </summary>
