@@ -603,6 +603,27 @@ public partial class ExcelHandler
                                 Context = $"={fText}"
                             });
                         }
+                        else if (!missingSheet && !hasCache && computed != null
+                            && IsExcelErrorValue(computed)
+                            && ShouldScan(Core.IssueSubtypes.FormulaEvalError))
+                        {
+                            // No XML cache, but the evaluator produced an
+                            // Excel error sentinel (e.g. =1/0 → #DIV/0!).
+                            // view text already prints the sentinel via
+                            // computedValue; without this branch view issues
+                            // would stay silent and an agent reading only
+                            // the issues stream would miss the failure.
+                            issues.Add(new DocumentIssue
+                            {
+                                Id = $"U{++issueNum}",
+                                Type = IssueType.Content,
+                                Subtype = Core.IssueSubtypes.FormulaEvalError,
+                                Severity = IssueSeverity.Error,
+                                Path = $"{sheetName}!{cellRef}",
+                                Message = $"Formula error: {computed} (no cachedValue; officecli evaluator produced the error)",
+                                Context = $"={fText}"
+                            });
+                        }
                         else if (hasCache && computed != null
                             && !CachedComputedAgree(rawCached!, computed)
                             && ShouldScan(Core.IssueSubtypes.FormulaCacheStale))
