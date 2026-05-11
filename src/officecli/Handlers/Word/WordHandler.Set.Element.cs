@@ -1862,7 +1862,7 @@ public partial class WordHandler
                     if (paddingVal < 0)
                         throw new ArgumentException($"Invalid 'padding' value: '{value}'. Table cell margins must be non-negative (OOXML w:tblCellMar).");
                     var dxa = paddingVal.ToString();
-                    var cm = tblPr.TableCellMarginDefault ?? tblPr.AppendChild(new TableCellMarginDefault());
+                    var cm = EnsureTableCellMarginDefault(tblPr);
                     cm.TopMargin = new TopMargin { Width = dxa, Type = TableWidthUnitValues.Dxa };
                     cm.TableCellLeftMargin = new TableCellLeftMargin { Width = (short)Math.Min(paddingVal, short.MaxValue), Type = TableWidthValues.Dxa };
                     cm.BottomMargin = new BottomMargin { Width = dxa, Type = TableWidthUnitValues.Dxa };
@@ -1946,7 +1946,8 @@ public partial class WordHandler
                         if (tpp == null)
                         {
                             tpp = new TablePositionProperties();
-                            tblPr.AppendChild(tpp);
+                            // CONSISTENCY(tblpr-schema-order): tblpPr is rank 1.
+                            InsertTblPrChildInOrder(tblPr, tpp);
                         }
                         if (tpp.VerticalAnchor == null)
                             tpp.VerticalAnchor = VerticalAnchorValues.Page;
@@ -2080,12 +2081,14 @@ public partial class WordHandler
                 case "caption":
                     tblPr.RemoveAllChildren<TableCaption>();
                     if (!string.IsNullOrEmpty(value))
-                        tblPr.AppendChild(new TableCaption { Val = value });
+                        // CONSISTENCY(tblpr-schema-order): tblCaption is rank 15.
+                        InsertTblPrChildInOrder(tblPr, new TableCaption { Val = value });
                     break;
                 case "description":
                     tblPr.RemoveAllChildren<TableDescription>();
                     if (!string.IsNullOrEmpty(value))
-                        tblPr.AppendChild(new TableDescription { Val = value });
+                        // CONSISTENCY(tblpr-schema-order): tblDescription is rank 16.
+                        InsertTblPrChildInOrder(tblPr, new TableDescription { Val = value });
                     break;
                 case "direction" or "dir" or "bidi":
                 {

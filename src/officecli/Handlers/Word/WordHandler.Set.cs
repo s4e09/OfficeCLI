@@ -1132,12 +1132,8 @@ public partial class WordHandler
                 VerticalAnchor = VerticalAnchorValues.Page,
                 HorizontalAnchor = HorizontalAnchorValues.Page
             };
-            // CT_TblPr schema order: tblStyle → tblpPr → tblOverlap → ...
-            var tblStyle = tblPr.GetFirstChild<TableStyle>();
-            if (tblStyle != null)
-                tblStyle.InsertAfterSelf(tpp);
-            else
-                tblPr.PrependChild(tpp);
+            // CONSISTENCY(tblpr-schema-order): tblpPr is rank 1.
+            InsertTblPrChildInOrder(tblPr, tpp);
         }
         return tpp;
     }

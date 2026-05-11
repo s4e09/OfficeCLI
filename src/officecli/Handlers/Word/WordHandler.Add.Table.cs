@@ -251,13 +251,23 @@ public partial class WordHandler
                     };
                     break;
                 case "padding":
-                    var cm = tblProps.TableCellMarginDefault ?? tblProps.AppendChild(new TableCellMarginDefault());
+                {
+                    // CONSISTENCY(tblpr-schema-order): tblCellMar must be inserted
+                    // at rank 13 in CT_TblPrBase; raw AppendChild produced
+                    // schema-invalid OOXML when other props (style→tblLook at rank
+                    // 14) appeared earlier in argv. Same fix for padding.{top,
+                    // bottom,left,right} below and Set padding path.
                     var paddingVal = ParseHelpers.SafeParseInt(tv, "padding");
-                    cm.TopMargin = new TopMargin { Width = tv, Type = TableWidthUnitValues.Dxa };
+                    if (paddingVal < 0)
+                        throw new ArgumentException($"Invalid 'padding' value: '{tv}'. Table cell margins must be non-negative (OOXML w:tblCellMar).");
+                    var dxa = paddingVal.ToString();
+                    var cm = EnsureTableCellMarginDefault(tblProps);
+                    cm.TopMargin = new TopMargin { Width = dxa, Type = TableWidthUnitValues.Dxa };
                     cm.TableCellLeftMargin = new TableCellLeftMargin { Width = (short)Math.Min(paddingVal, short.MaxValue), Type = TableWidthValues.Dxa };
-                    cm.BottomMargin = new BottomMargin { Width = tv, Type = TableWidthUnitValues.Dxa };
+                    cm.BottomMargin = new BottomMargin { Width = dxa, Type = TableWidthUnitValues.Dxa };
                     cm.TableCellRightMargin = new TableCellRightMargin { Width = (short)Math.Min(paddingVal, short.MaxValue), Type = TableWidthValues.Dxa };
                     break;
+                }
                 // BUG-DUMP13-04: per-side default cell margins. BatchEmitter
                 // passes asymmetric padding.* keys through unfolded when sides
                 // differ; without these cases AddTable warned UNSUPPORTED and
@@ -265,27 +275,37 @@ public partial class WordHandler
                 // tcMar handling in Set.Element.cs.
                 case "padding.top":
                     {
-                        var cmt = tblProps.TableCellMarginDefault ?? tblProps.AppendChild(new TableCellMarginDefault());
-                        cmt.TopMargin = new TopMargin { Width = tv, Type = TableWidthUnitValues.Dxa };
+                        var tv2 = ParseHelpers.SafeParseInt(tv, "padding.top");
+                        if (tv2 < 0)
+                            throw new ArgumentException($"Invalid 'padding.top' value: '{tv}'. Table cell margins must be non-negative.");
+                        var cmt = EnsureTableCellMarginDefault(tblProps);
+                        cmt.TopMargin = new TopMargin { Width = tv2.ToString(), Type = TableWidthUnitValues.Dxa };
                     }
                     break;
                 case "padding.bottom":
                     {
-                        var cmb = tblProps.TableCellMarginDefault ?? tblProps.AppendChild(new TableCellMarginDefault());
-                        cmb.BottomMargin = new BottomMargin { Width = tv, Type = TableWidthUnitValues.Dxa };
+                        var bv2 = ParseHelpers.SafeParseInt(tv, "padding.bottom");
+                        if (bv2 < 0)
+                            throw new ArgumentException($"Invalid 'padding.bottom' value: '{tv}'. Table cell margins must be non-negative.");
+                        var cmb = EnsureTableCellMarginDefault(tblProps);
+                        cmb.BottomMargin = new BottomMargin { Width = bv2.ToString(), Type = TableWidthUnitValues.Dxa };
                     }
                     break;
                 case "padding.left":
                     {
-                        var cml = tblProps.TableCellMarginDefault ?? tblProps.AppendChild(new TableCellMarginDefault());
                         var lv = ParseHelpers.SafeParseInt(tv, "padding.left");
+                        if (lv < 0)
+                            throw new ArgumentException($"Invalid 'padding.left' value: '{tv}'. Table cell margins must be non-negative.");
+                        var cml = EnsureTableCellMarginDefault(tblProps);
                         cml.TableCellLeftMargin = new TableCellLeftMargin { Width = (short)Math.Min(lv, short.MaxValue), Type = TableWidthValues.Dxa };
                     }
                     break;
                 case "padding.right":
                     {
-                        var cmr = tblProps.TableCellMarginDefault ?? tblProps.AppendChild(new TableCellMarginDefault());
                         var rv = ParseHelpers.SafeParseInt(tv, "padding.right");
+                        if (rv < 0)
+                            throw new ArgumentException($"Invalid 'padding.right' value: '{tv}'. Table cell margins must be non-negative.");
+                        var cmr = EnsureTableCellMarginDefault(tblProps);
                         cmr.TableCellRightMargin = new TableCellRightMargin { Width = (short)Math.Min(rv, short.MaxValue), Type = TableWidthValues.Dxa };
                     }
                     break;
@@ -296,9 +316,14 @@ public partial class WordHandler
                     // aliases for `style`; honor them here so Add doesn't flag
                     // them UNSUPPORTED.
                     tblProps.TableStyle = new TableStyle { Val = tv };
-                    // Add TableLook so built-in styles apply banding correctly
+                    // Add TableLook so built-in styles apply banding correctly.
+                    // CONSISTENCY(tblpr-schema-order): tblLook is rank 14 and
+                    // must precede tblCaption/tblDescription/tblPrChange — raw
+                    // AppendChild produced schema-invalid order when those
+                    // higher-ranked elements existed first (and was the root
+                    // cause of issue #105 when combined with `padding`).
                     tblProps.RemoveAllChildren<TableLook>();
-                    tblProps.AppendChild(new TableLook { Val = "04A0" });
+                    InsertTblPrChildInOrder(tblProps, new TableLook { Val = "04A0" });
                     break;
                 case "shd" or "shading":
                     {

@@ -2782,6 +2782,22 @@ public partial class WordHandler
             tblPr.AppendChild(newChild);
     }
 
+    /// <summary>
+    /// Get-or-create <w:tblCellMar/> on the given tblPr in CT_TblPrBase schema
+    /// order. Prevents the "argv-order produces schema-invalid tblCellMar
+    /// position" class of bug — see InsertTblPrChildInOrder docstring.
+    /// </summary>
+    private static TableCellMarginDefault EnsureTableCellMarginDefault(TableProperties tblPr)
+    {
+        var cm = tblPr.TableCellMarginDefault;
+        if (cm == null)
+        {
+            cm = new TableCellMarginDefault();
+            InsertTblPrChildInOrder(tblPr, cm);
+        }
+        return cm;
+    }
+
     // ==================== w14 Text Effects ====================
 
     private const string W14Ns = "http://schemas.microsoft.com/office/word/2010/wordml";
