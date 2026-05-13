@@ -39,40 +39,20 @@ internal static class RawXmlHelper
         var (xDoc, affected) = ExecuteOnXmlString(rootElement.OuterXml, xpath, action, xml);
         if (affected == 0) return 0;
         // Write modified XML back to the OpenXml element.
-        //
-        // Earlier this concatenated each child's ToString() — but XElement
-        // ToString in fragment context always emits the child's in-scope
-        // xmlns declaration as an explicit attribute on the child, even when
-        // the parent already declares the same prefix. The SDK preserved
-        // those duplicate xmlns attributes on every subsequent read, so a
-        // single raw-set on /settings (or /numbering, /theme) caused every
-        // direct child of the root to carry a redundant xmlns:w on every
-        // dump-replay-dump cycle — observed blowup: /settings +4-7 KB,
-        // /numbering +10-17 KB per cycle on the corpus.
-        //
-        // Fix: serialize the entire root via XmlWriter with
-        // NamespaceHandling.OmitDuplicates, then strip the outer root tags
-        // and assign the inner content as InnerXml. XmlWriter tracks
-        // namespace scope across nested elements and suppresses redundant
-        // xmlns declarations on children — exactly what we need.
-        var fullSb = new System.Text.StringBuilder();
-        var ws = new System.Xml.XmlWriterSettings
+        // Propagate namespace declarations from root to direct child elements,
+        // so that each child's ToString() produces self-contained XML with
+        // all necessary namespace bindings (otherwise inherited namespaces are lost).
+        var rootNsAttrs = xDoc.Root!.Attributes()
+            .Where(a => a.IsNamespaceDeclaration).ToList();
+        foreach (var child in xDoc.Root.Elements())
         {
-            OmitXmlDeclaration = true,
-            NamespaceHandling = System.Xml.NamespaceHandling.OmitDuplicates,
-        };
-        using (var writer = System.Xml.XmlWriter.Create(fullSb, ws))
-        {
-            xDoc.Root!.WriteTo(writer);
+            foreach (var nsAttr in rootNsAttrs)
+            {
+                if (child.Attribute(nsAttr.Name) == null)
+                    child.SetAttributeValue(nsAttr.Name, nsAttr.Value);
+            }
         }
-        var fullXml = fullSb.ToString();
-        // Slice out the root's inner content. The root open tag's '>' is
-        // unambiguous: XmlWriter quote-escapes attribute values, and root
-        // attributes here are namespace URIs that never contain '>'.
-        var openEnd = fullXml.IndexOf('>') + 1;
-        var closeStart = fullXml.LastIndexOf('<');
-        var inner = openEnd > 0 && openEnd <= closeStart ? fullXml[openEnd..closeStart] : "";
-        rootElement.InnerXml = inner;
+        rootElement.InnerXml = string.Concat(xDoc.Root.Nodes().Select(n => n.ToString()));
         return affected;
     }
 
