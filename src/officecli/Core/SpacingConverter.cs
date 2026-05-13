@@ -50,6 +50,32 @@ internal static class SpacingConverter
         return (uint)Math.Round(points * TwipsPerPoint);
     }
 
+    /// <summary>
+    /// Signed twips variant for OOXML attributes typed `ST_SignedTwipsMeasure`:
+    /// w:ind/@w:left, @w:right, @w:start, @w:end, @w:firstLine. Word documents
+    /// commonly carry negative indents — e.g. `<w:ind w:right="-46">` so a
+    /// table-of-contents page-number column overhangs the right margin. Real
+    /// docs (gov.cn corpus) trip ParseWordSpacing's non-negative gate even
+    /// though the OOXML schema explicitly allows negatives for these slots.
+    /// Use this for indent slots only; spaceBefore/spaceAfter remain on the
+    /// strict `ST_TwipsMeasure` path (the non-negative gate there catches
+    /// the silent line-collapse failure mode that motivated it).
+    /// </summary>
+    public static int ParseWordSpacingSigned(string value)
+    {
+        var points = ParseSpacingToPointsSigned(value, bareIsPoints: false);
+        return (int)Math.Round(points * TwipsPerPoint);
+    }
+
+    private static double ParseSpacingToPointsSigned(string value, bool bareIsPoints)
+    {
+        var trimmed = value.Trim();
+        bool neg = trimmed.StartsWith("-");
+        var rest = neg ? trimmed[1..] : trimmed;
+        var pos = ParseSpacingToPoints(rest, bareIsPoints);
+        return neg ? -pos : pos;
+    }
+
     // ────────────────────────────────────────────────────────────────
     //  spaceBefore / spaceAfter  →  PPT hundredths-of-a-point
     // ────────────────────────────────────────────────────────────────

@@ -326,13 +326,17 @@ public partial class WordHandler
             var ind = pProps.Indentation ?? (pProps.Indentation = new Indentation());
             // CONSISTENCY(lenient-spacing): route through SpacingConverter so indent accepts
             // "2cm"/"0.5in"/"24pt"/bare twips — parity with spaceBefore/spaceAfter/lineSpacing.
-            ind.Left = SpacingConverter.ParseWordSpacing(addLI).ToString();
+            // BUG-DUMP-NEGIND: w:ind/@w:left is ST_SignedTwipsMeasure — see
+            // SpacingConverter.ParseWordSpacingSigned. Real docs (gov.cn TOC
+            // overhangs) carry negative indents.
+            ind.Left = SpacingConverter.ParseWordSpacingSigned(addLI).ToString();
         }
         if (properties.TryGetValue("rightindent", out var addRI) || properties.TryGetValue("rightIndent", out addRI) || properties.TryGetValue("indentright", out addRI))
         {
             var ind = pProps.Indentation ?? (pProps.Indentation = new Indentation());
             // CONSISTENCY(lenient-spacing): see leftindent above.
-            ind.Right = SpacingConverter.ParseWordSpacing(addRI).ToString();
+            // BUG-DUMP-NEGIND: signed (see leftIndent above).
+            ind.Right = SpacingConverter.ParseWordSpacingSigned(addRI).ToString();
         }
         if (properties.TryGetValue("hangingindent", out var addHI) || properties.TryGetValue("hangingIndent", out addHI) || properties.TryGetValue("hanging", out addHI))
         {

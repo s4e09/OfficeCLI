@@ -640,17 +640,20 @@ public partial class WordHandler
             case "firstlineindent":
                 var indent = pProps.Indentation ?? (pProps.Indentation = new Indentation());
                 // Lenient input: accept "2cm", "0.5in", "18pt", or bare twips.
-                indent.FirstLine = SpacingConverter.ParseWordSpacing(value).ToString();
+                // BUG-DUMP-NEGIND: ST_SignedTwipsMeasure — see SpacingConverter.
+                indent.FirstLine = SpacingConverter.ParseWordSpacingSigned(value).ToString();
                 indent.Hanging = null;
                 return true;
             case "leftindent" or "indentleft" or "indent":
                 var indentL = pProps.Indentation ?? (pProps.Indentation = new Indentation());
                 // CONSISTENCY(lenient-spacing): mirror Add — accept cm/in/pt/twips via SpacingConverter.
-                indentL.Left = SpacingConverter.ParseWordSpacing(value).ToString();
+                // BUG-DUMP-NEGIND: signed.
+                indentL.Left = SpacingConverter.ParseWordSpacingSigned(value).ToString();
                 return true;
             case "rightindent" or "indentright":
                 var indentR = pProps.Indentation ?? (pProps.Indentation = new Indentation());
-                indentR.Right = SpacingConverter.ParseWordSpacing(value).ToString();
+                // BUG-DUMP-NEGIND: signed.
+                indentR.Right = SpacingConverter.ParseWordSpacingSigned(value).ToString();
                 return true;
             case "hangingindent" or "hanging":
                 var indentH = pProps.Indentation ?? (pProps.Indentation = new Indentation());
