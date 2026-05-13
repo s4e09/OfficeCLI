@@ -178,13 +178,21 @@ public partial class PowerPointHandler
             return null;
         }
 
-        var slideMatch = Regex.Match(path, @"^/slide\[(\d+)\](?:/(\w+)\[(\d+)\])?$");
+        // CONSISTENCY(pptx-group-flatten): optional /group[K] ancestors between
+        // /slide[N] and the leaf element type, so Remove works on paths Query
+        // emits (e.g. /slide[1]/group[2]/shape[3]) without requiring callers
+        // to strip the group prefix. The ancestor segment is tied to the leaf
+        // segment so /slide[1]/group[1] still parses as "remove the group at
+        // root" (ancestor empty, leaf = group[1]) rather than "remove slide
+        // with group ancestor 1".
+        var slideMatch = Regex.Match(path, @"^/slide\[(\d+)\](?:((?:/group\[\d+\])*)/(\w+)\[(\d+)\])?$");
         if (!slideMatch.Success)
             throw new ArgumentException($"Invalid path: {path}. Expected format: /slide[N] or /slide[N]/element[M] (e.g. /slide[1], /slide[1]/shape[2])");
 
         var slideIdx = int.Parse(slideMatch.Groups[1].Value);
+        var groupAncestorChain = slideMatch.Groups[2].Value;
 
-        if (!slideMatch.Groups[2].Success)
+        if (!slideMatch.Groups[3].Success)
         {
             // Remove entire slide
             var presentationPart = _doc.PresentationPart
@@ -216,12 +224,31 @@ public partial class PowerPointHandler
         var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
             ?? throw new InvalidOperationException("Slide has no shapes");
 
-        var elementType = slideMatch.Groups[2].Value;
-        var elementIdx = int.Parse(slideMatch.Groups[3].Value);
+        // Walk down group ancestors to scope element lookup to the correct
+        // container. Path /slide[1]/group[2]/shape[3] resolves "shape[3]"
+        // inside the second group of slide 1, not at the slide root.
+        // `container` is what the element lookup runs on; `shapeTree` is
+        // kept pointing at the slide root for helpers that need slide-wide
+        // context (picture cleanup, zoom resolution, etc).
+        OpenXmlCompositeElement container = shapeTree;
+        if (!string.IsNullOrEmpty(groupAncestorChain))
+        {
+            foreach (Match gm in Regex.Matches(groupAncestorChain, @"/group\[(\d+)\]"))
+            {
+                var gIdx = int.Parse(gm.Groups[1].Value);
+                var groupsAtScope = container.Elements<GroupShape>().ToList();
+                if (gIdx < 1 || gIdx > groupsAtScope.Count)
+                    throw new ArgumentException($"Group {gIdx} not found in scope (have {groupsAtScope.Count})");
+                container = groupsAtScope[gIdx - 1];
+            }
+        }
+
+        var elementType = slideMatch.Groups[3].Value;
+        var elementIdx = int.Parse(slideMatch.Groups[4].Value);
 
         if (elementType == "shape")
         {
-            var shapes = shapeTree.Elements<Shape>().ToList();
+            var shapes = container.Elements<Shape>().ToList();
             if (elementIdx < 1 || elementIdx > shapes.Count)
                 throw new ArgumentException($"Shape {elementIdx} not found");
             var shapeToRemove = shapes[elementIdx - 1];
@@ -234,15 +261,15 @@ public partial class PowerPointHandler
         {
             List<Picture> pics;
             if (elementType is "video")
-                pics = shapeTree.Elements<Picture>()
+                pics = container.Elements<Picture>()
                     .Where(p => p.NonVisualPictureProperties?.ApplicationNonVisualDrawingProperties
                         ?.GetFirstChild<Drawing.VideoFromFile>() != null).ToList();
             else if (elementType is "audio")
-                pics = shapeTree.Elements<Picture>()
+                pics = container.Elements<Picture>()
                     .Where(p => p.NonVisualPictureProperties?.ApplicationNonVisualDrawingProperties
                         ?.GetFirstChild<Drawing.AudioFromFile>() != null).ToList();
             else
-                pics = shapeTree.Elements<Picture>().ToList();
+                pics = container.Elements<Picture>().ToList();
 
             if (elementIdx < 1 || elementIdx > pics.Count)
                 throw new ArgumentException($"{elementType} {elementIdx} not found (total: {pics.Count})");
@@ -252,7 +279,7 @@ public partial class PowerPointHandler
         }
         else if (elementType == "table")
         {
-            var tables = shapeTree.Elements<GraphicFrame>()
+            var tables = container.Elements<GraphicFrame>()
                 .Where(gf => gf.Descendants<Drawing.Table>().Any()).ToList();
             if (elementIdx < 1 || elementIdx > tables.Count)
                 throw new ArgumentException($"Table {elementIdx} not found");
@@ -260,7 +287,7 @@ public partial class PowerPointHandler
         }
         else if (elementType == "chart")
         {
-            var charts = shapeTree.Elements<GraphicFrame>()
+            var charts = container.Elements<GraphicFrame>()
                 .Where(gf => gf.Descendants<C.ChartReference>().Any()).ToList();
             if (elementIdx < 1 || elementIdx > charts.Count)
                 throw new ArgumentException($"Chart {elementIdx} not found");
@@ -275,26 +302,28 @@ public partial class PowerPointHandler
         }
         else if (elementType is "connector" or "connection")
         {
-            var connectors = shapeTree.Elements<ConnectionShape>().ToList();
+            var connectors = container.Elements<ConnectionShape>().ToList();
             if (elementIdx < 1 || elementIdx > connectors.Count)
                 throw new ArgumentException($"Connector {elementIdx} not found");
             connectors[elementIdx - 1].Remove();
         }
         else if (elementType == "group")
         {
-            // Ungroup: move children back to parent shape tree, then remove group
-            var groups = shapeTree.Elements<GroupShape>().ToList();
+            // Ungroup: move children back to parent container (slide root or outer group),
+            // then remove group. `container` is the parent of the group being removed,
+            // so children naturally land at the right level — root-level ungroup keeps
+            // children at slide root; nested-group ungroup moves them up one level only.
+            var groups = container.Elements<GroupShape>().ToList();
             if (elementIdx < 1 || elementIdx > groups.Count)
                 throw new ArgumentException($"Group {elementIdx} not found");
             var group = groups[elementIdx - 1];
-            // Recursively clean up any pictures inside the group before ungrouping
             var children = group.ChildElements
                 .Where(e => e is Shape or Picture or ConnectionShape or GraphicFrame or GroupShape)
                 .ToList();
             foreach (var child in children)
             {
                 child.Remove();
-                shapeTree.AppendChild(child);
+                container.AppendChild(child);
             }
             group.Remove();
         }

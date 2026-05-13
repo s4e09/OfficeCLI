@@ -120,24 +120,38 @@ public partial class PowerPointHandler
                 return slideIdx;
         }
 
-        // For element-level anchors (/slide[N]/shape[M], /slide[N]/table[M], etc.)
-        var elemMatch = Regex.Match(anchorPath, @"^/slide\[(\d+)\]/(\w+)\[(\d+)\]$");
+        // For element-level anchors. CONSISTENCY(pptx-group-flatten): allow
+        // optional /group[K] ancestors so anchors like /slide[1]/group[2]/shape[3]
+        // resolve to the position inside the group's children.
+        var elemMatch = Regex.Match(anchorPath, @"^/slide\[(\d+)\]((?:/group\[\d+\])*)/(\w+)\[(\d+)\]$");
         if (elemMatch.Success)
         {
             var slideIdx = int.Parse(elemMatch.Groups[1].Value);
-            var elemIdx = int.Parse(elemMatch.Groups[3].Value) - 1; // 0-based
+            var elemGroupChain = elemMatch.Groups[2].Value;
+            var elemIdx = int.Parse(elemMatch.Groups[4].Value) - 1; // 0-based
             // Validate that the anchor element exists
             var slideParts = GetSlideParts().ToList();
             if (slideIdx < 1 || slideIdx > slideParts.Count)
                 throw new ArgumentException($"Anchor slide not found: {anchorPath} (total slides: {slideParts.Count})");
-            var anchorShapeTree = GetSlide(slideParts[slideIdx - 1]).CommonSlideData?.ShapeTree;
-            if (anchorShapeTree != null)
+            OpenXmlCompositeElement? anchorContainer = GetSlide(slideParts[slideIdx - 1]).CommonSlideData?.ShapeTree;
+            if (anchorContainer != null && !string.IsNullOrEmpty(elemGroupChain))
             {
-                var contentChildren = anchorShapeTree.ChildElements
+                foreach (Match gm in Regex.Matches(elemGroupChain, @"/group\[(\d+)\]"))
+                {
+                    var gIdx = int.Parse(gm.Groups[1].Value);
+                    var groupsAtScope = anchorContainer.Elements<GroupShape>().ToList();
+                    if (gIdx < 1 || gIdx > groupsAtScope.Count)
+                        throw new ArgumentException($"Anchor group {gIdx} not found in scope (have {groupsAtScope.Count})");
+                    anchorContainer = groupsAtScope[gIdx - 1];
+                }
+            }
+            if (anchorContainer != null)
+            {
+                var contentChildren = anchorContainer.ChildElements
                     .Where(e => e is not NonVisualGroupShapeProperties && e is not GroupShapeProperties)
                     .ToList();
                 if (elemIdx < 0 || elemIdx >= contentChildren.Count)
-                    throw new ArgumentException($"Anchor element not found: {anchorPath} (total elements on slide: {contentChildren.Count})");
+                    throw new ArgumentException($"Anchor element not found: {anchorPath} (total elements in scope: {contentChildren.Count})");
             }
             if (position.After != null)
                 return elemIdx + 1; // InsertAtPosition handles bounds
