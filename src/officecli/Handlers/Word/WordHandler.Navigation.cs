@@ -3418,11 +3418,21 @@ public partial class WordHandler
 
     // Long-tail OOXML fallback: walk a properties container (rPr/pPr/...) and
     // surface every leaf child whose localName isn't already covered by the
-    // curated reader. Shape is symmetric with GenericXmlQuery.TryCreateTypedChild
-    // on the Set side: child-with-val → Format[name]=val; toggle (no attrs) →
-    // Format[name]=true. Multi-attribute / nested children are skipped — the
-    // generic Set path can't write them, so exposing them would produce keys
-    // that don't round-trip.
+    // curated reader. Shape is symmetric with the Add/Set side:
+    //
+    //   - child with no attrs            → Format[name] = true
+    //     (toggle, matches GenericXmlQuery.TryCreateTypedChild bare-toggle).
+    //   - child with one `val` attr only → Format[name] = val
+    //     (scalar, matches GenericXmlQuery.TryCreateTypedChild val-leaf).
+    //   - child with any other attrs     → Format[name.attr] = value per attr
+    //     (dotted, matches TypedAttributeFallback.TrySet single-level shape
+    //     `elementLocal.attrLocal`). Every typed attr surfaces, including
+    //     `val` when accompanied by other attrs (so themed colors / multi-
+    //     slot indents / spacing round-trip in full).
+    //
+    // Nested-children elements are emitted as raw flag toggles only — the
+    // dotted reflection covers leaf attrs, and 3+ segment nested reflection
+    // is intentionally out of scope (raw-XML escape handles the deep cases).
     private static void FillUnknownChildProps(OpenXmlElement? container, DocumentNode node)
     {
         if (container == null) return;
@@ -3431,23 +3441,37 @@ public partial class WordHandler
             var name = child.LocalName;
             if (string.IsNullOrEmpty(name)) continue;
             if (CuratedStyleLocalNames.Contains(name)) continue;
-            if (node.Format.ContainsKey(name)) continue;
             if (child.ChildElements.Count > 0) continue;
 
-            string? valAttr = null;
-            int attrCount = 0;
-            foreach (var a in child.GetAttributes())
+            var typedAttrs = new System.Collections.Generic.List<DocumentFormat.OpenXml.OpenXmlAttribute>();
+            foreach (var a in child.GetAttributes()) typedAttrs.Add(a);
+
+            if (typedAttrs.Count == 0)
             {
-                attrCount++;
-                if (a.LocalName.Equals("val", System.StringComparison.OrdinalIgnoreCase))
-                    valAttr = a.Value;
+                if (!node.Format.ContainsKey(name))
+                    node.Format[name] = true;
+                continue;
             }
-            if (valAttr != null)
-                node.Format[name] = valAttr;
-            else if (attrCount == 0)
-                node.Format[name] = true;
-            // else: complex multi-attribute element — skip, curated reader
-            // is expected to cover it (e.g. rFonts is in CuratedStyleLocalNames).
+
+            if (typedAttrs.Count == 1
+                && typedAttrs[0].LocalName.Equals("val", System.StringComparison.OrdinalIgnoreCase))
+            {
+                if (!node.Format.ContainsKey(name))
+                    node.Format[name] = typedAttrs[0].Value ?? "";
+                continue;
+            }
+
+            // Multi-attribute element → dotted `<name>.<attr>` keys. Symmetric
+            // with TypedAttributeFallback.TrySet on the Add/Set side, so
+            // dump→replay round-trips through the same reflection path that
+            // already accepts `ind.firstLine=240`, `spacing.line=480`, etc.
+            foreach (var a in typedAttrs)
+            {
+                if (string.IsNullOrEmpty(a.LocalName)) continue;
+                var key = $"{name}.{a.LocalName}";
+                if (node.Format.ContainsKey(key)) continue;
+                node.Format[key] = a.Value ?? "";
+            }
         }
     }
 }
