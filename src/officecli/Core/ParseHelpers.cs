@@ -98,7 +98,15 @@ internal static class ParseHelpers
         var resolved = TryResolveColorInput(rawValue);
         if (resolved != null)
             return "#" + resolved.ToUpperInvariant();
-        return rawValue; // scheme colors ("accent1"), "none", "auto", etc.
+        // Sentinel tokens are case-insensitive in OOXML but the canonical
+        // Format emit is lowercase — sources occasionally write `w:val="AUTO"`
+        // (or `"NONE"`), and a case-only delta poisons dump round-trip
+        // diffing. Normalise the known sentinels here; scheme color names
+        // (`accent1`, `dark1`, …) pass through unchanged.
+        if (string.Equals(rawValue, "auto", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(rawValue, "none", StringComparison.OrdinalIgnoreCase))
+            return rawValue.ToLowerInvariant();
+        return rawValue; // scheme colors ("accent1"), etc.
     }
 
     /// <summary>
