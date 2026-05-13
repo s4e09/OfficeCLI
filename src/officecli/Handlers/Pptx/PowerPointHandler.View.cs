@@ -437,7 +437,8 @@ public partial class PowerPointHandler
                 break;
 
             var textsArray = new JsonArray();
-            var shapes = GetSlide(slidePart).CommonSlideData?.ShapeTree?.Elements<Shape>() ?? Enumerable.Empty<Shape>();
+            // CONSISTENCY(pptx-group-flatten)
+            var shapes = GetSlide(slidePart).CommonSlideData?.ShapeTree?.Descendants<Shape>() ?? Enumerable.Empty<Shape>();
             foreach (var shape in shapes)
             {
                 var text = GetShapeText(shape);
@@ -528,7 +529,10 @@ public partial class PowerPointHandler
                 }
             }
 
-            foreach (var pic in shapeTree.Elements<Picture>())
+            // CONSISTENCY(pptx-group-flatten): alt-text accessibility check
+            // applies to every picture on the slide, including those nested in
+            // groups.
+            foreach (var pic in shapeTree.Descendants<Picture>())
             {
                 var alt = pic.NonVisualPictureProperties?.NonVisualDrawingProperties?.Description?.Value;
                 if (string.IsNullOrEmpty(alt))
